@@ -7,3 +7,8 @@ supabase/.temp
 supabase/.branches
 .DS_Store
 *.log
+
+# Database dumps hold real employee and financial data.
+backups/
+*.sql.gz
+backup*.sql
