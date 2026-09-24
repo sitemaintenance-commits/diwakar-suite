@@ -348,9 +348,10 @@ console.log('\nO&M / Solar (Phase 4)');
   // the daily form, the site register, their tickets and their own score.
   const r = await as(TECH, `select public.get_my_access() a`);
   const keys = Object.keys(r.rows[0].a.permissions).sort();
-  const expected = ['dashboard', 'om.daily_entry', 'om.operations', 'om.performance', 'om.tickets'];
+  const expected = ['dashboard', 'hr.scorecard', 'hr.worklog',
+                    'om.daily_entry', 'om.operations', 'om.performance', 'om.tickets'];
   JSON.stringify(keys) === JSON.stringify(expected)
-    ? ok('by default a technician sees only the form, the register, their tickets and their score')
+    ? ok('by default a technician sees the forms they file, their tickets and their own scores')
     : bad('default technician scope', keys.join(', '));
 }
 // Roles are data: the Super Admin widens the Technician role for this site
@@ -505,6 +506,92 @@ await expectValue('completion time is stamped', TECH, `select completed_at is no
     ? ok('HR summary counts attendance, leave and tasks')
     : bad('hr summary', JSON.stringify(h));
 }
+
+console.log('\nPMS — the daily working sheet and the 60/20/10/10 score');
+await expectValue('the score sheet keeps its four weighted criteria', OWNER,
+  `select string_agg(key || ':' || weight, ' ' order by sort_order) from public.pms_criteria`,
+  'kpi:60 competency:20 discipline:10 attendance:10');
+await expectValue('and the KPI floor the legacy sheet gives for reporting the day', OWNER,
+  `select floor_pct from public.pms_criteria where key = 'kpi'`, 60);
+
+// An employee files their own sheet, exactly as the Google Form asked:
+// tasks with a status, a priority and remarks.
+await expectValue('an employee files their own working sheet', SALES,
+  `select (public.save_work_log(current_date, $1::jsonb, 'medium', 'Tender file moved forward', true)->>'task_count')::int`,
+  7, [JSON.stringify([
+    { seq: 1, description: 'Tender fee DD prepared', status: 'completed' },
+    { seq: 2, description: 'Bid document checklist', status: 'completed' },
+    { seq: 3, description: 'Vendor quotation follow-up', status: 'not_started' },
+    { seq: 4, description: 'Site visit report', status: 'not_started' },
+    { seq: 5, description: 'EMD refund letter', status: 'not_started' },
+    { seq: 6, description: 'Client call notes', status: 'not_started' },
+    { seq: 7, description: 'Portal registration renewal', status: 'not_started' },
+  ])]);
+await expectError('no sheet for a future date', SALES,
+  `select public.save_work_log(current_date + 1, '[]'::jsonb)`, 'future date');
+await expectError('and none on a colleague behalf', SALES,
+  `select public.save_work_log(current_date, '[{"seq":1,"description":"x","status":"completed"}]'::jsonb,
+     'medium', null, true, $1)`, 'may not file', [TECH_EMP]);
+await expectError('a submitted sheet is closed to its author', SALES,
+  `select public.save_work_log(current_date, '[]'::jsonb)`, 'already submitted');
+
+// The legacy sheet's own arithmetic: 2 of 7 tasks completed scores
+// KPI 71, competency 29, final 68 "Good".
+{
+  const r = await as(OWNER, `select public.get_pms_scores() p`);
+  const row = r.rows[0].p.rows.find((x) => x.employee_id === SALES_EMP);
+  row && row.kpi === 71 && row.competency === 29 && row.discipline === 100
+    && row.attendance === 100 && row.final === 68 && row.rating === 'Good'
+    ? ok('2 of 7 tasks scores KPI 71 / competency 29 / final 68 "Good", as the legacy sheet does')
+    : bad('pms scoring', JSON.stringify(row));
+}
+await expectValue('attendance comes from the register, not from discipline', OWNER,
+  `select x->>'attendance_source' from jsonb_array_elements(public.get_pms_scores()->'rows') x
+   where x->>'employee_id' = $1`, 'register', [SALES_EMP]);
+
+// Work in progress counts half — 2 done + 2 running out of 4 is the same
+// 0.75 the legacy sheet scores 90 / 75 / 89 "Excellent".
+await expectOk('HR reopens the sheet', OWNER,
+  `update public.work_logs set status = 'draft' where employee_id = $1`, [SALES_EMP]);
+await expectValue('the employee re-files it', SALES,
+  `select (public.save_work_log(current_date, $1::jsonb, 'high', null, true)->>'task_count')::int`,
+  4, [JSON.stringify([
+    { seq: 1, description: 'Tender fee DD prepared', status: 'completed' },
+    { seq: 2, description: 'Bid document checklist', status: 'completed' },
+    { seq: 3, description: 'Vendor quotation follow-up', status: 'in_progress' },
+    { seq: 4, description: 'Site visit report', status: 'in_progress' },
+  ])]);
+{
+  const r = await as(OWNER, `select public.get_pms_scores() p`);
+  const row = r.rows[0].p.rows.find((x) => x.employee_id === SALES_EMP);
+  row && row.kpi === 90 && row.competency === 75 && row.final === 89 && row.rating === 'Excellent'
+    ? ok('work in progress counts half: 90 / 75 / 89 "Excellent"')
+    : bad('pms half credit', JSON.stringify(row));
+}
+await expectValue('the task mix is counted for the status pie', OWNER,
+  `select (public.get_pms_scores()->>'task_completed') || '/' || (public.get_pms_scores()->>'task_in_progress')`, '2/2');
+
+// Scope: the sheet and the score are personal data.
+await expectValue('an employee sees only their own line on the score sheet', SALES,
+  `select jsonb_array_length(public.get_pms_scores()->'rows')`, 1);
+await expectError('a colleague without the module cannot read the day sheets', TECH,
+  `select public.get_work_logs()`, 'hr.worklog VIEW');
+{
+  const r = await as(OWNER, `select public.get_work_logs(current_date) w`);
+  const e = r.rows[0].w.entries[0];
+  r.rows[0].w.entries.length === 1 && e.tasks.length === 4 && Number(e.score) === 75 && e.priority === 'high'
+    ? ok('the day sheet lists each task with its status, priority and score')
+    : bad('work log day view', JSON.stringify(r.rows[0].w).slice(0, 200));
+}
+// Filing your own sheet needs no module permission — it is your own record.
+await expectOk('a colleague with no HR permission still files their own sheet', TECH,
+  `select public.save_work_log(current_date,
+     '[{"seq":1,"description":"Module cleaning block C","status":"completed"}]'::jsonb, 'medium', null, true)`);
+await expectValue('a day of approved leave is not counted as an absence', OWNER,
+  `select x->>'attendance_source' from jsonb_array_elements(public.get_pms_scores()->'rows') x
+   where x->>'employee_id' = $1`, 'discipline', [TECH_EMP]);
+await expectValue('an employee who never reported is listed separately, not scored as zero', OWNER,
+  `select jsonb_array_length(public.get_pms_scores()->'not_reporting') > 0`, true);
 
 console.log('\nDaily Review (Phase 6)');
 const deptOm = await id(`select id from public.departments where code = 'OM'`);
@@ -800,6 +887,245 @@ await expectValue('and the month keeps the rest of its days', RAHUL,
 }
 await expectValue('the portfolio only ever counts the sites you may see', TECH,
   `select public.has_permission('om.analytics','view')`, false);
+
+console.log('\nProjects (Phase 3) — plan, approvals, materials, vendors, bills, client money');
+await expectValue('the three execution plans ship with the module', OWNER,
+  `select count(*)::int from public.project_templates where deleted_at is null`, 3);
+await expectValue('each plan carries its task list with day offsets', OWNER,
+  `select count(*)::int from public.project_template_tasks t
+   join public.project_templates p on p.id = t.template_id
+   where p.name = 'Ground-mount Plant (MW scale)'`, 8);
+
+const PRJ = await id(`insert into public.projects
+  (name, client_name, segment, project_type, capacity_kwp, capacity_ac_kw, contract_value,
+   start_date, target_commissioning, project_manager_id, site_id, district, state)
+  values ('Deegod 3.57 MW', 'GCPL Solar Private Limited', 'government', 'ground_mount', 3570, 2800,
+          115000000, current_date - 30, current_date + 120, $1, $2, 'Kota', 'Rajasthan')
+  returning id`, [RAHUL, site.Sadas]);
+
+await expectValue('applying a plan creates the tasks', ADMIN,
+  `select public.apply_project_template($1, (select id from public.project_templates
+     where name = 'Ground-mount Plant (MW scale)'))`, 8, [PRJ]);
+await expectValue('and dates them from the project start date', ADMIN,
+  `select (due_date - (select start_date from public.projects where id = $1))::int
+   from public.project_tasks where project_id = $1 and title = 'Installation'`, 110, [PRJ]);
+await expectOk('the project manager closes the survey', ADMIN,
+  `update public.project_tasks set status = 'done' where project_id = $1 and title = 'Survey'`, [PRJ]);
+await expectValue('closing a task is timestamped', ADMIN,
+  `select completed_at is not null from public.project_tasks where project_id = $1 and title = 'Survey'`, true, [PRJ]);
+
+{
+  const r = await as(ADMIN, `select public.get_project_dashboard() d`);
+  const d = r.rows[0].d;
+  Number(d.project_count) === 1 && Number(d.capacity_kwp) === 3570 && Number(d.open_tasks) === 7
+    && d.projects[0].progress === 13
+    ? ok('the dashboard totals the portfolio and derives progress from the plan')
+    : bad('project dashboard', JSON.stringify({ n: d.project_count, open: d.open_tasks, p: d.projects?.[0]?.progress }));
+}
+
+// Approvals and materials
+await expectOk('an approval is tracked with its reference', ADMIN,
+  `insert into public.project_approvals (project_id, kind, authority, reference_no, applied_on, expected_on, status)
+   values ($1, 'Grid connectivity', 'JVVNL', 'JVVNL/CONN/2026/881', current_date - 20, current_date + 10, 'under_review')`, [PRJ]);
+await expectOk('material lines are recorded with their shortage', ADMIN,
+  `insert into public.project_materials (project_id, item, uom, qty_required, rate, status)
+   values ($1, 'Structure', 'set', 3280, 1450, 'shortage')`, [PRJ]);
+await expectValue('the line value is computed, not typed', ADMIN,
+  `select amount::numeric from public.project_materials where project_id = $1`, '4756000.00', [PRJ]);
+
+// Vendors and the two-step bill approval
+const VEND = await id(`insert into public.vendors (name, category, payment_terms, phone)
+  values ('I&C Vendor', 'Installation vendor', 'Milestone based', '7229869779') returning id`);
+const BILL = await id(`insert into public.vendor_bills (project_id, vendor_id, bill_no, amount, deductions, description)
+  values ($1, $2, 'INV/2026/118', 2500000, 125000, 'Civil works milestone 2') returning id`, [PRJ, VEND]);
+await expectValue('the net payable is computed from the deductions', ADMIN,
+  `select net_amount::numeric from public.vendor_bills where id = $1`, '2375000.00', [BILL]);
+await expectError('a bill cannot skip the project-manager approval', ADMIN,
+  `update public.vendor_bills set status = 'accounts_approved' where id = $1`, 'must approve the bill before', [BILL]);
+await expectError('a bill cannot be paid before it is approved', ADMIN,
+  `update public.vendor_bills set status = 'paid' where id = $1`, 'only be paid after', [BILL]);
+// A user without the module never even sees the row, so the update
+// touches nothing rather than erroring — and the bill stays submitted.
+await expectRows('a sales user cannot reach a vendor bill at all', SALES,
+  `update public.vendor_bills set status = 'pm_approved' where id = $1 returning id`, 0, [BILL]);
+await expectValue('the bill is still waiting for its first approval', ADMIN,
+  `select status::text from public.vendor_bills where id = $1`, 'submitted', [BILL]);
+await expectOk('the project manager approves it', ADMIN,
+  `update public.vendor_bills set status = 'pm_approved' where id = $1`, [BILL]);
+await expectValue('the approver and the time are stamped', ADMIN,
+  `select pm_approved_by = $2 and pm_approved_at is not null from public.vendor_bills where id = $1`, true, [BILL, ADMIN]);
+await expectError('the same person cannot also give the accounts approval', ADMIN,
+  `update public.vendor_bills set status = 'accounts_approved' where id = $1`, 'same person', [BILL]);
+await expectOk('accounts approves it separately', OWNER,
+  `update public.vendor_bills set status = 'accounts_approved' where id = $1`, [BILL]);
+await expectOk('and pays it', OWNER,
+  `update public.vendor_bills set status = 'paid', utr_no = 'SBIN2026091812' where id = $1`, [BILL]);
+await expectValue('the payment date is stamped', OWNER,
+  `select paid_on = current_date from public.vendor_bills where id = $1`, true, [BILL]);
+
+// Client money
+await expectOk('a client milestone is invoiced', ADMIN,
+  `insert into public.client_payments (project_id, milestone, invoice_no, invoice_date, amount)
+   values ($1, 'Supply - 40%', 'DRIPL/2026/44', current_date - 10, 46000000)`, [PRJ]);
+await expectValue('an invoice with nothing received reads "invoiced"', ADMIN,
+  `select status::text from public.client_payments where project_id = $1`, 'invoiced', [PRJ]);
+await expectError('more money cannot be received than was invoiced', ADMIN,
+  `update public.client_payments set received_amount = 50000000 where project_id = $1`, 'more than the invoiced', [PRJ]);
+await expectOk('a part payment arrives', ADMIN,
+  `update public.client_payments set received_amount = 20000000, received_on = current_date where project_id = $1`, [PRJ]);
+await expectValue('the status follows the money by itself', ADMIN,
+  `select status::text from public.client_payments where project_id = $1`, 'part_received', [PRJ]);
+await expectValue('and the dashboard shows what is still outstanding', ADMIN,
+  `select (public.get_project_dashboard()->>'client_outstanding')::numeric`, '26000000.00');
+
+// The site engineer's day-wise update
+await expectOk('the site engineer files the day-wise update', ADMIN,
+  `select public.save_project_update($1, current_date,
+     '{"tl_work":"completed","gss_bay":"completed","piling":"completed","panel":"in_progress",
+       "module_work":"not_started","inverter":"not_started","material":"in_progress"}'::jsonb,
+     'Piling completed for block A. Panel erection started.', 'Rain held work for two days.', null, 'Ankit Goyal')`,
+  [PRJ]);
+await expectValue('filing it twice corrects the day instead of duplicating it', ADMIN,
+  `select count(*)::int from public.project_updates where project_id = $1 and update_date = current_date`, 1, [PRJ]);
+await expectValue('and the project stage follows the site', ADMIN,
+  `select stage::text from public.projects where id = $1`, 'installation', [PRJ]);
+await expectError('no site update for a future date', ADMIN,
+  `select public.save_project_update($1, current_date + 1, '{}'::jsonb)`, 'future date', [PRJ]);
+
+await expectValue('a technician has no access to the project modules', TECH,
+  `select public.has_permission('projects.bills','view')`, false);
+
+console.log('\nLegacy import — bringing the four old apps history across');
+const OM_PAYLOAD = JSON.stringify({
+  reports: {
+    '2026-01-05': [
+      { site: 'Sadas - Chittorgarh', short: 'Sadas', generation: 9342, insolation: '5.18', outage: 'No', remarks: 'OK' },
+      { site: 'Bassi - Sikar', short: 'Bassi', generation: 14663, insolation: '', outage: '07:24 -07:28\n13:40 - 13:45', remarks: '' },
+      { site: 'Niwai - Tonk', short: 'Niwai', generation: 3461.41, insolation: '', outage: 'No', remarks: '' },
+      { site: 'Gone Away - Nowhere', short: 'Gone Away', generation: 100, insolation: '', outage: 'No', remarks: '' },
+      { site: 'Sadas - Chittorgarh', short: 'Sadas', generation: 0, insolation: '', outage: 'No', remarks: '' },
+    ],
+    '2026-01-06': [
+      { site: 'Sadas - Chittorgarh', short: 'Sadas', generation: 9398, insolation: '5.4', outage: 'No', remarks: '' },
+    ],
+  },
+});
+
+await expectValue('a dry run reports what would land without writing anything', OWNER,
+  `select public.import_om_generation($1::jsonb, true)->>'inserted'`, '4', [OM_PAYLOAD]);
+await expectValue('and nothing was written', OWNER,
+  `select count(*)::int from public.generation_records where gen_date = '2026-01-05'`, 0);
+{
+  const r = await as(OWNER, `select public.import_om_generation($1::jsonb) i`, [OM_PAYLOAD]);
+  const i = r.rows[0].i;
+  Number(i.inserted) === 4 && Number(i.ignored) === 1 && i.unknown_sites[0] === 'Gone Away'
+    && i.from === '2026-01-05' && i.to === '2026-01-06'
+    ? ok('the O&M history imports, and a site the suite does not know is reported, not invented')
+    : bad('om import', JSON.stringify(i));
+}
+await expectValue('a zero reading is not a reading', OWNER,
+  `select count(*)::int from public.generation_records where gen_date = '2026-01-05'`, 3);
+// Real sheets use en dashes, labelled blocks and the odd reversed window.
+await expectValue('an en-dash outage window is read too', OWNER,
+  `select app.parse_outage_hours('07:00 – 08:24')::text`, '1.40');
+await expectValue('labelled grid and plant windows are both counted', OWNER,
+  `select app.parse_outage_hours('Grid Failure :-
+18:10 - 18:23
+Plant Trip :-
+11:46 - 12:10')::text`, '0.62');
+await expectValue('a window that ends before it starts counts as nothing', OWNER,
+  `select app.parse_outage_hours('10:18 - 02:46')::text`, '0.00');
+await expectValue('an insolation of 0.00 means not recorded, not no sun', OWNER,
+  `select public.import_om_generation($1::jsonb)->>'inserted'`, '1', [JSON.stringify({
+    reports: { '2026-03-02': [{ short: 'Sadas', generation: 15552, insolation: '0.00', outage: 'No' }] },
+  })]);
+await expectValue('so it is stored as unknown rather than zero', OWNER,
+  `select irradiation_kwh_m2 is null from public.generation_records g join public.sites s on s.id = g.site_id
+   where g.gen_date = '2026-03-02' and s.name = 'Sadas'`, true);
+await expectValue('free-text outage windows become hours', OWNER,
+  `select grid_outage_hrs::text from public.generation_records g join public.sites s on s.id = g.site_id
+   where g.gen_date = '2026-01-05' and s.name = 'Bassi'`, '0.15');
+await expectValue('insolation comes across so PR works on the history', OWNER,
+  `select irradiation_kwh_m2::text from public.generation_records g join public.sites s on s.id = g.site_id
+   where g.gen_date = '2026-01-05' and s.name = 'Sadas'`, '5.180');
+await expectValue('the import is marked as legacy data', OWNER,
+  `select source from public.generation_records where gen_date = '2026-01-06'`, 'legacy');
+{
+  const r = await as(OWNER, `select public.import_om_generation($1::jsonb) i`, [OM_PAYLOAD]);
+  const i = r.rows[0].i;
+  Number(i.inserted) === 0 && Number(i.skipped) === 4
+    ? ok('running the same import again changes nothing')
+    : bad('import idempotency', JSON.stringify(i));
+}
+{
+  // Site access still applies: Rahul has Sadas, Thikariya, Bassi and Test Site.
+  const r = await as(RAHUL, `select public.import_om_generation($1::jsonb) i`, [JSON.stringify({
+    reports: { '2026-02-01': [
+      { short: 'Sadas', generation: 9253, insolation: '', outage: 'No', remarks: '' },
+      { short: 'Niwai', generation: 8658, insolation: '', outage: 'No', remarks: '' },
+    ] },
+  })]);
+  const i = r.rows[0].i;
+  Number(i.inserted) === 1 && Number(i.ignored) === 1
+    ? ok('an import cannot reach a site the importer is not assigned to')
+    : bad('import site scope', JSON.stringify(i));
+}
+await expectError('a sales user cannot import readings at all', SALES,
+  `select public.import_om_generation($1::jsonb)`, 'om.generation CREATE', [OM_PAYLOAD]);
+await expectValue('the import is written to the audit log', OWNER,
+  `select count(*)::int > 0 from public.audit_logs where action = 'import' and module_key = 'om.generation'`, true);
+
+// Daily Review
+const DR_PAYLOAD = JSON.stringify({
+  depts: [{ id: 'dept-om', name: 'O&M / Service' }, { id: 'dept-x', name: 'Ghost Department' }],
+  reports: [
+    { deptId: 'dept-om', date: '2026-01-05', status: 'On track', reporter: 'Rajpal',
+      metrics: [{ label: 'Generation (kWh)', value: '45,300' }, { label: 'Open tickets', value: '3' }],
+      highlights: 'Cleaned 4 blocks at Sadas.', blockers: '', remarks: '' },
+    { deptId: 'dept-x', date: '2026-01-05', status: 'Critical', metrics: [], highlights: 'x' },
+  ],
+});
+{
+  const r = await as(OWNER, `select public.import_daily_reports($1::jsonb) i`, [DR_PAYLOAD]);
+  const i = r.rows[0].i;
+  Number(i.inserted) === 1 && Number(i.ignored) === 1 && i.unknown_departments[0] === 'Ghost Department'
+    ? ok('daily reports import and an unmatched department is reported')
+    : bad('daily import', JSON.stringify(i));
+}
+await expectValue('the metrics come across as report lines', OWNER,
+  `select count(*)::int from public.daily_report_items i
+   join public.daily_reports r on r.id = i.report_id where r.report_date = '2026-01-05'`, 2);
+await expectValue('imported history lands as reviewed, not as a draft', OWNER,
+  `select status::text from public.daily_reports where report_date = '2026-01-05'`, 'reviewed');
+
+// PMS work sheets
+const PMS_PAYLOAD = JSON.stringify([
+  { employee: 'Technician One', post: 'Technician', department: 'O&M / Service', date: '2026-01-05',
+    priority: 'Medium', remarks: 'All done',
+    tasks: [{ description: 'Module cleaning block A', status: 'Completed' },
+            { description: 'String testing', status: 'In Progress' }] },
+  { employee: 'Somebody Unknown', post: 'Officer', department: 'Admin', date: '2026-01-05',
+    priority: 'Low', tasks: [{ description: 'Filing', status: 'Completed' }] },
+]);
+{
+  const r = await as(OWNER, `select public.import_work_logs($1::jsonb) i`, [PMS_PAYLOAD]);
+  const i = r.rows[0].i;
+  Number(i.inserted) === 2 && Number(i.employees_created) === 1
+    ? ok('work sheets import, and an employee missing from the master is created')
+    : bad('pms import', JSON.stringify(i));
+}
+await expectValue('the task statuses are mapped from the form wording', OWNER,
+  `select count(*) filter (where t.status = 'completed') || '/' || count(*) filter (where t.status = 'in_progress')
+   from public.work_log_tasks t join public.work_logs w on w.id = t.log_id
+   where w.log_date = '2026-01-05'`, '2/1');
+await expectValue('and the counts on the sheet are computed, not trusted', OWNER,
+  `select task_count || '-' || completed || '-' || in_progress from public.work_logs w
+   join public.employees e on e.id = w.employee_id
+   where w.log_date = '2026-01-05' and e.full_name = 'Technician One'`, '2-1-1');
+await expectValue('the imported history scores like any other sheet', OWNER,
+  `select (x->>'kpi')::int from jsonb_array_elements(
+     public.get_pms_scores('2026-01-01', '2026-01-31')->'rows') x
+   where x->>'employee' = 'Technician One'`, 90);
 
 console.log('\nDeactivation');
 await expectOk('Admin deactivates Technician', ADMIN, `select public.admin_set_user_status($1, 'inactive')`, [TECH]);

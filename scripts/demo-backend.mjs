@@ -234,6 +234,93 @@ await asUser(OWNER, async (tx) => {
   $do$;`);
 });
 
+// ---------------------------------------------------------------- demo projects (Phase 3)
+await asUser(OWNER, async (tx) => {
+  await tx.query(`insert into public.projects
+      (name, client_name, segment, project_type, capacity_kwp, capacity_ac_kw, contract_value,
+       stage, start_date, target_commissioning, project_manager_id, site_id, district, state)
+    values
+      ('Deegod 3.57 MW', 'GCPL Solar Private Limited', 'government', 'ground_mount', 3570, 2800,
+       115000000, 'installation', current_date - 60, current_date + 90, $1,
+       (select id from public.sites where name = 'Deegod'), 'Kota', 'Rajasthan'),
+      ('Bhojusar 3.28 MW', 'GCPL Solar Private Limited', 'government', 'ground_mount', 3280, 2520,
+       98000000, 'commissioning', current_date - 150, current_date - 10, $1,
+       (select id from public.sites where name = 'Bhojusar'), 'Bikaner', 'Rajasthan')`, [RAHUL_ID]);
+
+  await tx.query(`select public.apply_project_template(p.id,
+      (select id from public.project_templates where name = 'Ground-mount Plant (MW scale)'))
+    from public.projects p`);
+
+  // Bhojusar is nearly finished; Deegod is in the middle of installation.
+  await tx.query(`update public.project_tasks t set status = 'done'
+    from public.projects p where p.id = t.project_id
+      and p.name like 'Bhojusar%' and t.sort_order <= 6`);
+  await tx.query(`update public.project_tasks t set status = 'done'
+    from public.projects p where p.id = t.project_id
+      and p.name like 'Deegod%' and t.sort_order <= 3`);
+  await tx.query(`update public.project_tasks t set status = 'in_progress'
+    from public.projects p where p.id = t.project_id
+      and p.name like 'Deegod%' and t.sort_order = 4`);
+
+  await tx.query(`insert into public.vendors (name, category, payment_terms, phone, contact_person, gst_no)
+    values ('I&C Vendor', 'Installation vendor', 'Milestone based', '7229869779', 'Ankit Goyal', '08AABCI1234M1Z5'),
+           ('Suryakiran Modules', 'Modules', '30 days', '9829112233', 'R. Mehta', '08AAACS7777K1ZP')`);
+
+  await tx.query(`insert into public.project_approvals (project_id, kind, authority, reference_no, applied_on, expected_on, status)
+    select p.id, v.kind, v.auth, v.ref, current_date - v.ago, current_date + v.due, v.st::public.approval_status
+    from public.projects p,
+      (values ('DISCOM connectivity', 'JVVNL', 'JVVNL/CONN/2026/881', 40, 5, 'under_review'),
+              ('CEIG / Electrical inspector', 'CEIG Rajasthan', 'CEIG/2026/4471', 20, 25, 'applied')) v(kind, auth, ref, ago, due, st)
+    where p.name like 'Deegod%'`);
+
+  await tx.query(`insert into public.project_materials (project_id, item, uom, qty_required, qty_received, rate, status, vendor_id)
+    select p.id, v.item, v.uom, v.qty, v.recd, v.rate, v.st::public.material_status,
+           (select id from public.vendors where name = v.vend)
+    from public.projects p,
+      (values ('SOLAR MODULE', 'nos', 5290, 5290, 11500, 'at_site', 'Suryakiran Modules'),
+              ('Solar INVERTER', 'nos', 9, 9, 420000, 'at_site', 'I&C Vendor'),
+              ('Structure', 'set', 3280, 2100, 1450, 'shortage', 'I&C Vendor'),
+              ('HT Cable', 'm', 290, 290, 620, 'at_site', 'I&C Vendor'),
+              ('Transformer', 'nos', 1, 0, 1850000, 'dispatched', 'I&C Vendor')) v(item, uom, qty, recd, rate, st, vend)
+    where p.name like 'Bhojusar%'`);
+
+  await tx.query(`insert into public.vendor_bills (project_id, vendor_id, bill_no, bill_date, amount, deductions, description)
+    select p.id, (select id from public.vendors where name = 'I&C Vendor'), v.no, current_date - v.ago, v.amt, v.ded, v.descr
+    from public.projects p,
+      (values ('INV/2026/118', 12, 2500000, 125000, 'Civil works milestone 2'),
+              ('INV/2026/124', 4, 1850000, 92500, 'Structure erection milestone 1')) v(no, ago, amt, ded, descr)
+    where p.name like 'Bhojusar%'`);
+  await tx.query(`update public.vendor_bills set status = 'pm_approved'
+    where bill_no = 'INV/2026/118'`);
+
+  await tx.query(`insert into public.client_payments (project_id, milestone, invoice_no, invoice_date, amount, received_amount, received_on)
+    select p.id, v.ms, v.inv, current_date - v.ago, v.amt, v.recd,
+           case when v.recd > 0 then current_date - v.ago + 12 else null end
+    from public.projects p,
+      (values ('Advance - 10%', 'DRIPL/2026/21', 140, 9800000, 9800000),
+              ('Supply - 40%', 'DRIPL/2026/38', 60, 39200000, 25000000),
+              ('Commissioning - 30%', 'DRIPL/2026/44', 10, 29400000, 0)) v(ms, inv, ago, amt, recd)
+    where p.name like 'Bhojusar%'`);
+
+  await tx.query(`do $do$
+    declare v_p uuid; v_d int;
+    begin
+      select id into v_p from public.projects where name like 'Deegod%';
+      for v_d in 1..5 loop
+        perform public.save_project_update(v_p, (current_date - v_d)::date,
+          jsonb_build_object(
+            'tl_work', case when v_d > 3 then 'in_progress' else 'completed' end,
+            'gss_bay', case when v_d > 2 then 'not_started' else 'in_progress' end,
+            'piling', 'completed', 'panel', case when v_d > 4 then 'not_started' else 'in_progress' end,
+            'module_work', 'not_started', 'inverter', 'not_started', 'material', 'in_progress'),
+          'Piling completed for block A. Panel erection in progress.',
+          case when v_d = 3 then 'Work held for two days due to heavy rainfall.' else null end,
+          null, 'Ankit Goyal');
+      end loop;
+    end
+  $do$;`);
+});
+
 // ---------------------------------------------------------------- demo HR + daily review
 await asUser(OWNER, async (tx) => {
   // today's attendance
@@ -241,6 +328,43 @@ await asUser(OWNER, async (tx) => {
       select jsonb_agg(jsonb_build_object('employee_id', e.id::text, 'att_date', current_date::text,
                                           'status', case when e.full_name = 'Suresh Kumar' then 'leave' else 'present' end))
       from public.employees e where e.deleted_at is null))`);
+
+  // Six days of daily working sheets, so the PMS score sheet has a spread
+  // to show. Task counts and completion vary by employee and by day.
+  await tx.query(`do $do$
+    declare
+      v_emp record;
+      v_day int;
+      v_tasks jsonb;
+      v_n int;
+      v_done int;
+      i int;
+    begin
+      for v_emp in select id, full_name from public.employees where deleted_at is null order by full_name loop
+        for v_day in 1..6 loop
+          v_n := 2 + ((length(v_emp.full_name) + v_day) % 5);
+          v_done := greatest(0, v_n - ((length(v_emp.full_name) + v_day * 3) % 3));
+          v_tasks := '[]'::jsonb;
+          for i in 1..v_n loop
+            v_tasks := v_tasks || jsonb_build_object(
+              'seq', i,
+              'description', (array['Follow-up with the vendor on pending material',
+                                    'Updated the tracking sheet and shared it',
+                                    'Site coordination call and action points',
+                                    'Prepared the documents for approval',
+                                    'Reconciled the register for the day',
+                                    'Closed the pending items from yesterday'])[1 + ((i + v_day) % 6)],
+              'status', case when i <= v_done then 'completed'
+                             when i = v_done + 1 then 'in_progress'
+                             else 'not_started' end);
+          end loop;
+          perform public.save_work_log((current_date - v_day)::date, v_tasks,
+                                       (case when v_day % 3 = 0 then 'high' else 'medium' end)::public.priority,
+                                       null, true, v_emp.id);
+        end loop;
+      end loop;
+    end
+  $do$;`);
 
   await tx.query(`insert into public.leave_requests (employee_id, leave_type, from_date, to_date, days, reason)
     select id, 'casual', current_date + 6, current_date + 7, 2, 'Sister''s wedding'
@@ -306,6 +430,30 @@ await asUser(OWNER, async (tx) => {
 // ---------------------------------------------------------------- PostgREST-ish reads
 // Canned reads that return the shapes the app requests (embeds included).
 const READ_SQL = {
+  // Phase 3 — projects
+  projects: `select * from public.projects where deleted_at is null order by capacity_kwp desc`,
+  project_tasks: `select * from public.project_tasks where deleted_at is null order by sort_order`,
+  project_templates: `select t.*,
+      coalesce((select json_agg(x order by x.sort_order) from public.project_template_tasks x
+                where x.template_id = t.id), '[]') as project_template_tasks
+    from public.project_templates t where t.deleted_at is null order by t.name`,
+  project_template_tasks: `select * from public.project_template_tasks order by sort_order`,
+  project_approvals: `select * from public.project_approvals where deleted_at is null order by created_at`,
+  project_materials: `select * from public.project_materials where deleted_at is null order by created_at`,
+  project_updates: `select * from public.project_updates where deleted_at is null order by update_date desc`,
+  vendors: `select * from public.vendors where deleted_at is null order by name`,
+  vendor_bills: `select * from public.vendor_bills where deleted_at is null order by bill_date desc`,
+  client_payments: `select * from public.client_payments where deleted_at is null order by created_at`,
+  // O&M site register and performance
+  om_checklist_items: `select * from public.om_checklist_items order by section, sort_order`,
+  om_team_members: `select * from public.om_team_members where deleted_at is null order by full_name`,
+  om_site_logs: `select * from public.om_site_logs where deleted_at is null order by log_date desc`,
+  om_tech_scores: `select * from public.om_tech_scores where deleted_at is null order by score_date desc`,
+  om_score_criteria: `select * from public.om_score_criteria order by sort_order`,
+  // PMS
+  work_logs: `select * from public.work_logs where deleted_at is null order by log_date desc`,
+  work_log_tasks: `select * from public.work_log_tasks order by seq`,
+  pms_criteria: `select * from public.pms_criteria order by sort_order`,
   roles: `select * from public.roles order by is_system desc, name`,
   user_roles: `select * from public.user_roles`,
   user_sites: `select * from public.user_sites`,

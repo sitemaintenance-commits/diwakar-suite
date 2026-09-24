@@ -22,10 +22,11 @@ One website, one login, one database, one permission system for Diwakar Renewabl
 | **Phase 4 — O&M / Solar:** Solar Sites + equipment, Solar Monitor (CUF, PR, availability), daily Generation entry & history, Tickets with workflow, preventive Maintenance | ✅ |
 | **Phase 5 — HR / PMS:** Employees, Attendance, Leave (self-service + approval), Performance reviews & goals, central Task Log | ✅ |
 | **Phase 6 — Daily Review:** Daily Reports per department with metrics, Review Summary (day comparison + month), Management Review with CCM/Founder remarks and day headline | ✅ |
+| **Phase 5b — PMS:** Daily Work sheet and the Performance Score engine (KPI / competency / discipline / attendance) | ✅ |
 | **Phase 7 — Reports:** Tenders, Generation, O&M, HR and Daily Review reports with CSV export | ✅ |
 | **Phase 4b — O&M parity:** Site Operations register (administration · patrol · security), Team Performance (80/20 technician scoring), Site Teams contact register, Solar Analytics (site trend · shutdown · portfolio year), Solar Monitor day view | ✅ |
 | **Field entry:** the technician's daily form (date · site · insolation · grid outage · INV-01…12 · remarks) that replaces the O&M Google Form, with the real 13-site portfolio and its DC/AC capacities | ✅ |
-| Phase 3 — Projects & milestones | Not built yet (deferred at your request) |
+| **Phase 3 — Projects:** project master, execution plan from reusable templates, approvals, materials, vendors, vendor bills with a two-step approval, client payment milestones, day-wise site updates | ✅ |
 
 **Tenders instead of Customers.** The company sells by bidding for government tenders, so the planned Customers module was replaced by Tenders: the full bid lifecycle (identified → go/no-go → preparing → submitted → qualified → won/lost), EMD and tender-fee money tracking, portal/NIT references, deadlines, bid result with L1 comparison, and the award (LOA, work order, contract value). Quotations attach to a tender or a lead.
 
@@ -74,10 +75,28 @@ The browser only holds the public anon key and the user's JWT. Every table has R
 
 | Legacy app | Status |
 |---|---|
-| **O&M CRM** (diwakar-solar-crm) | All seven tabs rebuilt natively: **Dashboard** → Solar Monitor "Day view" (tiles, site ranking, the full All Sites Performance table, CSV export); **Form** → Daily Entry; **Charts** → Analytics "Site trend"; **Site Operations** → the Site Operations register (8 administration activities, 8 patrol rounds, 12 security points, shift and urgency, readiness %); **Performance** → Team Performance, where the 80 automatic marks are derived from the register, the task log and the daily form instead of being typed, and the 20 month-end marks need APPROVE; **Shutdown** → Analytics "Shutdown" (hours ÷ 11 peak sun hours); **Overall** → Analytics "Portfolio". The 21 site technicians and their numbers are seeded as the Site Teams contact register. **Still needed:** a one-time import of the historical Google Sheet (122 daily reports / 4,416 site values / 393 technician form records). |
-| **Daily Review CRM** (daily-review-crm) | Feature parity: department reports with metrics, issues and plan, CCM/Founder remarks, day-vs-day comparison, month view, day headline. **Still needed:** import of past reports. |
-| **HR / PMS** (diwakar-pms) | Partial: employees, attendance, leave, reviews with goals, task log. **Not built:** the KPI 60 / competency 20 / discipline 10 scoring engine, the monthly score sheet and the leaderboard. |
-| **Project CRM** (diwakar-solar-project-crm) | Not built — Phase 3 was deferred. Needs site progress, approvals, materials, vendors, vendor bills and client payments. |
+| **O&M CRM** (diwakar-solar-crm) | All seven tabs rebuilt natively: **Dashboard** → Solar Monitor "Day view" (tiles, site ranking, the full All Sites Performance table, CSV export); **Form** → Daily Entry; **Charts** → Analytics "Site trend"; **Site Operations** → the Site Operations register (8 administration activities, 8 patrol rounds, 12 security points, shift and urgency, readiness %); **Performance** → Team Performance, where the 80 automatic marks are derived from the register, the task log and the daily form instead of being typed, and the 20 month-end marks need APPROVE; **Shutdown** → Analytics "Shutdown" (hours ÷ 11 peak sun hours); **Overall** → Analytics "Portfolio". The 21 site technicians and their numbers are seeded as the Site Teams contact register. History comes across through **Administration → Data Import**. |
+| **Daily Review CRM** (daily-review-crm) | Feature parity: department reports with metrics, issues and plan, CCM/Founder remarks, day-vs-day comparison, month view, day headline. History comes across through **Administration → Data Import**. |
+| **HR / PMS** (diwakar-pms) | Replaced: employees, attendance, leave, reviews with goals, task log, the **Daily Work** sheet that replaces the "Daily Employee Working Sheet" Google Form, and the **Performance Score** sheet — team score, leaderboard, task mix, monthly / last month / yearly views and the 60/20/10/10 scoring. The 80 automatic marks are derived from the sheets, the task log and attendance instead of being typed. History comes across through **Administration → Data Import**. |
+| **Project CRM** (diwakar-solar-project-crm) | Replaced: the dashboard (portfolio, execution progress, capacity comparison, tasks needing attention), project sites, the day-wise site update form (TL work · GSS bay · piling · panel · module · inverter · material), the three plan templates, tasks, approvals, materials, vendors, vendor bills with the project-manager → accounts approval chain, and client payment milestones. |
+
+## Bringing your history across
+
+**Administration → Data Import** takes the exports of the three legacy apps that hold history:
+
+| Source | What to give it |
+|---|---|
+| O&M generation | The O&M CRM's **Export JSON** (the same thing its `solar-crm-v2` browser key holds) |
+| Daily Review | The Daily Review CRM's `diwakar.dailyreview.sheets.cache.v1` browser key |
+| PMS working sheets | The "Daily Employee Working Sheet" responses, downloaded from Google Sheets as **CSV** |
+
+Every importer checks your permission, refuses sites you are not assigned to, records what it did in the
+audit log, and **skips anything already present** rather than overwriting it — so running an import twice is
+safe and a correction made in the suite survives a re-import. Use **Check first** for a dry run.
+
+The O&M sheet's free-text outage column ("No", `08:33 - 10:00`, labelled `Grid Failure :-` blocks, en dashes)
+is parsed into hours; a window that ends before it starts is treated as a typo and contributes nothing. An
+insolation of `0.00` is stored as *not recorded*, so it never produces a false performance ratio.
 
 ## Local demo (no Supabase project needed)
 
@@ -94,7 +113,7 @@ Sign in with password `demo1234` as `owner@` (Super Admin), `admin@`, `rahul@` (
 npm install
 cp .env.example .env.local   # fill in the project URL + anon key
 npm run dev                  # http://localhost:5173
-npm run test:db              # 267 database security tests (no Docker needed)
+npm run test:db              # 340 database security tests (no Docker needed)
 npm run build                # type-check + production build
 ```
 

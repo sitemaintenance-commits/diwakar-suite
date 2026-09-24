@@ -14,8 +14,11 @@ import { SitesPage } from '@/features/admin/sites/SitesPage';
 import { AuditLogPage } from '@/features/admin/audit/AuditLogPage';
 import { ModulesPage } from '@/features/admin/modules/ModulesPage';
 import { SettingsPage } from '@/features/admin/settings/SettingsPage';
+import { ImportPage } from '@/features/admin/import/ImportPage';
 import { DepartmentsPage } from '@/features/hr/org/DepartmentsPage';
 import { AttendancePage, EmployeesPage, LeavePage, PerformancePage, TasksPage } from '@/features/hr/pages';
+import { DailyWorkPage } from '@/features/hr/worklog/DailyWorkPage';
+import { ScorecardPage } from '@/features/hr/worklog/ScorecardPage';
 import { DailyReportsPage, ManagementReviewPage, ReviewSummaryPage } from '@/features/daily/pages';
 import { ReportsPage } from '@/features/reports/ReportsPage';
 import { LeadsPage } from '@/features/crm/leads/LeadsPage';
@@ -25,6 +28,9 @@ import { QuotationsPage } from '@/features/crm/quotations/QuotationsPage';
 import { QuotationFormPage } from '@/features/crm/quotations/QuotationFormPage';
 import { QuotationDetailPage } from '@/features/crm/quotations/QuotationDetailPage';
 import { FollowUpsPage } from '@/features/crm/followups/FollowUpsPage';
+import { ProjectsPage } from '@/features/projects/ProjectsPage';
+import { ProjectDetailPage } from '@/features/projects/ProjectDetailPage';
+import { VendorsPage } from '@/features/projects/VendorsPage';
 import { SolarSitesPage } from '@/features/om/sites/SolarSitesPage';
 import { DailyEntryPage } from '@/features/om/entry/DailyEntryPage';
 import { MonitorPage } from '@/features/om/monitor/MonitorPage';
@@ -72,6 +78,17 @@ export const router = createBrowserRouter([
           { path: 'quotations/:id', element: guard('crm.quotations', <QuotationDetailPage />) },
           { path: 'quotations/:id/edit', element: guard('crm.quotations', <QuotationFormPage />, 'edit') },
           { path: 'follow-ups', element: guard('crm.followups', <FollowUpsPage />) },
+        ],
+      },
+
+      // Projects (Phase 3)
+      {
+        path: 'projects',
+        element: <Outlet />,
+        children: [
+          { index: true, element: guard('projects.projects', <ProjectsPage />) },
+          { path: 'vendors', element: guard('projects.vendors', <VendorsPage />) },
+          { path: ':id', element: guard('projects.projects', <ProjectDetailPage />) },
         ],
       },
 
@@ -126,6 +143,7 @@ export const router = createBrowserRouter([
           { path: 'sites', element: guard('admin.sites', <SitesPage />) },
           { path: 'audit-log', element: guard('admin.audit', <AuditLogPage />) },
           { path: 'settings', element: guard('admin.settings', <SettingsPage />) },
+          { path: 'import', element: guard('admin.import', <ImportPage />) },
         ],
       },
 
@@ -135,7 +153,9 @@ export const router = createBrowserRouter([
         element: <Outlet />,
         children: [
           { path: 'employees', element: guard('hr.employees', <EmployeesPage />) },
+          { path: 'daily-work', element: guard('hr.worklog', <DailyWorkPage />) },
           { path: 'attendance', element: guard('hr.attendance', <AttendancePage />) },
+          { path: 'scorecard', element: guard('hr.scorecard', <ScorecardPage />) },
           { path: 'performance', element: guard('hr.performance', <PerformancePage />) },
           { path: 'leave', element: guard('hr.leave', <LeavePage />) },
           { path: 'tasks', element: guard('tasks', <TasksPage />) },

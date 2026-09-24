@@ -10,6 +10,7 @@
 // module row) + pages + one entry here + a <Route> in router.tsx.
 import {
   Activity,
+  Award,
   BarChart3,
   Blocks,
   Building2,
@@ -49,6 +50,7 @@ import {
 
 export const ICONS: Record<string, LucideIcon> = {
   Activity,
+  Award,
   BarChart3,
   Blocks,
   Building2,
@@ -96,6 +98,8 @@ export const BUILT_MODULES = new Set<string>([
   'crm.tenders',
   'crm.quotations',
   'crm.followups',
+  'projects.projects',
+  'projects.vendors',
   'om.daily_entry',
   'om.sites',
   'om.monitor',
@@ -107,8 +111,10 @@ export const BUILT_MODULES = new Set<string>([
   'om.performance',
   'om.team',
   'hr.employees',
+  'hr.worklog',
   'hr.attendance',
   'hr.performance',
+  'hr.scorecard',
   'hr.leave',
   'tasks',
   'hr.org',
@@ -121,6 +127,7 @@ export const BUILT_MODULES = new Set<string>([
   'admin.sites',
   'admin.audit',
   'admin.settings',
+  'admin.import',
 ]);
 
 /** Human-readable names for permission actions. */
