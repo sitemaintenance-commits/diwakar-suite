@@ -1,0 +1,19 @@
+# Supabase CLI configuration (used by `supabase link`, `db push`, `functions deploy`).
+# Hosted-project Auth settings must ALSO be set in the dashboard — see README.md.
+project_id = "diwakar-suite"
+
+[auth]
+# One login system, invitation only.
+enable_signup = false
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173/reset-password"]
+jwt_expiry = 3600
+minimum_password_length = 8
+
+[auth.email]
+enable_signup = false
+double_confirm_changes = true
+enable_confirmations = true
+
+[functions.admin-users]
+verify_jwt = true

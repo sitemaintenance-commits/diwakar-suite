@@ -1,0 +1,135 @@
+// Frontend module registry.
+//
+// The database `modules` table is the source of truth for which modules
+// exist, their labels, order and whether they are enabled. This registry
+// lists which of them have pages built into this version of the app. The
+// sidebar shows a module only when it is: enabled in the database AND built
+// here AND the user holds VIEW on it.
+//
+// Adding a module in a later phase = migration (tables + RLS + enable the
+// module row) + pages + one entry here + a <Route> in router.tsx.
+import {
+  Activity,
+  BarChart3,
+  Blocks,
+  Building2,
+  CalendarCheck,
+  CalendarOff,
+  ClipboardCheck,
+  ClipboardList,
+  Contact,
+  Cpu,
+  FileText,
+  Flag,
+  FolderKanban,
+  Gavel,
+  Handshake,
+  LayoutDashboard,
+  ListChecks,
+  LockKeyhole,
+  MapPin,
+  MessageSquareText,
+  Network,
+  PhoneCall,
+  ScrollText,
+  Settings,
+  Shield,
+  ShieldCheck,
+  Sun,
+  SunMedium,
+  Target,
+  Ticket,
+  TrendingUp,
+  UserCog,
+  Users,
+  Wrench,
+  Zap,
+  type LucideIcon,
+} from 'lucide-react';
+
+export const ICONS: Record<string, LucideIcon> = {
+  Activity,
+  BarChart3,
+  Blocks,
+  Building2,
+  CalendarCheck,
+  CalendarOff,
+  ClipboardCheck,
+  ClipboardList,
+  Contact,
+  Cpu,
+  FileText,
+  Flag,
+  FolderKanban,
+  Gavel,
+  Handshake,
+  LayoutDashboard,
+  ListChecks,
+  LockKeyhole,
+  MapPin,
+  MessageSquareText,
+  Network,
+  PhoneCall,
+  ScrollText,
+  Settings,
+  Shield,
+  ShieldCheck,
+  Sun,
+  SunMedium,
+  Target,
+  Ticket,
+  TrendingUp,
+  UserCog,
+  Users,
+  Wrench,
+  Zap,
+};
+
+export function iconFor(name: string | null | undefined): LucideIcon {
+  return (name && ICONS[name]) || Blocks;
+}
+
+/** Module keys whose pages exist in this build (Phase 1). */
+export const BUILT_MODULES = new Set<string>([
+  'dashboard',
+  'crm.leads',
+  'crm.tenders',
+  'crm.quotations',
+  'crm.followups',
+  'om.daily_entry',
+  'om.sites',
+  'om.monitor',
+  'om.analytics',
+  'om.generation',
+  'om.operations',
+  'om.maintenance',
+  'om.tickets',
+  'om.performance',
+  'om.team',
+  'hr.employees',
+  'hr.attendance',
+  'hr.performance',
+  'hr.leave',
+  'tasks',
+  'hr.org',
+  'daily.reports',
+  'daily.summary',
+  'daily.review',
+  'admin.users',
+  'admin.roles',
+  'admin.modules',
+  'admin.sites',
+  'admin.audit',
+  'admin.settings',
+]);
+
+/** Human-readable names for permission actions. */
+export const ACTION_LABELS: Record<string, string> = {
+  view: 'View',
+  create: 'Create',
+  edit: 'Edit',
+  delete: 'Delete',
+  export: 'Export',
+  approve: 'Approve',
+  assign: 'Assign',
+};
