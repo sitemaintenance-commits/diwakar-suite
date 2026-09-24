@@ -1,4 +1,4 @@
-import { createBrowserRouter, Outlet } from 'react-router';
+import { createBrowserRouter, Navigate, Outlet } from 'react-router';
 import { RequireAuth, RequirePermission } from '@/auth/guards';
 import type { PermAction } from '@/lib/types';
 import { AppShell } from '@/components/layout/AppShell';
@@ -80,6 +80,7 @@ export const router = createBrowserRouter([
         path: 'operations',
         element: <Outlet />,
         children: [
+          { index: true, element: <Navigate to="monitor" replace /> },
           { path: 'daily-entry', element: guard('om.daily_entry', <DailyEntryPage />) },
           { path: 'solar-sites', element: guard('om.sites', <SolarSitesPage />) },
           { path: 'monitor', element: guard('om.monitor', <MonitorPage />) },
