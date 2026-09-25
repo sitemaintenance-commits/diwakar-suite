@@ -1098,6 +1098,44 @@ await expectValue('with the windows preserved for the audit', OWNER,
    join public.sites s on s.id = g.site_id
    where s.name = 'Sadas' and g.gen_date = '2026-04-11'`, '14:00');
 
+console.log('\nMonth review - judged on the days the plant could have run');
+await expectValue('the peak sun hours are a setting, confirmed as 11', OWNER,
+  `select (value #>> '{}')::numeric::text from public.app_settings where key = 'om.peak_sun_hours'`, '11');
+await expectValue('the June and July targets came across', OWNER,
+  `select count(*)::int from public.site_monthly_targets where year = 2026 and month in (6,7)`, 22);
+
+// A controlled month: Sadas (2,903 kWp DC) in May 2026, 31 days.
+//   400,000 kWh generated, 23 hours of outage
+//   shutdown days  = 23 / 11            = 2.0909
+//   effective days = 31 - 2.0909        = 28.9091
+//   S.Y. per day   = 400000/28.9091/2903 = 4.77
+//   DC CUF         = 400000/(2903*24*28.9091)*100 = 19.86
+await expectOk('two May readings for Sadas', OWNER,
+  `select public.save_generation(jsonb_build_array(
+     jsonb_build_object('site_id', $1::text, 'gen_date', '2026-05-10', 'generation_kwh', 250000,
+                        'grid_outage_hrs', 13, 'plant_outage_hrs', 0),
+     jsonb_build_object('site_id', $1::text, 'gen_date', '2026-05-11', 'generation_kwh', 150000,
+                        'grid_outage_hrs', 10, 'plant_outage_hrs', 0)))`, [site.Sadas]);
+{
+  const r = await as(OWNER, `select public.get_month_review(2026, 5) m`);
+  const row = r.rows[0].m.rows.find((x) => x.site === 'Sadas');
+  Number(r.rows[0].m.days_in_month) === 31
+    && Math.abs(Number(row.shutdown_days) - 2.0909) < 0.001
+    && Math.abs(Number(row.effective_days) - 28.91) < 0.01
+    && Math.abs(Number(row.specific_yield) - 4.77) < 0.01
+    && Math.abs(Number(row.dc_cuf) - 19.86) < 0.01
+    ? ok('S.Y. is per effective day and CUF excludes the downtime, as the review pack does')
+    : bad('month review', JSON.stringify(row));
+}
+await expectValue('a month with no target shows no forecast rather than a guess', OWNER,
+  `select (public.get_month_review(2026, 5)->'rows'->0->>'forecast') is null`, true);
+await expectValue('and the review says how many targets are missing', OWNER,
+  `select (public.get_month_review(2026, 5)->>'missing_targets')::int > 0`, true);
+await expectValue('July is 31 days, not the 30 the review pack subtracts from', OWNER,
+  `select (public.get_month_review(2026, 7)->>'days_in_month')::int`, 31);
+await expectError('a sales user cannot open the month review', SALES,
+  `select public.get_month_review()`, 'om.analytics VIEW');
+
 console.log('\nLegacy import — bringing the four old apps history across');
 const OM_PAYLOAD = JSON.stringify({
   reports: {

@@ -22,7 +22,7 @@ import { EmptyState, ErrorState, PageHeader, StatCard } from '@/components/commo
 import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { useSites } from '@/features/admin/api';
 import { fmtKwh } from '@/features/om/shared';
-import { usePortfolio, useShutdown, useSiteAnalysis } from '@/features/om/opsApi';
+import { useMonthReview, usePortfolio, useShutdown, useSiteAnalysis } from '@/features/om/opsApi';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -146,11 +146,15 @@ export function AnalyticsPage() {
       <Tabs defaultValue="trend">
         <TabsList className="mb-6">
           <TabsTrigger value="trend">Site trend</TabsTrigger>
+          <TabsTrigger value="review">Month review</TabsTrigger>
           <TabsTrigger value="shutdown">Shutdown</TabsTrigger>
           <TabsTrigger value="portfolio">Portfolio</TabsTrigger>
         </TabsList>
         <TabsContent value="trend">
           <SiteTrend />
+        </TabsContent>
+        <TabsContent value="review">
+          <MonthReviewTab />
         </TabsContent>
         <TabsContent value="shutdown">
           <ShutdownTab />
@@ -691,6 +695,178 @@ function PortfolioTab() {
             </Badge>
             Every figure on this page covers only the sites your account is assigned to.
           </p>
+        </>
+      )}
+    </>
+  );
+}
+
+
+// -------------------------------------------------------- month review
+/**
+ * The monthly pack, with the arithmetic the review meeting uses: the
+ * plant is judged on the days it could actually have generated, so the
+ * downtime comes out of the denominator rather than counting against
+ * performance.
+ */
+function MonthReviewTab() {
+  const can = useCan('om.analytics');
+  const today = todayIST();
+  const [year, setYear] = useState(Number(today.slice(0, 4)));
+  const [month, setMonth] = useState(Number(today.slice(5, 7)));
+  const review = useMonthReview(year, month);
+  const r = review.data;
+
+  async function onExport() {
+    if (!r?.rows.length) return;
+    try {
+      await exportCsv('om.analytics', `month-review-${year}-${String(month).padStart(2, '0')}`, r.rows, [
+        { header: 'Plant name', value: (x) => x.site },
+        { header: 'DC capacity (kWp)', value: (x) => safeNum(x.capacity_dc_kwp) },
+        { header: 'Forecast (kWh)', value: (x) => (x.forecast === null ? '' : safeNum(x.forecast)) },
+        { header: 'Shutdown days', value: (x) => safeNum(x.shutdown_days) },
+        { header: 'Effective days', value: (x) => safeNum(x.effective_days) },
+        { header: 'Forecast after shutdown', value: (x) => (x.forecast_prorated === null ? '' : safeNum(x.forecast_prorated)) },
+        { header: 'Actual generation (kWh)', value: (x) => safeNum(x.actual) },
+        { header: 'Diff', value: (x) => (x.diff === null ? '' : safeNum(x.diff)) },
+        { header: 'S.Y. (per day)', value: (x) => (x.specific_yield === null ? '' : safeNum(x.specific_yield)) },
+        { header: 'DC CUF %', value: (x) => (x.dc_cuf === null ? '' : safeNum(x.dc_cuf)) },
+        { header: 'Insolation', value: (x) => (x.insolation === null ? '' : safeNum(x.insolation)) },
+        { header: 'PR %', value: (x) => (x.pr === null ? '' : safeNum(x.pr)) },
+      ]);
+      toast.success('Exported.');
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
+
+  const thisYear = Number(today.slice(0, 4));
+
+  return (
+    <>
+      <Card className="mb-6">
+        <CardContent className="flex flex-col gap-3 p-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="grid grid-cols-2 gap-3 lg:max-w-md">
+            <label className="grid gap-1.5 text-sm">
+              <span className="text-xs text-muted-foreground">Month</span>
+              <FilterSelect
+                value={String(month)}
+                onChange={(v) => setMonth(Number(v))}
+                options={MONTHS.map((m, i) => [String(i + 1), m] as [string, string])}
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm">
+              <span className="text-xs text-muted-foreground">Year</span>
+              <FilterSelect
+                value={String(year)}
+                onChange={(v) => setYear(Number(v))}
+                options={Array.from({ length: 6 }, (_, i) => {
+                  const y = thisYear - i;
+                  return [String(y), String(y)] as [string, string];
+                })}
+              />
+            </label>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Effective days = {fmtNumber(r?.days_in_month)} days &minus; outage hours &divide;{' '}
+            {fmtNumber(r?.peak_sun_hours)} peak sun hours. S.Y. and CUF both use them.
+          </p>
+          {can.export && (
+            <Button variant="outline" size="sm" onClick={onExport} disabled={!r?.rows.length}>
+              <Download className="mr-2 h-4 w-4" />
+              Export CSV
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+
+      {review.isLoading ? (
+        <Skeleton className="h-72 rounded-xl" />
+      ) : review.error ? (
+        <Card>
+          <ErrorState message={errorMessage(review.error)} onRetry={() => review.refetch()} />
+        </Card>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <StatCard label="Actual generation" value={fmtKwh(r?.actual_total)} hint={`${fmtNumber(r?.site_count)} plant(s)`} icon={Zap} />
+            <StatCard
+              label="Against forecast"
+              value={r?.diff_total == null ? '—' : `${safeNum(r.diff_total) >= 0 ? '+' : ''}${fmtKwh(r.diff_total)}`}
+              hint={r?.forecast_prorated_total == null ? 'No targets set' : `Target ${fmtKwh(r.forecast_prorated_total)} after shutdown`}
+              icon={TrendingUp}
+              tone={safeNum(r?.diff_total) >= 0 ? 'green' : 'red'}
+            />
+            <StatCard label="Generating days lost" value={fmtNumber(r?.shutdown_days_total, 2)} hint={`At ${fmtNumber(r?.peak_sun_hours)} peak hours`} icon={TriangleAlert} tone="amber" />
+            <StatCard label="Connected capacity" value={fmtCapacity(r?.capacity_dc_kwp)} hint={fmtDate(r?.from) + ' – ' + fmtDate(r?.to)} icon={Sun} tone="violet" />
+          </div>
+
+          {Number(r?.missing_targets) > 0 && (
+            <div className="mt-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <TriangleAlert className="h-4 w-4 shrink-0" />
+              {fmtNumber(r?.missing_targets)} plant(s) have no forecast for this month, so their
+              variance is blank. Targets are held per plant per month and only June and July 2026
+              came across from the review packs.
+            </div>
+          )}
+
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle>
+                Month review — {MONTHS[(r?.month ?? 1) - 1]} {r?.year}
+              </CardTitle>
+              <CardDescription>
+                The plant judged on the days it could have run. Insolation is summed from the daily
+                readings, so PR is blank where it was never recorded rather than wrong.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              {!r?.rows.length ? (
+                <EmptyState icon={Sun} title="No plants" description="Sites you are assigned to appear here." />
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Plant</TableHead>
+                        <TableHead className="text-right">DC</TableHead>
+                        <TableHead className="text-right">Forecast</TableHead>
+                        <TableHead className="text-right">Shutdown days</TableHead>
+                        <TableHead className="text-right">Days</TableHead>
+                        <TableHead className="text-right">Target</TableHead>
+                        <TableHead className="text-right">Actual</TableHead>
+                        <TableHead className="text-right">Diff</TableHead>
+                        <TableHead className="text-right">S.Y.</TableHead>
+                        <TableHead className="text-right">DC CUF %</TableHead>
+                        <TableHead className="text-right">Inso.</TableHead>
+                        <TableHead className="text-right">PR %</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {r.rows.map((x) => (
+                        <TableRow key={x.site_id}>
+                          <TableCell className="whitespace-nowrap font-medium">{x.site}</TableCell>
+                          <TableCell className="tabular text-right">{fmtNumber(x.capacity_dc_kwp)}</TableCell>
+                          <TableCell className="tabular text-right">{x.forecast === null ? '—' : fmtNumber(x.forecast)}</TableCell>
+                          <TableCell className="tabular text-right">{fmtNumber(x.shutdown_days, 2)}</TableCell>
+                          <TableCell className="tabular text-right">{fmtNumber(x.effective_days, 2)}</TableCell>
+                          <TableCell className="tabular text-right">{x.forecast_prorated === null ? '—' : fmtNumber(x.forecast_prorated)}</TableCell>
+                          <TableCell className="tabular text-right font-medium">{fmtNumber(x.actual)}</TableCell>
+                          <TableCell className={`tabular text-right ${x.diff !== null && safeNum(x.diff) < 0 ? 'text-destructive' : ''}`}>
+                            {x.diff === null ? '—' : `${safeNum(x.diff) >= 0 ? '+' : ''}${fmtNumber(x.diff)}`}
+                          </TableCell>
+                          <TableCell className="tabular text-right">{x.specific_yield === null ? '—' : fmtNumber(x.specific_yield, 2)}</TableCell>
+                          <TableCell className="tabular text-right">{x.dc_cuf === null ? '—' : fmtNumber(x.dc_cuf, 2)}</TableCell>
+                          <TableCell className="tabular text-right">{x.insolation === null ? '—' : fmtNumber(x.insolation, 2)}</TableCell>
+                          <TableCell className="tabular text-right">{x.pr === null ? '—' : fmtNumber(x.pr, 2)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </>
       )}
     </>

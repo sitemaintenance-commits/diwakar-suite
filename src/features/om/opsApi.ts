@@ -349,3 +349,52 @@ export function useInverterAnalysis(siteId: string | undefined, date: string) {
       rpc<InverterAnalysis | null>('get_inverter_analysis', { p_site_id: siteId, p_date: date }, null),
   });
 }
+
+// ------------------------------------------------------- month review
+export interface MonthReviewRow {
+  site_id: string;
+  site: string;
+  capacity_dc_kwp: number | string;
+  forecast: number | string | null;
+  shutdown_days: number | string;
+  effective_days: number | string;
+  forecast_prorated: number | string | null;
+  actual: number | string;
+  diff: number | string | null;
+  specific_yield: number | string | null;
+  dc_cuf: number | string | null;
+  insolation: number | string | null;
+  pr: number | string | null;
+  reported_days: number;
+}
+
+export interface MonthReview {
+  year: number;
+  month: number;
+  from: string;
+  to: string;
+  days_in_month: number;
+  peak_sun_hours: number | string;
+  site_count: number;
+  capacity_dc_kwp: number | string;
+  forecast_total: number | string | null;
+  forecast_prorated_total: number | string | null;
+  actual_total: number | string;
+  diff_total: number | string | null;
+  shutdown_days_total: number | string;
+  missing_targets: number;
+  rows: MonthReviewRow[];
+}
+
+const EMPTY_REVIEW: MonthReview = {
+  year: 0, month: 0, from: '', to: '', days_in_month: 0, peak_sun_hours: 11,
+  site_count: 0, capacity_dc_kwp: 0, forecast_total: null, forecast_prorated_total: null,
+  actual_total: 0, diff_total: null, shutdown_days_total: 0, missing_targets: 0, rows: [],
+};
+
+export function useMonthReview(year: number, month: number) {
+  return useQuery({
+    queryKey: ['month-review', year, month],
+    queryFn: () => rpc<MonthReview>('get_month_review', { p_year: year, p_month: month }, EMPTY_REVIEW),
+  });
+}
