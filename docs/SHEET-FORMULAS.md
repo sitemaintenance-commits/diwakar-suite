@@ -140,16 +140,19 @@ other site already matched.
 
 | Site | Daily Report | Monthly Report | Master file | Σ inverters | Seeded |
 |---|---|---|---|---|---|
-| **Jerthi DC** | 3,361 | 3,254 | 3,496 | **3,528.7** | 3,496 |
+| **Jerthi DC** | **3,361** ✅ | 3,254 | 3,496 | 3,528.7 | now 3,361 |
 | **Thikariya DC** | 4,473 | 4,473 | 4,327 | **4,473.0** | 4,473 |
 | **Kadel AC** | 2,475 | — | 2,450 | — | 2,475 |
-| **Bhojusar AC** | 2,475 | — | — | — | 2,520 |
+| **Bhojusar AC** | **2,475** ✅ | — | — | — | now 2,475 |
 | **Suaap DC** | 3,305 | 3,305 | 3,305 | **3,254.8** | 3,305 |
 
 * **Thikariya** — the inverter sum agrees exactly with 4,473, so the
   Master file's 4,327 looks like the stale one. Left as 4,473.
-* **Jerthi** — four different numbers. The inverter sum (3,528.7) is
-  nearest 3,496, furthest from 3,361. **Unresolved.**
+* **Jerthi** — four different numbers. The inverter sum (3,528.7) sits
+  nearest 3,496, but the Daily Report's **3,361** is what the team works
+  to, so that is what the suite now holds. Worth a physical check: if the
+  ten inverters really carry 3,528.7 kWp, either a string count in the
+  site tab is stale or the declared capacity is.
 * **Suaap** — inverters sum 50 kWp short of the declared capacity, about
   one seventh of an inverter. Possibly one stale string count.
 
