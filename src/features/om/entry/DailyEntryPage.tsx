@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CheckCircle2, ClipboardList, Loader2, Save, Sun, Zap } from 'lucide-react';
+import { CheckCircle2, ClipboardList, Loader2, Save, Sun, TriangleAlert, Zap } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
 import { fmtCapacity, fmtDate, fmtNumber, safeNum, todayIST } from '@/lib/format';
@@ -21,6 +21,7 @@ import { Skeleton } from '@/components/ui/misc';
 import { EmptyState, ErrorState, Field, PageHeader } from '@/components/common';
 import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { fmtKwh } from '@/features/om/shared';
+import { useInverterAnalysis } from '@/features/om/opsApi';
 
 interface EntrySite {
   site_id: string;
@@ -276,9 +277,75 @@ export function DailyEntryPage() {
                 )}
               </CardContent>
             </Card>
+
+            <InverterHealth siteId={site?.site_id} date={date} />
           </div>
         </div>
       )}
     </>
+  );
+}
+
+
+/**
+ * Per-inverter health, the way the O&M site tabs have always done it:
+ * each inverter's output per kW of its OWN capacity, against the best
+ * inverter on site that day. Comparing siblings under the same sky
+ * cancels out the weather, so a weak string stands out even on a day
+ * when the site total looks normal.
+ */
+function InverterHealth({ siteId, date }: { siteId: string | undefined; date: string }) {
+  const analysis = useInverterAnalysis(siteId, date);
+  const a = analysis.data;
+  if (!a || !a.inverters.length || !Number(a.reported_count)) return null;
+
+  const threshold = Math.round(safeNum(a.threshold) * 100);
+  const flagged = Number(a.flagged);
+
+  return (
+    <Card className="mt-6">
+      <CardHeader className="flex-row items-center justify-between space-y-0">
+        <div>
+          <CardTitle>Inverter health</CardTitle>
+          <CardDescription>
+            Output per kW against the best inverter today. Anything under {fmtNumber(threshold)}% is worth a look.
+          </CardDescription>
+        </div>
+        <Badge variant={flagged > 0 ? 'destructive' : 'success'}>
+          {flagged > 0 ? `${fmtNumber(flagged)} to check` : 'All healthy'}
+        </Badge>
+      </CardHeader>
+      <CardContent className="grid gap-2">
+        {a.inverters.map((inv) => {
+          const pct = inv.pct_of_best === null ? 0 : Math.round(safeNum(inv.pct_of_best) * 100);
+          const weak = inv.status === 'Need to Check';
+          const none = inv.status === 'No reading';
+          return (
+            <div key={inv.label} className="grid gap-1">
+              <div className="flex items-baseline justify-between gap-2 text-sm">
+                <span className="font-medium">
+                  {inv.label}
+                  {weak && <TriangleAlert className="ml-1.5 inline h-3.5 w-3.5 text-destructive" />}
+                </span>
+                <span className="tabular shrink-0 text-xs text-muted-foreground">
+                  {fmtNumber(inv.kwh, 1)} kWh · {fmtNumber(inv.dc_kwp, 1)} kWp
+                  {inv.gen_per_kw !== null && ` · ${fmtNumber(inv.gen_per_kw, 2)} kWh/kWp`}
+                  {!none && ` · ${fmtNumber(pct)}%`}
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-muted">
+                <div
+                  className={`h-2 rounded-full ${none ? 'bg-slate-300' : weak ? 'bg-red-500' : 'bg-primary'}`}
+                  style={{ width: `${Math.max(none ? 0 : 2, Math.min(100, pct))}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+        <p className="mt-1 text-xs text-muted-foreground">
+          Best today: {fmtNumber(a.best_gen_per_kw, 2)} kWh/kWp across {fmtNumber(a.total_dc_kwp, 0)} kWp.
+        </p>
+      </CardContent>
+    </Card>
   );
 }

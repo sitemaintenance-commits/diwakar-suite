@@ -318,3 +318,34 @@ export function usePortfolio(year: number) {
     queryFn: () => rpc<PortfolioAnalytics>('get_portfolio_analytics', { p_year: year }, EMPTY_PORTFOLIO),
   });
 }
+
+// ------------------------------------------------- per-inverter analysis
+export interface InverterAnalysis {
+  site_id: string;
+  date: string;
+  threshold: number | string;
+  inverter_count: number;
+  reported_count: number;
+  best_gen_per_kw: number | string | null;
+  total_kwh: number | string;
+  total_dc_kwp: number | string;
+  flagged: number;
+  inverters: {
+    seq: number;
+    label: string;
+    dc_kwp: number | string;
+    kwh: number | string;
+    gen_per_kw: number | string | null;
+    pct_of_best: number | string | null;
+    status: 'OK' | 'Need to Check' | 'No reading';
+  }[];
+}
+
+export function useInverterAnalysis(siteId: string | undefined, date: string) {
+  return useQuery({
+    queryKey: ['inverter-analysis', siteId, date],
+    enabled: Boolean(siteId),
+    queryFn: () =>
+      rpc<InverterAnalysis | null>('get_inverter_analysis', { p_site_id: siteId, p_date: date }, null),
+  });
+}

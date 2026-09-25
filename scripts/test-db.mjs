@@ -662,9 +662,10 @@ await expectValue('Sadas carries its real capacity and tilt', OWNER,
 {
   const r = await as(TECH, `select public.get_field_entry() f`);
   const f = r.rows[0].f;
-  f.sites.length === 1 && f.sites[0].name === 'Sadas' && f.sites[0].inverter_count === 12
-    ? ok('the form offers only the sites the technician is assigned to')
-    : bad('field entry form', JSON.stringify(f.sites?.map((x) => x.name)));
+  // Seven, from the company's own site tab - not the 12 the seed guessed.
+  f.sites.length === 1 && f.sites[0].name === 'Sadas' && f.sites[0].inverter_count === 7
+    ? ok('the form offers only the sites the technician is assigned to, with its real inverter count')
+    : bad('field entry form', JSON.stringify(f.sites?.map((x) => [x.name, x.inverter_count])));
 }
 await expectValue('the technician submits per-inverter readings', TECH,
   `select (public.save_field_entry($1, current_date,
@@ -994,6 +995,50 @@ await expectError('no site update for a future date', ADMIN,
 
 await expectValue('a technician has no access to the project modules', TECH,
   `select public.has_permission('projects.bills','view')`, false);
+
+console.log('\nSite master - the figures read out of the company spreadsheets');
+await expectValue('every site carries its real inverter count', OWNER,
+  `select string_agg(s.name || ':' || ss.inverter_count, ' ' order by s.name)
+   from public.solar_sites ss join public.sites s on s.id = ss.site_id
+   where ss.inverter_count is not null and s.name in ('Sadas','Bassi','Jerthi','Niwai','Budsu')`,
+  'Bassi:12 Budsu:7 Jerthi:10 Niwai:8 Sadas:7');
+await expectValue('and one row per inverter with its own DC capacity', OWNER,
+  `select count(*)::int from public.site_inverters`, 113);
+await expectValue('Sadas inverter 1 carries 27 strings of 28 x 550 W', OWNER,
+  `select strings || 'x' || modules_per_string || 'x' || module_watt || '=' || dc_kwp
+   from public.site_inverters i join public.sites s on s.id = i.site_id
+   where s.name = 'Sadas' and i.seq = 1`, '27x28x550=415.80');
+await expectValue('the Ganeshgarh sheet formula bug is repaired on the way in', OWNER,
+  `select round(sum(dc_kwp))::int from public.site_inverters i
+   join public.sites s on s.id = i.site_id where s.name = 'Ganeshgarh'`, 3281);
+await expectValue('commissioning dates came across', OWNER,
+  `select commissioning_date::text from public.solar_sites ss
+   join public.sites s on s.id = ss.site_id where s.name = 'Bassi'`, '2025-11-29');
+
+// Per-inverter peer comparison - the sheet's "Need to Check" column.
+await expectOk('a day of per-inverter readings is filed', RAHUL,
+  `select public.save_field_entry($1, current_date - 2, $2::jsonb, 5.5, 0, 0, null)`,
+  [site.Sadas, JSON.stringify([
+    { label: 'INV-01', kwh: 1466 }, { label: 'INV-02', kwh: 1361 }, { label: 'INV-03', kwh: 1529 },
+    { label: 'INV-04', kwh: 1515 }, { label: 'INV-05', kwh: 1502 }, { label: 'INV-06', kwh: 1278 },
+    { label: 'INV-07', kwh: 1457 },
+  ])]);
+{
+  const r = await as(RAHUL, `select public.get_inverter_analysis($1, current_date - 2) a`, [site.Sadas]);
+  const a = r.rows[0].a;
+  const inv6 = a.inverters.find((x) => x.label === 'INV-06');
+  const inv3 = a.inverters.find((x) => x.label === 'INV-03');
+  // The sheet's own 23 September figures: INV-03 is the best at 1.000,
+  // INV-06 trails at 0.839 and is the one it marks "Need to Check".
+  Number(inv3.pct_of_best) === 1 && Math.abs(Number(inv6.pct_of_best) - 0.8392) < 0.001
+    && inv6.status === 'Need to Check' && inv3.status === 'OK' && Number(a.flagged) === 1
+    ? ok('a weak inverter is flagged by comparing it to its siblings, exactly as the sheet does')
+    : bad('inverter analysis', JSON.stringify({ inv3, inv6, flagged: a.flagged }));
+}
+await expectError('the analysis stops at the sites you are assigned to', RAHUL,
+  `select public.get_inverter_analysis($1)`, 'not assigned to this site', [site.Suaap]);
+await expectError('and a technician without the module cannot reach it at all', TECH,
+  `select public.get_inverter_analysis($1)`, 'may not read generation', [site.Sadas]);
 
 console.log('\nLegacy import — bringing the four old apps history across');
 const OM_PAYLOAD = JSON.stringify({
