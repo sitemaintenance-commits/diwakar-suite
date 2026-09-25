@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CheckCircle2, ClipboardList, Loader2, Save, Sun, TriangleAlert, Zap } from 'lucide-react';
+import { CheckCircle2, ClipboardList, Loader2, Plus, Save, Sun, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
 import { fmtCapacity, fmtDate, fmtNumber, safeNum, todayIST } from '@/lib/format';
@@ -36,6 +36,7 @@ interface EntrySite {
     irradiation: number | string | null;
     grid_outage_hrs: number | string;
     plant_outage_hrs: number | string;
+    outage_windows: OutageWindow[] | null;
     remarks: string | null;
     readings: { label: string; kwh: number | string }[];
     source: string;
@@ -59,6 +60,30 @@ function useFieldEntry(date: string) {
   });
 }
 
+
+/** One stretch of time the plant was down. */
+export interface OutageWindow {
+  kind: 'grid' | 'plant';
+  from: string;
+  to: string;
+}
+
+const isTime = (v: string) => /^\d{1,2}:\d{2}$/.test((v ?? '').trim());
+
+/** Minutes between two HH:MM values; a reversed window counts as nothing. */
+function windowMinutes(w: OutageWindow): number {
+  if (!isTime(w.from) || !isTime(w.to)) return 0;
+  const [fh, fm] = w.from.split(':').map(Number);
+  const [th, tm] = w.to.split(':').map(Number);
+  return Math.max(th * 60 + tm - (fh * 60 + fm), 0);
+}
+
+export function outageHours(windows: OutageWindow[], kind?: OutageWindow['kind']): number {
+  return windows
+    .filter((w) => !kind || w.kind === kind)
+    .reduce((n, w) => n + windowMinutes(w), 0) / 60;
+}
+
 const label = (i: number) => `INV-${String(i + 1).padStart(2, '0')}`;
 
 export function DailyEntryPage() {
@@ -69,8 +94,7 @@ export function DailyEntryPage() {
   const [siteId, setSiteId] = useState('');
   const [readings, setReadings] = useState<string[]>([]);
   const [insolation, setInsolation] = useState('');
-  const [gridOutage, setGridOutage] = useState('');
-  const [plantOutage, setPlantOutage] = useState('');
+  const [windows, setWindows] = useState<OutageWindow[]>([]);
   const [remarks, setRemarks] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -93,8 +117,7 @@ export function DailyEntryPage() {
       return found ? String(safeNum(found.kwh)) : '';
     }));
     setInsolation(site.entry?.irradiation != null ? String(safeNum(site.entry.irradiation)) : '');
-    setGridOutage(site.entry ? String(safeNum(site.entry.grid_outage_hrs)) : '');
-    setPlantOutage(site.entry ? String(safeNum(site.entry.plant_outage_hrs)) : '');
+    setWindows(site.entry?.outage_windows ?? []);
     setRemarks(site.entry?.remarks ?? '');
   }, [site, siteId, date]);
 
@@ -113,9 +136,10 @@ export function DailyEntryPage() {
         .filter((r) => r.entered)
         .map(({ label: l, kwh }) => ({ label: l, kwh })),
       p_insolation: insolation ? safeNum(insolation) : null,
-      p_grid_outage: safeNum(gridOutage),
-      p_plant_outage: safeNum(plantOutage),
+      p_grid_outage: 0,
+      p_plant_outage: 0,
       p_remarks: remarks.trim() || null,
+      p_outage_windows: windows.filter((w) => isTime(w.from) && isTime(w.to)),
     });
     setBusy(false);
     if (error) return toast.error(errorMessage(error));
@@ -181,9 +205,7 @@ export function DailyEntryPage() {
                 <Field label="Insolation (kWh/m²)" htmlFor="fe_ins" hint="Leave blank if the pyranometer reading is not available.">
                   <Input id="fe_ins" inputMode="decimal" value={insolation} onChange={(e) => setInsolation(e.target.value)} placeholder="e.g. 5.42" />
                 </Field>
-                <Field label="Grid outage (hours)" htmlFor="fe_grid">
-                  <Input id="fe_grid" inputMode="decimal" value={gridOutage} onChange={(e) => setGridOutage(e.target.value)} placeholder="0" />
-                </Field>
+
               </div>
 
               <div>
@@ -208,11 +230,7 @@ export function DailyEntryPage() {
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Plant outage (hours)" htmlFor="fe_plant" hint="Time the plant itself was down.">
-                  <Input id="fe_plant" inputMode="decimal" value={plantOutage} onChange={(e) => setPlantOutage(e.target.value)} placeholder="0" />
-                </Field>
-              </div>
+              <OutageEditor windows={windows} onChange={setWindows} />
 
               <Field label="Remarks" htmlFor="fe_rem" hint="Breakdowns, cleaning, visitors, anything the O&M head should know.">
                 <Textarea id="fe_rem" rows={3} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
@@ -347,5 +365,95 @@ function InverterHealth({ siteId, date }: { siteId: string | undefined; date: st
         </p>
       </CardContent>
     </Card>
+  );
+}
+
+
+/**
+ * Outage as the O&M team has always written it: the windows the plant
+ * was down, not a decimal. The hours are added up here and again in the
+ * database, so the record and the number can never drift apart.
+ */
+function OutageEditor({
+  windows,
+  onChange,
+}: {
+  windows: OutageWindow[];
+  onChange: (w: OutageWindow[]) => void;
+}) {
+  const set = (i: number, patch: Partial<OutageWindow>) =>
+    onChange(windows.map((w, j) => (j === i ? { ...w, ...patch } : w)));
+
+  const grid = outageHours(windows, 'grid');
+  const plant = outageHours(windows, 'plant');
+
+  return (
+    <div className="grid gap-2 rounded-xl border p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-medium">Outage windows</p>
+          <p className="text-xs text-muted-foreground">
+            When the plant was down. Leave empty if it ran all day.
+          </p>
+        </div>
+        <div className="tabular text-xs text-muted-foreground">
+          Grid {fmtNumber(grid, 2)} h · Plant {fmtNumber(plant, 2)} h
+        </div>
+      </div>
+
+      {windows.map((w, i) => {
+        const bad = (w.from || w.to) && (!isTime(w.from) || !isTime(w.to));
+        const reversed = !bad && isTime(w.from) && isTime(w.to) && windowMinutes(w) === 0;
+        return (
+          <div key={i} className="flex flex-wrap items-center gap-2">
+            <div className="w-28">
+              <FilterSelect
+                value={w.kind}
+                onChange={(v) => set(i, { kind: v as OutageWindow['kind'] })}
+                options={[['grid', 'Grid'], ['plant', 'Plant']]}
+              />
+            </div>
+            <Input
+              type="time"
+              value={w.from}
+              onChange={(e) => set(i, { from: e.target.value })}
+              className="w-32"
+              aria-label={`Window ${i + 1} from`}
+            />
+            <span className="text-muted-foreground">to</span>
+            <Input
+              type="time"
+              value={w.to}
+              onChange={(e) => set(i, { to: e.target.value })}
+              className="w-32"
+              aria-label={`Window ${i + 1} to`}
+            />
+            <span className="tabular min-w-[4.5rem] text-sm text-muted-foreground">
+              {isTime(w.from) && isTime(w.to) ? `${fmtNumber(windowMinutes(w))} min` : ''}
+            </span>
+            {reversed && <span className="text-xs text-destructive">ends before it starts</span>}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => onChange(windows.filter((_, j) => j !== i))}
+              aria-label={`Remove window ${i + 1}`}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        );
+      })}
+
+      <div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onChange([...windows, { kind: 'grid', from: '', to: '' }])}
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          Add window
+        </Button>
+      </div>
+    </div>
   );
 }

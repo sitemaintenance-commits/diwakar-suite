@@ -1045,6 +1045,59 @@ await expectError('the analysis stops at the sites you are assigned to', RAHUL,
 await expectError('and a technician without the module cannot reach it at all', TECH,
   `select public.get_inverter_analysis($1)`, 'may not read generation', [site.Sadas]);
 
+console.log('\nOutage windows - when the plant was down, not just how long');
+await expectValue('a labelled block splits grid from plant', OWNER,
+  `select app.parse_outage_windows('Grid Failure :-\n18:10 - 18:23\nPlant Trip :-\n11:46 - 12:10')::text`,
+  '[{"to": "18:23", "from": "18:10", "kind": "grid"}, {"to": "12:10", "from": "11:46", "kind": "plant"}]');
+await expectValue('so the two kinds are counted apart', OWNER,
+  `select app.outage_hours(app.parse_outage_windows('Grid Failure :-\n18:10 - 18:23\nPlant Trip :-\n11:46 - 12:10'), 'grid')::text
+       || ' / ' ||
+          app.outage_hours(app.parse_outage_windows('Grid Failure :-\n18:10 - 18:23\nPlant Trip :-\n11:46 - 12:10'), 'plant')::text`,
+  '0.22 / 0.40');
+await expectValue('"No" is not a window', OWNER,
+  `select app.parse_outage_windows('No')::text`, '[]');
+await expectValue('an en-dash window is read, and single-digit hours are padded', OWNER,
+  `select app.parse_outage_windows(' 8:32 – 8:42')::text`,
+  '[{"to": "08:42", "from": "08:32", "kind": "grid"}]');
+await expectValue('a reversed window contributes nothing rather than a negative', OWNER,
+  `select app.outage_hours(app.parse_outage_windows('10:18 - 02:46'))::text`, '0.00');
+
+// The form records the windows; the hours follow from them.
+await expectValue('the technician files windows and the hours are derived', RAHUL,
+  `select (public.save_field_entry($1, current_date - 3, '[{"label":"INV-01","kwh":9000}]'::jsonb,
+     5.1, 0, 0, null, $2::jsonb)->>'grid_outage_hrs')::text`,
+  '1.50', [site.Bassi, JSON.stringify([
+    { kind: 'grid', from: '07:00', to: '08:00' },
+    { kind: 'grid', from: '13:30', to: '14:00' },
+    { kind: 'plant', from: '11:00', to: '11:15' },
+  ])]);
+await expectValue('and the plant time is kept separate', RAHUL,
+  `select plant_outage_hrs::text from public.generation_records
+   where site_id = $1 and gen_date = current_date - 3`, '0.25', [site.Bassi]);
+await expectValue('the windows themselves are on the record', RAHUL,
+  `select jsonb_array_length(outage_windows) from public.generation_records
+   where site_id = $1 and gen_date = current_date - 3`, 3, [site.Bassi]);
+await expectValue('a site that only writes a total still works', RAHUL,
+  `select (public.save_field_entry($1, current_date - 4, '[{"label":"INV-01","kwh":8000}]'::jsonb,
+     5.0, 2.5, 0, null)->>'grid_outage_hrs')::numeric`, '2.5', [site.Bassi]);
+
+// The import keeps the windows instead of flattening them.
+{
+  const r = await as(OWNER, `select public.import_om_generation($1::jsonb) i`, [JSON.stringify({
+    reports: { '2026-04-11': [{ short: 'Sadas', generation: 12000, insolation: '5.2',
+      outage: 'Grid Failure :-\n09:00 - 09:30\nPlant Trip :-\n14:00 - 14:45' }] },
+  })]);
+  Number(r.rows[0].i.inserted) === 1 ? ok('a legacy day with labelled outage imports') : bad('import', JSON.stringify(r.rows[0].i));
+}
+await expectValue('and its grid and plant hours land in their own columns', OWNER,
+  `select grid_outage_hrs::text || ' / ' || plant_outage_hrs::text
+   from public.generation_records g join public.sites s on s.id = g.site_id
+   where s.name = 'Sadas' and g.gen_date = '2026-04-11'`, '0.50 / 0.75');
+await expectValue('with the windows preserved for the audit', OWNER,
+  `select outage_windows->1->>'from' from public.generation_records g
+   join public.sites s on s.id = g.site_id
+   where s.name = 'Sadas' and g.gen_date = '2026-04-11'`, '14:00');
+
 console.log('\nLegacy import — bringing the four old apps history across');
 const OM_PAYLOAD = JSON.stringify({
   reports: {

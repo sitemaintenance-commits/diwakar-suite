@@ -24,7 +24,7 @@ and which it derives, and where the company's own files disagree.
 | I | **INSO.** | **fixed, typed** | — | `irradiation_kwh_m2` |
 | J | DC CUF (%) | derived | `=IFERROR(E/(C*24)*100,0)` | computed on read |
 | K | AC CUF (%) | derived | `=IFERROR(E/(D*24)*100,0)` | computed on read |
-| L | **Grid Outage (Time)** | **fixed, free text** | — | parsed to `grid_outage_hrs` |
+| L | **Grid Outage (Time)** | **fixed, windows** | — | `outage_windows`, hours derived |
 | M | **REMARKS** | **fixed** | — | `remarks` |
 
 All four derived formulas match what the suite already computed. Nothing
@@ -124,8 +124,25 @@ against the 3,272 the Daily Report declares.
 * An outage window of `10:18 - 02:46` — ends before it starts. Counted as
   zero rather than negative.
 * Outage is free text throughout: `No`, labelled `Grid Failure :-` blocks,
-  and en dashes mixed with hyphens. All handled by
-  `app.parse_outage_hours`.
+  and en dashes mixed with hyphens. `app.parse_outage_windows` turns all
+  of it into structured windows.
+
+### Outage is now kept as windows, not a decimal
+
+The sheet records *when* the plant was down and whether it was the grid
+or the plant. The suite stores that same record in
+`generation_records.outage_windows`:
+
+```json
+[{"kind": "grid",  "from": "18:10", "to": "18:23"},
+ {"kind": "plant", "from": "11:46", "to": "12:10"}]
+```
+
+`grid_outage_hrs` and `plant_outage_hrs` are **derived** from it, so the
+record and the totals cannot drift apart, and the import no longer
+flattens a labelled block into one grid figure. The Daily Entry form
+takes the windows directly; a site that only writes a total can still
+pass hours instead.
 
 ---
 
