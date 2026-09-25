@@ -654,6 +654,11 @@ await expectValue('HR can file its own department report', OWNER,
 console.log('\nField entry — the technician form that replaces the Google Form');
 await expectValue('the real portfolio is loaded with DC and AC capacity', OWNER,
   `select count(*)::int from public.solar_sites where capacity_dc_kwp > 0`, 12);
+await expectValue('the Daily Report tab settles the contested capacities', OWNER,
+  `select string_agg(s.name || ':' || ss.capacity_dc_kwp::int || '/' || ss.capacity_ac_kw::int, ' ' order by s.name)
+   from public.solar_sites ss join public.sites s on s.id = ss.site_id
+   where s.name in ('Jerthi','Bhojusar','Thikariya')`,
+  'Bhojusar:3280/2475 Jerthi:3361/2750 Thikariya:4473/3300');
 await expectValue('Sadas carries its real capacity and tilt', OWNER,
   `select capacity_dc_kwp::int || '/' || capacity_ac_kw::int || ' @' || tilt_degrees::int
    from public.solar_sites ss join public.sites s on s.id = ss.site_id where s.name = 'Sadas'`, '2903/2065 @22');

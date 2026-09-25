@@ -131,7 +131,12 @@ against the 3,272 the Daily Report declares.
 
 ## 5. ⚠️ Capacities the company's own files disagree on
 
-**These need a human decision. Nothing has been changed.**
+**Resolved 25 Sep 2026.** Diwakar's decision: the **Daily Report tab is
+authoritative**, because it is the sheet the O&M team fills in every day
+and the one the live dashboard mirrors. Applied in
+`20260925000002_capacities_from_daily_report.sql` — it moved Jerthi DC
+from 3,496 to **3,361** and Bhojusar AC from 2,520 to **2,475**. Every
+other site already matched.
 
 | Site | Daily Report | Monthly Report | Master file | Σ inverters | Seeded |
 |---|---|---|---|---|---|
@@ -148,8 +153,17 @@ against the 3,272 the Daily Report declares.
 * **Suaap** — inverters sum 50 kWp short of the declared capacity, about
   one seventh of an inverter. Possibly one stale string count.
 
-Jerthi's CUF, PR and specific yield move by about **5%** depending on
-which figure is right.
+Jerthi's CUF, PR and specific yield moved by about 5% when this was
+applied. Capacity is not stored on a reading, so the whole history
+recalculated with it.
+
+**On `expected_yield`:** there is no kWh/kWp/day figure anywhere in these
+workbooks. What the company forecasts is **monthly generation in kWh per
+site** (Master file, column S — Sadas Jan 339,800, Feb 370,300, and so
+on). `expected_yield` is therefore not a company figure and is left
+unset; none of S.Y, PR, DC CUF or AC CUF depend on it. If a "vs
+forecast" view is ever wanted, the monthly forecast is the right thing to
+model, being seasonal and theirs.
 
 There is also a fourth set of numbers in the tab *titles* — "Sadas
 (1.89 MW)", "Bassi (3.41 MW)" — matching neither DC nor AC. Probably
