@@ -21,6 +21,19 @@ jwt_expiry = 3600
 minimum_password_length = 8
 
 [auth.email]
+# The Email PROVIDER toggle -- the thing that decides whether anyone can log
+# in at all -- is not managed from this file. The CLI ignores auth.email.enabled
+# here: it reports "up to date" whether you write true or false, and pushes
+# nothing. It lives only in the dashboard, under Authentication -> Sign In /
+# Providers -> Email -> "Enable Email provider", and it must stay ON.
+#
+# If logins start failing with "Email logins are disabled", that toggle is off
+# and no amount of `config push` will turn it back on. Check it with:
+#   curl -s https://<ref>.supabase.co/auth/v1/settings -H "apikey: <anon>"
+# and look for "email": true under "external".
+#
+# This next line is a different setting: it stops people creating their OWN
+# accounts. Administrators still create accounts for them.
 enable_signup = false
 double_confirm_changes = true
 enable_confirmations = true
