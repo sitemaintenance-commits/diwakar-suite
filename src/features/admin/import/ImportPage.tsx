@@ -144,7 +144,8 @@ const SOURCES: Source[] = [
     rpc: 'import_daily_reports',
     arg: 'p_payload',
     description: 'Department reports with their metrics, highlights and blockers.',
-    where: 'The Daily Review CRM keeps this under the browser key diwakar.dailyreview.sheets.cache.v1.',
+    where:
+      'Open the old Daily Review CRM, choose Settings → Export backup, then upload the downloaded JSON file here.',
     accept: '.json',
     prepare: (raw) => JSON.parse(raw),
   },

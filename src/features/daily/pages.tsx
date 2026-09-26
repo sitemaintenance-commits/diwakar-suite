@@ -46,6 +46,36 @@ interface Metric {
   label: string;
   value: string;
 }
+
+/**
+ * The metric rows used by the legacy Daily Review CRM. Keeping the same
+ * labels makes the Supabase-backed replacement familiar on day one while
+ * still allowing users to add, rename or remove rows for a particular day.
+ */
+export const DEFAULT_METRICS_BY_DEPARTMENT: Record<string, string[]> = {
+  'Design & Engineering': ['Designs completed', 'Drawings pending', 'BOMs released'],
+  'Procurement & Stores': [
+    'POs Raised & Pending',
+    'Material Dispatched & Received',
+    'Critical Material Pending',
+    'Inventory & Store Management',
+  ],
+  'Projects & Installation': ['Project Progress Stage', 'Active Sites', 'Key Issues', 'Project Activity Plan'],
+  'O&M / Service': [
+    'Plant Daily Generation Report',
+    'Equipment Status & Issues',
+    'Faults & Rectification',
+    'Daily O&M Activities',
+  ],
+  HR: ['Staff present', 'Absent', 'New joinees', 'Open positions'],
+  Admin: ['Attendance register status', 'Office housekeeping', 'Facility & asset status', 'Site admin support'],
+};
+
+function emptyMetricsFor(departmentName: string): Metric[] {
+  const labels = DEFAULT_METRICS_BY_DEPARTMENT[departmentName];
+  return labels?.length ? labels.map((label) => ({ label, value: '' })) : [{ label: '', value: '' }];
+}
+
 interface DeptReport {
   id: string;
   health: string;
@@ -228,7 +258,7 @@ function ReportEditor({
     setIssues(r?.issues ?? '');
     setPlan(r?.next_day_plan ?? '');
     setRemarks(r?.remarks ?? '');
-    setMetrics(r?.metrics?.length ? r.metrics.map((m) => ({ ...m })) : [{ label: '', value: '' }]);
+    setMetrics(r?.metrics?.length ? r.metrics.map((m) => ({ ...m })) : emptyMetricsFor(entry?.name ?? ''));
   }, [entry]);
 
   if (!entry) return null;

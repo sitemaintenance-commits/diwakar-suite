@@ -116,9 +116,9 @@ export const router = createBrowserRouter([
         path: 'daily-review',
         element: <Outlet />,
         children: [
-          { path: 'reports', element: guard('daily.reports', <DailyReportsPage />) },
-          { path: 'summary', element: guard('daily.summary', <ReviewSummaryPage />) },
-          { path: 'management', element: guard('daily.review', <ManagementReviewPage />) },
+          { path: 'reports', element: <Navigate to="/hr/daily-reports" replace /> },
+          { path: 'summary', element: <Navigate to="/hr/review-summary" replace /> },
+          { path: 'management', element: <Navigate to="/hr/management-review" replace /> },
         ],
       },
 
@@ -160,6 +160,9 @@ export const router = createBrowserRouter([
           { path: 'leave', element: guard('hr.leave', <LeavePage />) },
           { path: 'tasks', element: guard('tasks', <TasksPage />) },
           { path: 'departments', element: guard('hr.org', <DepartmentsPage />) },
+          { path: 'daily-reports', element: guard('daily.reports', <DailyReportsPage />) },
+          { path: 'review-summary', element: guard('daily.summary', <ReviewSummaryPage />) },
+          { path: 'management-review', element: guard('daily.review', <ManagementReviewPage />) },
         ],
       },
 
