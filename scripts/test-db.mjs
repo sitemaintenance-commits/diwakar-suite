@@ -1243,20 +1243,46 @@ const DR_PAYLOAD = JSON.stringify({
       metrics: [{ label: 'Generation (kWh)', value: '45,300' }, { label: 'Open tickets', value: '3' }],
       highlights: 'Cleaned 4 blocks at Sadas.', blockers: '', remarks: '' },
     { deptId: 'dept-x', date: '2026-01-05', status: 'Critical', metrics: [], highlights: 'x' },
+    // The shape the live export actually has: the CCM's comment typed into
+    // `blockers`, the status only saying that he commented.
+    { deptId: 'dept-om', date: '2026-01-06', status: ' CCM Remarks', reporter: 'Rajpal Singh',
+      analyzedBy: 'Jitendra Sharma', metrics: [{ label: 'Open tickets', value: '1' }],
+      highlights: 'Inverter 3 checked.',
+      blockers: 'Monitor closely to avoid delay in the installation schedule.', remarks: '' },
   ],
+  notes: [{ date: '2026-01-06', text: 'Founder: keep an eye on Digod.' }],
 });
 {
   const r = await as(OWNER, `select public.import_daily_reports($1::jsonb) i`, [DR_PAYLOAD]);
   const i = r.rows[0].i;
-  Number(i.inserted) === 1 && Number(i.ignored) === 1 && i.unknown_departments[0] === 'Ghost Department'
+  Number(i.inserted) === 2 && Number(i.ignored) === 1 && Number(i.ccm_remarks) === 1
+    && i.unknown_departments[0] === 'Ghost Department'
     ? ok('daily reports import and an unmatched department is reported')
     : bad('daily import', JSON.stringify(i));
 }
 await expectValue('the metrics come across as report lines', OWNER,
   `select count(*)::int from public.daily_report_items i
    join public.daily_reports r on r.id = i.report_id where r.report_date = '2026-01-05'`, 2);
-await expectValue('imported history lands as reviewed, not as a draft', OWNER,
-  `select status::text from public.daily_reports where report_date = '2026-01-05'`, 'reviewed');
+await expectValue('a report nobody signed off stays submitted, not claimed as reviewed', OWNER,
+  `select status::text from public.daily_reports where report_date = '2026-01-05'`, 'submitted');
+await expectValue('one the CCM looked at is marked reviewed', OWNER,
+  `select status::text from public.daily_reports where report_date = '2026-01-06'`, 'reviewed');
+await expectValue('the reporter name survives with no account to link to', OWNER,
+  `select reporter_name from public.daily_reports where report_date = '2026-01-06'`, 'Rajpal Singh');
+await expectValue('the CCM comment becomes a review action, not the department blockers', OWNER,
+  `select count(*)::int from public.review_actions a
+   join public.daily_reports r on r.id = a.report_id
+   where r.report_date = '2026-01-06' and a.action = 'ccm_remark'
+     and a.reviewer_name = 'Jitendra Sharma'`, 1);
+await expectValue('and the issues column is left empty rather than holding his words', OWNER,
+  `select issues is null from public.daily_reports where report_date = '2026-01-06'`, true);
+await expectValue('a CCM remark does not by itself make a department unhealthy', OWNER,
+  `select health::text from public.daily_reports where report_date = '2026-01-06'`, 'on_track');
+await expectValue('the founder note lands on the day it belongs to', OWNER,
+  `select note from public.daily_headlines where headline_date = '2026-01-06'`,
+  'Founder: keep an eye on Digod.');
+await expectValue('Accounts and Finance is out of the daily round', OWNER,
+  `select status::text from public.departments where name = 'Accounts & Finance'`, 'inactive');
 
 // PMS work sheets
 const PMS_PAYLOAD = JSON.stringify([

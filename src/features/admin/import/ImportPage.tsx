@@ -143,9 +143,10 @@ const SOURCES: Source[] = [
     icon: ClipboardCheck,
     rpc: 'import_daily_reports',
     arg: 'p_payload',
-    description: 'Department reports with their metrics, highlights and blockers.',
+    description:
+      'Department reports with their metrics and highlights, the reporter name, and the CCM remarks.',
     where:
-      'Open the old Daily Review CRM, choose Settings → Export backup, then upload the downloaded JSON file here.',
+      'Open the old Daily Review CRM and press "Backup data" at the bottom of the page, then upload the downloaded JSON file here.',
     accept: '.json',
     prepare: (raw) => JSON.parse(raw),
   },
