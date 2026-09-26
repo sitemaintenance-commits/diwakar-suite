@@ -1284,6 +1284,23 @@ await expectValue('the founder note lands on the day it belongs to', OWNER,
 await expectValue('Accounts and Finance is out of the daily round', OWNER,
   `select status::text from public.departments where name = 'Accounts & Finance'`, 'inactive');
 
+// Navigation grouping
+await expectValue('O&M holds only O&M modules', OWNER,
+  `select count(*)::int from public.modules m
+   join public.module_groups g on g.id = m.group_id
+   where g.key = 'operations' and m.key not like 'om.%'`, 0);
+await expectValue('Projects and Vendors sit in their own group', OWNER,
+  `select count(*)::int from public.modules m
+   join public.module_groups g on g.id = m.group_id
+   where g.key = 'projects' and m.key in ('projects.projects','projects.vendors')`, 2);
+await expectValue('Daily Review is its own group again, not part of HR', OWNER,
+  `select g.key from public.modules m
+   join public.module_groups g on g.id = m.group_id where m.key = 'daily.review'`, 'daily_review');
+await expectValue('and its routes point back at /daily-review', OWNER,
+  `select route from public.modules where key = 'daily.reports'`, '/daily-review/reports');
+await expectValue('HR is labelled HR again', OWNER,
+  `select label from public.module_groups where key = 'hr'`, 'HR & Performance');
+
 // Founder remarks across departments
 {
   const r = await as(OWNER, `select public.save_review_remark('2026-01-06'::date,

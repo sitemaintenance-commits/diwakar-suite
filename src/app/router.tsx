@@ -111,14 +111,16 @@ export const router = createBrowserRouter([
         ],
       },
 
-      // Daily Review
+      // Daily Review — its own section: a company-wide round across all
+      // six departments, only one of which is HR.
       {
         path: 'daily-review',
         element: <Outlet />,
         children: [
-          { path: 'reports', element: <Navigate to="/hr/daily-reports" replace /> },
-          { path: 'summary', element: <Navigate to="/hr/review-summary" replace /> },
-          { path: 'management', element: <Navigate to="/hr/management-review" replace /> },
+          { index: true, element: <Navigate to="reports" replace /> },
+          { path: 'reports', element: guard('daily.reports', <DailyReportsPage />) },
+          { path: 'summary', element: guard('daily.summary', <ReviewSummaryPage />) },
+          { path: 'management', element: guard('daily.review', <ManagementReviewPage />) },
         ],
       },
 
@@ -160,9 +162,10 @@ export const router = createBrowserRouter([
           { path: 'leave', element: guard('hr.leave', <LeavePage />) },
           { path: 'tasks', element: guard('tasks', <TasksPage />) },
           { path: 'departments', element: guard('hr.org', <DepartmentsPage />) },
-          { path: 'daily-reports', element: guard('daily.reports', <DailyReportsPage />) },
-          { path: 'review-summary', element: guard('daily.summary', <ReviewSummaryPage />) },
-          { path: 'management-review', element: guard('daily.review', <ManagementReviewPage />) },
+          // Daily Review moved out of HR; keep the old paths working.
+          { path: 'daily-reports', element: <Navigate to="/daily-review/reports" replace /> },
+          { path: 'review-summary', element: <Navigate to="/daily-review/summary" replace /> },
+          { path: 'management-review', element: <Navigate to="/daily-review/management" replace /> },
         ],
       },
 
