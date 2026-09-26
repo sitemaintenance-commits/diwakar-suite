@@ -12,3 +12,5 @@ supabase/.branches
 backups/
 *.sql.gz
 backup*.sql
+__pycache__/
+om-generation-import.json
