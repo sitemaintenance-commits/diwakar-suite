@@ -1284,6 +1284,30 @@ await expectValue('the founder note lands on the day it belongs to', OWNER,
 await expectValue('Accounts and Finance is out of the daily round', OWNER,
   `select status::text from public.departments where name = 'Accounts & Finance'`, 'inactive');
 
+// Founder remarks across departments
+{
+  const r = await as(OWNER, `select public.save_review_remark('2026-01-06'::date,
+    'Keep an eye on Digod deliveries.') x`);
+  const x = r.rows[0].x;
+  // Only O&M reported that day, so one remark lands and the rest are named.
+  Number(x.applied) === 1 && x.no_report_that_day.length > 0
+    ? ok('a founder remark to every department reaches the ones that reported, and names the ones that did not')
+    : bad('bulk remark', JSON.stringify(x));
+}
+await expectValue('sending the same remark again does not double-post it', OWNER,
+  `select (public.save_review_remark('2026-01-06'::date,
+     'Keep an eye on Digod deliveries.')->>'applied')::int`, 0);
+await expectValue('it is filed as a founder remark', OWNER,
+  `select count(*)::int from public.review_actions a
+   join public.daily_reports r on r.id = a.report_id
+   where r.report_date = '2026-01-06' and a.action = 'founder_remark'`, 1);
+await expectError('an empty remark is refused', OWNER,
+  `select public.save_review_remark('2026-01-06'::date, '   ')`, 'needs some text');
+await expectError('an unknown remark type is refused', OWNER,
+  `select public.save_review_remark('2026-01-06'::date, 'hi', null, 'sack_them')`, 'Unknown remark type');
+await expectError('a technician cannot write founder remarks', TECH,
+  `select public.save_review_remark('2026-01-06'::date, 'hi')`, 'daily.review');
+
 // PMS work sheets
 const PMS_PAYLOAD = JSON.stringify([
   { employee: 'Technician One', post: 'Technician', department: 'O&M / Service', date: '2026-01-05',

@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  CalendarDays, CheckCircle2, ClipboardCheck, ClipboardList, Download, Loader2, MessageSquareText, Plus, Save, Send, TriangleAlert, Trash2,
+  CalendarDays, CheckCircle2, ClipboardCheck, ClipboardList, Download, Loader2, MessageSquareText, Megaphone, Plus, Save, Send, TriangleAlert, Trash2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
@@ -593,6 +593,7 @@ export function ManagementReviewPage() {
   const review = useDailyReview(date);
   const [remarkFor, setRemarkFor] = useState<{ report: DeptReport; department: string } | null>(null);
   const [headlineOpen, setHeadlineOpen] = useState(false);
+  const [broadcastOpen, setBroadcastOpen] = useState(false);
 
   const refresh = async () => {
     await qc.invalidateQueries({ queryKey: ['daily-review'] });
@@ -616,11 +617,18 @@ export function ManagementReviewPage() {
         title="Management Review"
         description="Read the day's reports, add CCM and Founder remarks, and close the loop."
         actions={
-          can.edit && (
-            <Button variant="outline" onClick={() => setHeadlineOpen(true)}>
-              <Plus /> Day headline
-            </Button>
-          )
+          <>
+            {(can.create || can.approve) && (
+              <Button variant="outline" onClick={() => setBroadcastOpen(true)}>
+                <Megaphone /> Remark to all
+              </Button>
+            )}
+            {can.edit && (
+              <Button variant="outline" onClick={() => setHeadlineOpen(true)}>
+                <Plus /> Day headline
+              </Button>
+            )}
+          </>
         }
       />
 
@@ -721,6 +729,17 @@ export function ManagementReviewPage() {
 
       <RemarkDialog entry={remarkFor} onClose={() => setRemarkFor(null)} onSaved={refresh} reviewerId={access?.profile?.id ?? null} />
       <HeadlineDialog open={headlineOpen} onOpenChange={setHeadlineOpen} date={date} existing={review.data?.headline ?? null} onSaved={refresh} />
+      <BroadcastRemarkDialog
+        open={broadcastOpen}
+        onOpenChange={setBroadcastOpen}
+        date={date}
+        departments={(review.data?.departments ?? []).map((d) => ({
+          id: d.department_id,
+          name: d.name,
+          reported: !!d.today,
+        }))}
+        onSaved={refresh}
+      />
     </>
   );
 }
@@ -884,6 +903,125 @@ function HeadlineDialog({
           </Button>
           <Button onClick={save} disabled={busy}>
             {busy && <Loader2 className="animate-spin" />} Save headline
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+
+/**
+ * The founder's panel from the old app: one instruction, a date, and
+ * either one department or all of them.
+ *
+ * A remark hangs off a report, so a department that did not report that
+ * day cannot receive one. Rather than quietly dropping those, the dialog
+ * says up front who will miss it and the result says who did.
+ */
+function BroadcastRemarkDialog({
+  open,
+  onOpenChange,
+  date,
+  departments,
+  onSaved,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  date: string;
+  departments: { id: string; name: string; reported: boolean }[];
+  onSaved: () => Promise<void>;
+}) {
+  const [target, setTarget] = useState('all');
+  const [action, setAction] = useState('founder_remark');
+  const [comment, setComment] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setTarget('all');
+      setAction('founder_remark');
+      setComment('');
+    }
+  }, [open]);
+
+  const chosen = target === 'all' ? departments : departments.filter((d) => d.id === target);
+  const willGet = chosen.filter((d) => d.reported);
+  const willMiss = chosen.filter((d) => !d.reported);
+
+  async function save() {
+    setBusy(true);
+    const { data, error } = await supabase.rpc('save_review_remark', {
+      p_date: date,
+      p_comment: comment.trim(),
+      p_department_ids: target === 'all' ? null : [target],
+      p_action: action,
+    });
+    setBusy(false);
+    if (error) return toast.error(errorMessage(error));
+    const r = data as { applied?: number; already_had_it?: number; no_report_that_day?: string[] };
+    const missed = r?.no_report_that_day ?? [];
+    const applied = safeNum(r?.applied);
+    if (applied === 0 && safeNum(r?.already_had_it) > 0) toast.info('They already have that remark.');
+    else
+      toast.success(
+        `Remark added to ${fmtNumber(applied)} report(s)` +
+          (missed.length ? ` — ${missed.join(', ')} did not report` : ''),
+      );
+    await onSaved();
+    onOpenChange(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Remark for {fmtDate(date)}</DialogTitle>
+          <DialogDescription>
+            Send one instruction to a single department or to all of them at once.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4">
+          <Field label="Goes to">
+            <FilterSelect
+              value={target}
+              onChange={setTarget}
+              options={[
+                ['all', `All departments (${fmtNumber(departments.length)})`],
+                ...departments.map((d) => [d.id, d.reported ? d.name : `${d.name} — not reported`] as [string, string]),
+              ]}
+            />
+          </Field>
+          <Field label="Remark type">
+            <FilterSelect
+              value={action}
+              onChange={setAction}
+              options={[
+                ['founder_remark', 'Founder remark'],
+                ['ccm_remark', 'CCM remark'],
+              ]}
+            />
+          </Field>
+          <Field label="Remarks / instructions" htmlFor="br_comment" required>
+            <Textarea id="br_comment" rows={4} value={comment} onChange={(e) => setComment(e.target.value)} autoFocus />
+          </Field>
+          {willMiss.length > 0 && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                {willMiss.map((d) => d.name).join(', ')} {willMiss.length === 1 ? 'has' : 'have'} no report on this
+                day, so {willMiss.length === 1 ? 'it' : 'they'} will not receive this. It reaches{' '}
+                {fmtNumber(willGet.length)} of {fmtNumber(chosen.length)}.
+              </span>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button onClick={save} disabled={busy || !comment.trim() || willGet.length === 0}>
+            {busy && <Loader2 className="animate-spin" />} Send to {fmtNumber(willGet.length)}
           </Button>
         </DialogFooter>
       </DialogContent>
