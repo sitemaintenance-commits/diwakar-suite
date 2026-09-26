@@ -1,12 +1,22 @@
-# Supabase CLI configuration (used by `supabase link`, `db push`, `functions deploy`).
-# Hosted-project Auth settings must ALSO be set in the dashboard — see README.md.
+# Supabase CLI configuration (used by `supabase link`, `db push`,
+# `functions deploy` and `config push`).
+#
+# `supabase config push` makes the hosted project match what is DECLARED
+# here; settings this file says nothing about are left as they are, so the
+# SMTP credentials entered in the dashboard survive a push. They are kept
+# out of here on purpose, so the password never lands in the repo.
 project_id = "diwakar-suite"
 
 [auth]
 # One login system, invitation only.
 enable_signup = false
-site_url = "http://localhost:5173"
-additional_redirect_urls = ["http://localhost:5173/reset-password"]
+site_url = "https://diwakar-suitee.netlify.app"
+additional_redirect_urls = [
+  "https://diwakar-suitee.netlify.app/reset-password",
+  "https://diwakar-suitee.netlify.app/accept-invite",
+  "http://localhost:5173/reset-password",
+  "http://localhost:5173/accept-invite",
+]
 jwt_expiry = 3600
 minimum_password_length = 8
 
@@ -14,6 +24,36 @@ minimum_password_length = 8
 enable_signup = false
 double_confirm_changes = true
 enable_confirmations = true
+# An invitation link has to last long enough for someone to read their mail
+# on a site with poor signal. A password reset stays short.
+otp_expiry = 86400
+
+# Custom templates need a custom SMTP provider -- Supabase refuses them on
+# the default sender ("Email template modification is not available for free
+# tier projects using the default email provider"). Uncomment both blocks and
+# run `supabase config push` once SMTP is configured in the dashboard; the
+# files in supabase/templates/ are ready and waiting.
+#
+# [auth.email.template.invite]
+# subject = "Your Diwakar Solar Management Suite account"
+# content_path = "./supabase/templates/invite.html"
+#
+# [auth.email.template.recovery]
+# subject = "Reset your Diwakar Solar password"
+# content_path = "./supabase/templates/recovery.html"
+
+# SMTP lives in the dashboard (Project Settings -> Authentication -> SMTP),
+# so the password is never committed. If you ever want it managed from here
+# instead, uncomment this and export the four variables before pushing:
+#
+# [auth.email.smtp]
+# enabled = true
+# host = "env(SMTP_HOST)"
+# port = 587
+# user = "env(SMTP_USER)"
+# pass = "env(SMTP_PASS)"
+# admin_email = "env(SMTP_SENDER)"
+# sender_name = "Diwakar Solar Management Suite"
 
 [functions.admin-users]
 verify_jwt = true

@@ -120,7 +120,9 @@ export function UserFormDialog({
           email: f.email.trim().toLowerCase(),
           full_name: f.full_name.trim(),
           password: f.method === 'password' ? f.password : undefined,
-          redirect_to: `${window.location.origin}/reset-password`,
+          // An invitation lands on /accept-invite so the URL matches what is
+          // happening; both routes render the same choose-a-password page.
+          redirect_to: `${window.location.origin}/${f.method === 'invite' ? 'accept-invite' : 'reset-password'}`,
           data,
         });
         toast.success(f.method === 'invite' ? `Invitation sent to ${f.email.trim()}` : 'User created');
