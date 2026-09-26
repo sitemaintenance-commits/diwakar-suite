@@ -1136,6 +1136,17 @@ await expectValue('July is 31 days, not the 30 the review pack subtracts from', 
 await expectError('a sales user cannot open the month review', SALES,
   `select public.get_month_review()`, 'om.analytics VIEW');
 
+// A bare DELETE or UPDATE is rejected outright when pg_safeupdate is on,
+// which turns a working importer into one that cannot run at all. The
+// importer's scratch table is dropped on commit, so the guard protects
+// nothing there -- but it cannot know that, so the statement carries a WHERE.
+await expectValue('no shipped function empties a table without a WHERE', OWNER,
+  `select count(*)::int
+     from pg_proc p
+     join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname in ('public', 'app')
+      and p.prosrc ~* '(delete[[:space:]]+from|update)[[:space:]]+[a-z_]+[[:space:]]*;'`, 0);
+
 console.log('\nLegacy import — bringing the four old apps history across');
 const OM_PAYLOAD = JSON.stringify({
   reports: {
