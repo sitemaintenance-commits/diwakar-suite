@@ -101,6 +101,7 @@ export const BUILT_MODULES = new Set<string>([
   'projects.projects',
   'projects.vendors',
   'om.daily_entry',
+  'sites.overview',
   'om.sites',
   'om.monitor',
   'om.analytics',

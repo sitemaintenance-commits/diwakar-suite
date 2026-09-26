@@ -20,6 +20,7 @@ import { AttendancePage, EmployeesPage, LeavePage, PerformancePage, TasksPage } 
 import { DailyWorkPage } from '@/features/hr/worklog/DailyWorkPage';
 import { ScorecardPage } from '@/features/hr/worklog/ScorecardPage';
 import { DailyReportsPage, ManagementReviewPage, ReviewSummaryPage } from '@/features/daily/pages';
+import { SolarSitesPage as SitePortfolioPage } from '@/features/portfolio/SolarSitesPage';
 import { ReportsPage } from '@/features/reports/ReportsPage';
 import { LeadsPage } from '@/features/crm/leads/LeadsPage';
 import { TendersPage } from '@/features/crm/tenders/TendersPage';
@@ -91,6 +92,9 @@ export const router = createBrowserRouter([
           { path: ':id', element: guard('projects.projects', <ProjectDetailPage />) },
         ],
       },
+
+      // Solar Sites — the fleet overview, deliberately outside O&M.
+      { path: 'solar-sites', element: guard('sites.overview', <SitePortfolioPage />) },
 
       // Operations (O&M / solar)
       {

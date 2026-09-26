@@ -1284,6 +1284,33 @@ await expectValue('the founder note lands on the day it belongs to', OWNER,
 await expectValue('Accounts and Finance is out of the daily round', OWNER,
   `select status::text from public.departments where name = 'Accounts & Finance'`, 'inactive');
 
+// Solar Sites portfolio
+await expectValue('the O&M register is called Generation Sites', OWNER,
+  `select label from public.modules where key = 'om.sites'`, 'Generation Sites');
+await expectValue('Solar Sites is its own top-level section', OWNER,
+  `select g.key from public.modules m join public.module_groups g on g.id = m.group_id
+    where m.key = 'sites.overview'`, 'portfolio');
+await expectValue('and it renders flat, because the group shares its label', OWNER,
+  `select (g.label = m.label) from public.modules m
+   join public.module_groups g on g.id = m.group_id where m.key = 'sites.overview'`, true);
+{
+  const r = await as(OWNER, `select public.get_site_portfolio() p`);
+  const p = r.rows[0].p;
+  Number(p.sites) > 0 && Array.isArray(p.rows) && p.rows.every((x) => x.capacity_dc_kwp > 0)
+    ? ok('the portfolio lists every plant that has a capacity on record')
+    : bad('portfolio', JSON.stringify(p).slice(0, 200));
+}
+await expectError('a sales user cannot open the portfolio', SALES,
+  `select public.get_site_portfolio()`, 'sites.overview VIEW');
+// SECURITY DEFINER, so the site scope has to be applied inside the function.
+{
+  const all = await as(OWNER, `select (public.get_site_portfolio()->>'sites')::int n`);
+  const one = await as(TECH, `select (public.get_site_portfolio()->>'sites')::int n`).catch(() => null);
+  one === null || Number(one.rows[0].n) < Number(all.rows[0].n)
+    ? ok('a technician sees fewer plants than the owner, or none at all')
+    : bad('portfolio scope', `tech saw ${one.rows[0].n} of ${all.rows[0].n}`);
+}
+
 // Navigation grouping
 await expectValue('O&M holds only O&M modules', OWNER,
   `select count(*)::int from public.modules m
