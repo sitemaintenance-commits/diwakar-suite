@@ -1147,6 +1147,14 @@ await expectValue('no shipped function empties a table without a WHERE', OWNER,
     where n.nspname in ('public', 'app')
       and p.prosrc ~* '(delete[[:space:]]+from|update)[[:space:]]+[a-z_]+[[:space:]]*;'`, 0);
 
+await expectValue('every commissioned plant has a commissioning date', OWNER,
+  `select count(*)::int from public.solar_sites
+    where commissioning_date is null and capacity_dc_kwp > 0`, 0);
+await expectValue('Kadel was commissioned before its first reading', OWNER,
+  `select (ss.commissioning_date <= date '2026-04-15')
+     from public.solar_sites ss join public.sites s on s.id = ss.site_id
+    where s.name = 'Kadel'`, true);
+
 console.log('\nLegacy import — bringing the four old apps history across');
 const OM_PAYLOAD = JSON.stringify({
   reports: {
