@@ -205,7 +205,9 @@ for (const key of keys) {
   const insolation = appIns > 0 && appIns <= MAX_INSOLATION ? appIns : sheetIns.get(key) ?? (appIns > 0 ? appIns : '');
   const outage = String(a?.outage ?? '').trim();
   const remarks = String(a?.remarks ?? '').trim();
-  if (!(generation > 0) && !outage) continue;
+  // No energy and no outage written: nothing to record (a plant not yet
+  // commissioned, or a day nobody filled in).
+  if (!(generation > 0) && (!outage || /^(no|nil|none|na|n\/a|-)$/i.test(outage))) continue;
   (reports[date] ??= []).push({ short: plant, generation, insolation, outage, remarks, source });
   if (generation > 0) byMonth[date.slice(0, 7)] = (byMonth[date.slice(0, 7)] ?? 0) + generation;
 }
