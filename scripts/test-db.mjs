@@ -1235,6 +1235,55 @@ await expectError('a sales user cannot import readings at all', SALES,
 await expectValue('the import is written to the audit log', OWNER,
   `select count(*)::int > 0 from public.audit_logs where action = 'import' and module_key = 'om.generation'`, true);
 
+// Zero generation: a day the plant was down is downtime; zero with clock
+// times is a missing reading and is handed back rather than guessed at.
+{
+  const r = await as(OWNER, `select public.import_om_generation($1::jsonb) i`, [JSON.stringify({
+    reports: {
+      '2026-08-08': [{ short: 'Niwai', generation: 0, insolation: '', outage: 'Plant Trip Failure', remarks: '' }],
+      '2026-08-09': [{ short: 'Niwai', generation: '', insolation: '', outage: 'Grid Failure', remarks: 'Feeder down' }],
+      '2026-09-17': [{ short: 'Sadas', generation: 0, insolation: '', outage: '14:21 - 14:23\n14:55 - 15:48', remarks: '' }],
+    },
+  })]);
+  const i = r.rows[0].i;
+  Number(i.inserted) === 2 && Number(i.full_day_failures) === 2
+    && i.needs_review.length === 1 && i.needs_review[0] === '2026-09-17 Sadas'
+    ? ok('a full-day failure imports as downtime, and a zero with outage times is handed back for review')
+    : bad('zero-generation import', JSON.stringify(i));
+}
+await expectValue('a plant failure counts as one whole shutdown day of plant outage', OWNER,
+  `select generation_kwh::text || ' / ' || grid_outage_hrs::text || ' / ' || plant_outage_hrs::text
+   from public.generation_records g join public.sites s on s.id = g.site_id
+   where s.name = 'Niwai' and g.gen_date = '2026-08-08'`, '0.000 / 0.00 / 11.00');
+await expectValue('a grid failure is grid outage, and the sheet text is kept in the remarks', OWNER,
+  `select grid_outage_hrs::text || ' / ' || remarks
+   from public.generation_records g join public.sites s on s.id = g.site_id
+   where s.name = 'Niwai' and g.gen_date = '2026-08-09'`, '11.00 / Grid Failure · Feeder down');
+await expectValue('the missing reading was not written as a zero', OWNER,
+  `select count(*)::int from public.generation_records g join public.sites s on s.id = g.site_id
+   where s.name = 'Sadas' and g.gen_date = '2026-09-17'`, 0);
+
+// A site under construction is not a plant yet: it stays off the O&M pages
+// until it has a DC capacity, and appears the moment it gets one.
+await expectValue('Deegod (0 kWp, under construction) is not on the day view', OWNER,
+  `select count(*)::int from jsonb_array_elements(public.get_daily_performance()->'sites') x
+   where x->>'name' = 'Deegod'`, 0);
+await expectValue('nor in the daily field form', OWNER,
+  `select count(*)::int from jsonb_array_elements(public.get_field_entry()->'sites') x
+   where x->>'name' = 'Deegod'`, 0);
+await expectValue('nor in the portfolio', OWNER,
+  `select count(*)::int from jsonb_array_elements(public.get_portfolio_analytics()->'ranking') x
+   where x->>'site' = 'Deegod'`, 0);
+await expectOk('Deegod gets its DC capacity', OWNER,
+  `update public.solar_sites set capacity_dc_kwp = 3570
+   where site_id = (select id from public.sites where name = 'Deegod')`);
+await expectValue('and is on the day view from then on', OWNER,
+  `select count(*)::int from jsonb_array_elements(public.get_daily_performance()->'sites') x
+   where x->>'name' = 'Deegod'`, 1);
+await expectOk('(put back as it was)', OWNER,
+  `update public.solar_sites set capacity_dc_kwp = 0
+   where site_id = (select id from public.sites where name = 'Deegod')`);
+
 // Daily Review
 const DR_PAYLOAD = JSON.stringify({
   depts: [{ id: 'dept-om', name: 'O&M / Service' }, { id: 'dept-x', name: 'Ghost Department' }],

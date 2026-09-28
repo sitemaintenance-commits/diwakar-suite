@@ -102,6 +102,8 @@ interface Result {
   skipped?: number;
   ignored?: number;
   employees_created?: number;
+  full_day_failures?: number;
+  needs_review?: string[];
   unknown_sites?: string[];
   unknown_departments?: string[];
   unknown_employees?: string[];
@@ -289,6 +291,11 @@ function ImportCard({ source, canImport }: { source: Source; canImport: boolean 
               {result.employees_created ? (
                 <span className="tabular text-muted-foreground">· {fmtNumber(result.employees_created)} employee(s) created</span>
               ) : null}
+              {result.full_day_failures ? (
+                <span className="tabular text-muted-foreground">
+                  · {fmtNumber(result.full_day_failures)} full-day failure(s) recorded as downtime
+                </span>
+              ) : null}
             </div>
             {result.from && (
               <p className="text-xs text-muted-foreground">
@@ -306,6 +313,19 @@ function ImportCard({ source, canImport }: { source: Source; canImport: boolean 
                 <p className="mt-1 text-muted-foreground">
                   Add these first if their history matters, then run the import again.
                 </p>
+              </div>
+            )}
+            {(result.needs_review?.length ?? 0) > 0 && (
+              <div className="text-xs">
+                <span className="text-muted-foreground">
+                  Left out — zero generation but outage times were written, so the reading looks missing:{' '}
+                </span>
+                {result.needs_review!.map((u) => (
+                  <Badge key={u} variant="warning" className="mr-1">
+                    {u}
+                  </Badge>
+                ))}
+                <p className="mt-1 text-muted-foreground">Enter these days in Generation once the real figure is known.</p>
               </div>
             )}
           </div>

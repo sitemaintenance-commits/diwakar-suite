@@ -35,7 +35,19 @@ export function GenerationPage() {
   const [entries, setEntries] = useState<Record<string, Entry>>({});
   const [saving, setSaving] = useState(false);
 
-  const activeSites = useMemo(() => (sites.data ?? []).filter((s) => s.status === 'active'), [sites.data]);
+  // A site under construction (no DC capacity yet) has nothing to record —
+  // the same rule the O&M functions apply through app.my_om_site_ids().
+  const dcCapacity = useMemo(
+    () => Object.fromEntries((solar.data ?? []).map((s) => [s.site_id, safeNum(s.capacity_dc_kwp)])),
+    [solar.data],
+  );
+  const activeSites = useMemo(
+    () =>
+      (sites.data ?? []).filter(
+        (s) => s.status === 'active' && ((dcCapacity[s.id] ?? safeNum(s.capacity_kwp)) > 0 || existing.data?.[s.id]),
+      ),
+    [sites.data, dcCapacity, existing.data],
+  );
   const expectedYield = useMemo(
     () => Object.fromEntries((solar.data ?? []).map((s) => [s.site_id, safeNum(s.expected_yield)])),
     [solar.data],
