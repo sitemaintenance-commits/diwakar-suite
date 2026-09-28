@@ -27,6 +27,10 @@ const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 // break the feature. Set GEMINI_MODEL to pin one (e.g. gemini-flash-lite-latest
 // for a larger free daily quota).
 const MODEL = Deno.env.get('GEMINI_MODEL') || 'gemini-flash-latest';
+// Tried in order when the model above is overloaded, has no quota or is gone.
+const MODELS = [...new Set([MODEL, ...(Deno.env.get('GEMINI_FALLBACK_MODELS') ?? 'gemini-flash-latest,gemini-flash-lite-latest').split(',').map((m) => m.trim()).filter(Boolean)])];
+// Supabase stops a function at 150 s; leave room to answer.
+const REQUEST_BUDGET_MS = 135_000;
 // Files go inline in the request, which Gemini caps at about 20 MB after
 // base64 encoding.
 const MAX_PDF_BYTES = 14 * 1024 * 1024;
@@ -128,41 +132,74 @@ function googleReason(e: ApiError): string {
   return msg.replace(/\s+/g, ' ').trim().slice(0, 300);
 }
 
-async function callGemini(params: { system: string; parts: Part[]; tools?: boolean; schema?: unknown }): Promise<GenerateContentResponse> {
-  if (!Deno.env.get('GEMINI_API_KEY')) throw new HttpError(500, 'The AI service is not set up. Ask the administrator to set GEMINI_API_KEY.');
-  let res: GenerateContentResponse;
-  try {
-    res = await gemini.models.generateContent({
-      model: MODEL,
-      contents: [{ role: 'user', parts: params.parts }],
-      config: {
-        systemInstruction: params.system,
-        ...(params.tools ? { tools: [{ googleSearch: {} }, { urlContext: {} }] } : {}),
-        ...(params.schema ? { responseMimeType: 'application/json', responseJsonSchema: params.schema } : {}),
-        maxOutputTokens: 16000,
-        abortSignal: AbortSignal.timeout(140_000),
-      },
-    });
-  } catch (e) {
-    if (e instanceof ApiError) {
-      if (e.status === 429) {
-        console.error(`Gemini 429 on ${MODEL}: ${e.message}`);
-        // "limit: 0" means this model has no free quota at all for the key,
-        // which waiting will not fix; another model will.
-        if (/limit:\s*0\b/.test(e.message)) {
-          const metric = e.message.match(/quotaMetric"?:\s*"([^"]+)"/)?.[1] ?? e.message.match(/Quota exceeded for metric: ([^\s,]+)/)?.[1];
-          throw new HttpError(429, `The AI model "${MODEL}" has no free quota on this Google key${metric ? ` (${metric})` : ''}. Ask the administrator to set GEMINI_MODEL to another model.`);
-        }
-        throw new HttpError(429, `The free AI quota is used up for now. Try again in a minute, or tomorrow if the daily limit is reached. (Google: ${googleReason(e)})`);
+/** An ApiError from `model` as the message the user sees. */
+function toHttpError(e: unknown, model: string): unknown {
+  if (e instanceof ApiError) {
+    if (e.status === 429) {
+      // "limit: 0" means this model has no free quota at all for the key,
+      // which waiting will not fix; another model will.
+      if (/limit:\s*0\b/.test(e.message)) {
+        const metric = e.message.match(/quotaMetric"?:\s*"([^"]+)"/)?.[1] ?? e.message.match(/Quota exceeded for metric: ([^\s,]+)/)?.[1];
+        return new HttpError(429, `The AI model "${model}" has no free quota on this Google key${metric ? ` (${metric})` : ''}. Ask the administrator to set GEMINI_MODEL to another model.`);
       }
-      if (e.status === 400 && /api key/i.test(e.message)) throw new HttpError(500, 'The AI key is invalid. Ask the administrator to check GEMINI_API_KEY.');
-      if (e.status === 401 || e.status === 403) throw new HttpError(500, 'The AI key is invalid or not allowed. Ask the administrator to check GEMINI_API_KEY.');
-      if (e.status === 404) throw new HttpError(500, `The AI model "${MODEL}" is not available. Ask the administrator to set GEMINI_MODEL.`);
-      throw new HttpError(502, `AI service error (${e.status}): ${e.message}`);
+      return new HttpError(429, `The free AI quota is used up for now. Try again in a minute, or tomorrow if the daily limit is reached. (Google: ${googleReason(e)})`);
     }
-    if (e instanceof DOMException && e.name === 'TimeoutError') throw new HttpError(504, 'The AI took too long. Try again with the tender number.');
-    throw e;
+    if (e.status >= 500) return new HttpError(503, "Google's free AI is overloaded right now. Please try again in a few minutes.");
+    if (e.status === 400 && /api key/i.test(e.message)) return new HttpError(500, 'The AI key is invalid. Ask the administrator to check GEMINI_API_KEY.');
+    if (e.status === 401 || e.status === 403) return new HttpError(500, 'The AI key is invalid or not allowed. Ask the administrator to check GEMINI_API_KEY.');
+    if (e.status === 404) return new HttpError(500, `The AI model "${model}" is not available. Ask the administrator to set GEMINI_MODEL.`);
+    return new HttpError(502, `AI service error (${e.status}): ${googleReason(e)}`);
   }
+  if (e instanceof DOMException && (e.name === 'TimeoutError' || e.name === 'AbortError')) {
+    return new HttpError(504, 'The AI took too long. Try again with the tender number.');
+  }
+  return e;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Free-tier requests are the first Google turns away when a model is busy
+ * (503) and each model has its own quota (429), so a busy model is retried
+ * briefly and then the next model in MODELS is tried, all within `deadline`.
+ */
+async function callGemini(params: { system: string; parts: Part[]; tools?: boolean; schema?: unknown; deadline: number }): Promise<GenerateContentResponse> {
+  if (!Deno.env.get('GEMINI_API_KEY')) throw new HttpError(500, 'The AI service is not set up. Ask the administrator to set GEMINI_API_KEY.');
+  let res: GenerateContentResponse | undefined;
+  let lastError: unknown = new HttpError(504, 'The AI took too long. Try again with the tender number.');
+  let lastModel = MODEL;
+  models: for (const model of MODELS) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const left = params.deadline - Date.now();
+      if (left < 10_000) break models;
+      try {
+        res = await gemini.models.generateContent({
+          model,
+          contents: [{ role: 'user', parts: params.parts }],
+          config: {
+            systemInstruction: params.system,
+            ...(params.tools ? { tools: [{ googleSearch: {} }, { urlContext: {} }] } : {}),
+            ...(params.schema ? { responseMimeType: 'application/json', responseJsonSchema: params.schema } : {}),
+            maxOutputTokens: 16000,
+            abortSignal: AbortSignal.timeout(left),
+          },
+        });
+        break models;
+      } catch (e) {
+        lastError = e;
+        lastModel = model;
+        if (!(e instanceof ApiError)) break models; // network / timeout: no point switching
+        console.error(`Gemini ${e.status} on ${model} (attempt ${attempt + 1}): ${googleReason(e)}`);
+        if (e.status >= 500) {
+          await sleep(attempt === 0 ? 2_000 : 5_000);
+          continue;
+        }
+        if (e.status === 429 || e.status === 404) continue models;
+        break models; // bad key, bad request: another model won't help
+      }
+    }
+  }
+  if (!res) throw toHttpError(lastError, lastModel);
   if (res.promptFeedback?.blockReason) throw new HttpError(422, 'The AI declined this request. Try a clearer screenshot or type the tender number.');
   const finish = res.candidates?.[0]?.finishReason;
   if (finish === FinishReason.MAX_TOKENS) throw new HttpError(502, 'The answer was cut off. Please try again.');
@@ -229,6 +266,7 @@ async function lookup(body: { images?: unknown; text?: unknown }) {
   const text = typeof body.text === 'string' ? body.text.trim().slice(0, 4000) : '';
   const images = Array.isArray(body.images) ? body.images.slice(0, MAX_IMAGES) : [];
   if (!text && images.length === 0) throw new HttpError(400, 'Add a screenshot or type something about the tender.');
+  const deadline = Date.now() + REQUEST_BUDGET_MS;
 
   const parts: Part[] = [];
   for (const img of images) {
@@ -247,11 +285,11 @@ async function lookup(body: { images?: unknown; text?: unknown }) {
   let res: GenerateContentResponse;
   let searched = true;
   try {
-    res = await callGemini({ system: LOOKUP_SYSTEM, parts, tools: true });
+    res = await callGemini({ system: LOOKUP_SYSTEM, parts, tools: true, deadline });
   } catch (e) {
     if (!(e instanceof HttpError) || e.status !== 429) throw e;
     searched = false;
-    res = await callGemini({ system: LOOKUP_SYSTEM + NO_SEARCH, parts });
+    res = await callGemini({ system: LOOKUP_SYSTEM + NO_SEARCH, parts, deadline });
   }
   const found = parseJson<LookupResult>(res.text ?? '');
   if (!searched) {
@@ -278,11 +316,19 @@ async function lookup(body: { images?: unknown; text?: unknown }) {
   let fields = found.fields ?? {};
   let summary: unknown = found.summary ?? null;
   let summarySource: 'pdf' | 'web' = 'web';
+  let notes = found.notes ?? '';
   if (pdf) {
-    const read = await readPdf(pdf.data, text);
-    fields = mergeFields(fields, read.fields);
-    summary = read.summary;
-    summarySource = 'pdf';
+    // The PDF is the valuable part; if reading it fails, keep it anyway and
+    // let the user summarise it from the tender page.
+    try {
+      const read = await readPdf(pdf.data, text, deadline);
+      fields = mergeFields(fields, read.fields);
+      summary = read.summary;
+      summarySource = 'pdf';
+    } catch (e) {
+      console.error('PDF summary failed during lookup', e);
+      notes = `The PDF was downloaded but could not be summarised just now — use "Summarise PDF" on the tender page after creating it. ${notes}`.trim();
+    }
   }
 
   return {
@@ -294,7 +340,7 @@ async function lookup(body: { images?: unknown; text?: unknown }) {
     documents: documentUrls,
     pdf,
     download_failures: failures,
-    notes: found.notes ?? '',
+    notes,
   };
 }
 
@@ -351,8 +397,9 @@ Extract the tender fields and write a practical summary a bid manager can read i
 Quote numbers, dates and amounts exactly as the document states them; use null when the document does not say.
 Amounts in fields are in rupees (convert lakh/crore). Date-times in fields are ISO 8601 with the +05:30 offset.`;
 
-async function readPdf(data: string, hint = ''): Promise<{ fields: Record<string, unknown>; summary: unknown }> {
+async function readPdf(data: string, hint = '', deadline = Date.now() + REQUEST_BUDGET_MS): Promise<{ fields: Record<string, unknown>; summary: unknown }> {
   const res = await callGemini({
+    deadline,
     system: READ_SYSTEM,
     schema: EXTRACT_SCHEMA,
     parts: [
