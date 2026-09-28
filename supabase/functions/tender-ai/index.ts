@@ -133,7 +133,16 @@ async function callGemini(params: { system: string; parts: Part[]; tools?: boole
     });
   } catch (e) {
     if (e instanceof ApiError) {
-      if (e.status === 429) throw new HttpError(429, 'The free AI quota is used up for now. Try again in a minute, or tomorrow if the daily limit is reached.');
+      if (e.status === 429) {
+        console.error(`Gemini 429 on ${MODEL}: ${e.message}`);
+        // "limit: 0" means this model has no free quota at all for the key,
+        // which waiting will not fix; another model will.
+        if (/limit:\s*0\b/.test(e.message)) {
+          const metric = e.message.match(/quotaMetric"?:\s*"([^"]+)"/)?.[1] ?? e.message.match(/Quota exceeded for metric: ([^\s,]+)/)?.[1];
+          throw new HttpError(429, `The AI model "${MODEL}" has no free quota on this Google key${metric ? ` (${metric})` : ''}. Ask the administrator to set GEMINI_MODEL to another model.`);
+        }
+        throw new HttpError(429, 'The free AI quota is used up for now. Try again in a minute, or tomorrow if the daily limit is reached.');
+      }
       if (e.status === 400 && /api key/i.test(e.message)) throw new HttpError(500, 'The AI key is invalid. Ask the administrator to check GEMINI_API_KEY.');
       if (e.status === 401 || e.status === 403) throw new HttpError(500, 'The AI key is invalid or not allowed. Ask the administrator to check GEMINI_API_KEY.');
       if (e.status === 404) throw new HttpError(500, `The AI model "${MODEL}" is not available. Ask the administrator to set GEMINI_MODEL.`);
