@@ -116,6 +116,18 @@ const EXTRACT_SCHEMA = {
 };
 
 // ------------------------------------------------------------------ Gemini
+/** Google's own explanation from an ApiError, which wraps a JSON body. */
+function googleReason(e: ApiError): string {
+  let msg = e.message;
+  const start = msg.indexOf('{');
+  if (start >= 0) {
+    try {
+      msg = JSON.parse(msg.slice(start))?.error?.message ?? msg;
+    } catch { /* keep the raw text */ }
+  }
+  return msg.replace(/\s+/g, ' ').trim().slice(0, 300);
+}
+
 async function callGemini(params: { system: string; parts: Part[]; tools?: boolean; schema?: unknown }): Promise<GenerateContentResponse> {
   if (!Deno.env.get('GEMINI_API_KEY')) throw new HttpError(500, 'The AI service is not set up. Ask the administrator to set GEMINI_API_KEY.');
   let res: GenerateContentResponse;
@@ -141,7 +153,7 @@ async function callGemini(params: { system: string; parts: Part[]; tools?: boole
           const metric = e.message.match(/quotaMetric"?:\s*"([^"]+)"/)?.[1] ?? e.message.match(/Quota exceeded for metric: ([^\s,]+)/)?.[1];
           throw new HttpError(429, `The AI model "${MODEL}" has no free quota on this Google key${metric ? ` (${metric})` : ''}. Ask the administrator to set GEMINI_MODEL to another model.`);
         }
-        throw new HttpError(429, 'The free AI quota is used up for now. Try again in a minute, or tomorrow if the daily limit is reached.');
+        throw new HttpError(429, `The free AI quota is used up for now. Try again in a minute, or tomorrow if the daily limit is reached. (Google: ${googleReason(e)})`);
       }
       if (e.status === 400 && /api key/i.test(e.message)) throw new HttpError(500, 'The AI key is invalid. Ask the administrator to check GEMINI_API_KEY.');
       if (e.status === 401 || e.status === 403) throw new HttpError(500, 'The AI key is invalid or not allowed. Ask the administrator to check GEMINI_API_KEY.');
@@ -207,6 +219,12 @@ Finish with ONLY a JSON object (no prose) of this shape:
  "notes": "what you could not confirm, captcha-protected downloads, corrigenda, etc."}
 The summary is from the web pages you read; it will be replaced if the PDF can be downloaded.`;
 
+const NO_SEARCH = `
+
+Web search is NOT available for this request. Do not search and do not guess links.
+Read everything you can from the input only, leave document_urls and sources empty, and
+in notes say where the tender can be found (portal name) if the input shows it.`;
+
 async function lookup(body: { images?: unknown; text?: unknown }) {
   const text = typeof body.text === 'string' ? body.text.trim().slice(0, 4000) : '';
   const images = Array.isArray(body.images) ? body.images.slice(0, MAX_IMAGES) : [];
@@ -224,8 +242,23 @@ async function lookup(body: { images?: unknown; text?: unknown }) {
 
   // Search grounding and a response schema can't be combined on every
   // model, so this call returns JSON as text and is parsed leniently.
-  const res = await callGemini({ system: LOOKUP_SYSTEM, parts, tools: true });
+  // Google Search grounding has its own quota, and some models give it no
+  // free allowance. When it is refused, still read what the screenshot says.
+  let res: GenerateContentResponse;
+  let searched = true;
+  try {
+    res = await callGemini({ system: LOOKUP_SYSTEM, parts, tools: true });
+  } catch (e) {
+    if (!(e instanceof HttpError) || e.status !== 429) throw e;
+    searched = false;
+    res = await callGemini({ system: LOOKUP_SYSTEM + NO_SEARCH, parts });
+  }
   const found = parseJson<LookupResult>(res.text ?? '');
+  if (!searched) {
+    found.found = false;
+    found.document_urls = [];
+    found.notes = `Web search was not available (free quota), so this was read from your input only and not checked online. ${found.notes ?? ''}`.trim();
+  }
   if (!found.sources?.length) found.sources = groundingSources(res);
   const documentUrls = (found.document_urls ?? []).filter((d) => d && typeof d.url === 'string');
 
