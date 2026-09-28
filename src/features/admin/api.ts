@@ -1,7 +1,7 @@
 // Data access for administration pages. Every query runs with the user's
 // JWT; RLS decides what comes back.
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
+import { selectAll, supabase } from '@/lib/supabase';
 import type {
   AuditLog,
   Department,
@@ -176,9 +176,7 @@ export async function fetchUsers(f: UserFilters, all = false) {
     if (error) throw error;
     q = q.in('employee_id', (data ?? []).map((e) => e.id));
   }
-  if (!all) q = q.range(f.page * f.pageSize, f.page * f.pageSize + f.pageSize - 1);
-  else q = q.limit(5000);
-  const { data, error, count } = await q;
+  const { data, error, count } = all ? await selectAll(q.order('id')) : await q.range(f.page * f.pageSize, f.page * f.pageSize + f.pageSize - 1);
   if (error) throw error;
   return { rows: (data ?? []) as unknown as UserRow[], total: count ?? 0 };
 }
@@ -222,8 +220,7 @@ export async function fetchAudit(f: AuditFilters, all = false) {
   if (f.from) q = q.gte('occurred_at', `${f.from}T00:00:00+05:30`);
   if (f.to) q = q.lte('occurred_at', `${f.to}T23:59:59.999+05:30`);
   if (f.entityId) q = q.or(`entity_id.eq.${f.entityId},actor_id.eq.${f.entityId}`);
-  q = all ? q.limit(5000) : q.range(f.page * f.pageSize, f.page * f.pageSize + f.pageSize - 1);
-  const { data, error, count } = await q;
+  const { data, error, count } = all ? await selectAll(q.order('id')) : await q.range(f.page * f.pageSize, f.page * f.pageSize + f.pageSize - 1);
   if (error) throw error;
   return { rows: (data ?? []) as AuditLog[], total: count ?? 0 };
 }

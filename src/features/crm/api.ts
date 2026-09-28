@@ -1,7 +1,7 @@
 // Data access for the CRM modules (leads, tenders, quotations, follow-ups,
 // documents). Every query runs with the user's JWT; RLS decides the rows.
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
+import { selectAll, supabase } from '@/lib/supabase';
 import { cleanSearch } from '@/features/admin/api';
 import type { DocumentRow, FollowUp, Lead, Quotation, Tender } from '@/lib/types';
 
@@ -31,8 +31,7 @@ export async function fetchLeads(f: LeadFilters, all = false) {
   if (s) q = q.or(`company.ilike.%${s}%,contact_person.ilike.%${s}%,phone.ilike.%${s}%,lead_code.ilike.%${s}%`);
   if (f.status !== 'all') q = q.eq('status', f.status);
   if (f.assignedTo !== 'all') q = q.eq('assigned_to', f.assignedTo);
-  q = all ? q.limit(5000) : q.range(f.page * f.pageSize, f.page * f.pageSize + f.pageSize - 1);
-  const { data, error, count } = await q;
+  const { data, error, count } = all ? await selectAll(q.order('id')) : await q.range(f.page * f.pageSize, f.page * f.pageSize + f.pageSize - 1);
   if (error) throw error;
   return { rows: (data ?? []) as Lead[], total: count ?? 0 };
 }
@@ -71,8 +70,7 @@ export async function fetchTenders(f: TenderFilters, all = false) {
     const end = new Date(now.getTime() + (f.due === 'next7' ? 7 : 30) * 864e5);
     q = q.gte('submission_due_at', now.toISOString()).lte('submission_due_at', end.toISOString());
   }
-  q = all ? q.limit(5000) : q.range(f.page * f.pageSize, f.page * f.pageSize + f.pageSize - 1);
-  const { data, error, count } = await q;
+  const { data, error, count } = all ? await selectAll(q.order('id')) : await q.range(f.page * f.pageSize, f.page * f.pageSize + f.pageSize - 1);
   if (error) throw error;
   return { rows: (data ?? []) as unknown as Tender[], total: count ?? 0 };
 }
@@ -121,8 +119,7 @@ export async function fetchQuotations(f: QuotationFilters, all = false) {
   const s = cleanSearch(f.search);
   if (s) q = q.or(`quotation_no.ilike.%${s}%,client_name.ilike.%${s}%,subject.ilike.%${s}%`);
   if (f.status !== 'all') q = q.eq('status', f.status);
-  q = all ? q.limit(5000) : q.range(f.page * f.pageSize, f.page * f.pageSize + f.pageSize - 1);
-  const { data, error, count } = await q;
+  const { data, error, count } = all ? await selectAll(q.order('id')) : await q.range(f.page * f.pageSize, f.page * f.pageSize + f.pageSize - 1);
   if (error) throw error;
   return { rows: (data ?? []) as unknown as Quotation[], total: count ?? 0 };
 }
@@ -182,8 +179,7 @@ export async function fetchFollowUps(f: FollowUpFilters, all = false) {
     q = q.gte('follow_up_at', start.toISOString()).lt('follow_up_at', end.toISOString());
   }
   if (f.due === 'week') q = q.gte('follow_up_at', now.toISOString()).lte('follow_up_at', new Date(now.getTime() + 7 * 864e5).toISOString());
-  q = all ? q.limit(5000) : q.range(f.page * f.pageSize, f.page * f.pageSize + f.pageSize - 1);
-  const { data, error, count } = await q;
+  const { data, error, count } = all ? await selectAll(q.order('id')) : await q.range(f.page * f.pageSize, f.page * f.pageSize + f.pageSize - 1);
   if (error) throw error;
   return { rows: (data ?? []) as unknown as FollowUp[], total: count ?? 0 };
 }

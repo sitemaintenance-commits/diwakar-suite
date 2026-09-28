@@ -1,7 +1,7 @@
 // Data access for O&M / solar. Every table is site scoped by RLS, so these
 // queries return only the sites the signed-in user is assigned to.
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
+import { selectAll, supabase } from '@/lib/supabase';
 import { cleanSearch } from '@/features/admin/api';
 import type { Equipment, GenerationRecord, MaintenanceRecord, SolarSite, Ticket } from '@/lib/types';
 
@@ -109,8 +109,7 @@ export async function fetchGeneration(f: GenerationFilters, all = false) {
   if (f.siteId !== 'all') q = q.eq('site_id', f.siteId);
   if (f.from) q = q.gte('gen_date', f.from);
   if (f.to) q = q.lte('gen_date', f.to);
-  q = all ? q.limit(5000) : q.range(f.page * f.pageSize, f.page * f.pageSize + f.pageSize - 1);
-  const { data, error, count } = await q;
+  const { data, error, count } = all ? await selectAll(q.order('id')) : await q.range(f.page * f.pageSize, f.page * f.pageSize + f.pageSize - 1);
   if (error) throw error;
   return { rows: (data ?? []) as unknown as GenerationRecord[], total: count ?? 0 };
 }
@@ -153,8 +152,7 @@ export async function fetchTickets(f: TicketFilters, all = false) {
   if (f.priority !== 'all') q = q.eq('priority', f.priority);
   if (f.siteId !== 'all') q = q.eq('site_id', f.siteId);
   if (f.assignedTo !== 'all') q = q.eq('assigned_to', f.assignedTo);
-  q = all ? q.limit(5000) : q.range(f.page * f.pageSize, f.page * f.pageSize + f.pageSize - 1);
-  const { data, error, count } = await q;
+  const { data, error, count } = all ? await selectAll(q.order('id')) : await q.range(f.page * f.pageSize, f.page * f.pageSize + f.pageSize - 1);
   if (error) throw error;
   return { rows: (data ?? []) as unknown as Ticket[], total: count ?? 0 };
 }
@@ -180,8 +178,7 @@ export async function fetchMaintenance(f: MaintenanceFilters, all = false) {
   else if (f.status !== 'all') q = q.eq('status', f.status);
   if (f.siteId !== 'all') q = q.eq('site_id', f.siteId);
   if (f.type !== 'all') q = q.eq('type', f.type);
-  q = all ? q.limit(5000) : q.range(f.page * f.pageSize, f.page * f.pageSize + f.pageSize - 1);
-  const { data, error, count } = await q;
+  const { data, error, count } = all ? await selectAll(q.order('id')) : await q.range(f.page * f.pageSize, f.page * f.pageSize + f.pageSize - 1);
   if (error) throw error;
   return { rows: (data ?? []) as unknown as MaintenanceRecord[], total: count ?? 0 };
 }

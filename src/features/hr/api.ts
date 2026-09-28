@@ -1,7 +1,7 @@
 // HR / PMS data access. Everyone can read their own attendance, leave and
 // review; seeing other people needs the module permission (and its scope).
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
+import { selectAll, supabase } from '@/lib/supabase';
 import { cleanSearch } from '@/features/admin/api';
 import type { Attendance, EmployeeRow, LeaveRequest, PerformanceGoal, PerformanceReview, Task } from '@/lib/types';
 
@@ -128,8 +128,7 @@ export async function fetchTasks(f: TaskFilters, all = false) {
   else if (f.status !== 'all') q = q.eq('status', f.status);
   if (f.module !== 'all') q = q.eq('module', f.module);
   if (f.assignedTo !== 'all') q = q.eq('assigned_to', f.assignedTo);
-  q = all ? q.limit(5000) : q.range(f.page * f.pageSize, f.page * f.pageSize + f.pageSize - 1);
-  const { data, error, count } = await q;
+  const { data, error, count } = all ? await selectAll(q.order('id')) : await q.range(f.page * f.pageSize, f.page * f.pageSize + f.pageSize - 1);
   if (error) throw error;
   return { rows: (data ?? []) as unknown as Task[], total: count ?? 0 };
 }
