@@ -1128,7 +1128,8 @@ await expectOk('two May readings for Sadas', OWNER,
     : bad('month review', JSON.stringify(row));
 }
 await expectValue('a month with no target shows no forecast rather than a guess', OWNER,
-  `select (public.get_month_review(2026, 5)->'rows'->0->>'forecast') is null`, true);
+  `select (x->>'forecast') is null from jsonb_array_elements(public.get_month_review(2026, 5)->'rows') x
+   where x->>'site' = 'Budhwara'`, true);
 await expectValue('and the review says how many targets are missing', OWNER,
   `select (public.get_month_review(2026, 5)->>'missing_targets')::int > 0`, true);
 await expectValue('July is 31 days, not the 30 the review pack subtracts from', OWNER,
@@ -1283,6 +1284,44 @@ await expectValue('and is on the day view from then on', OWNER,
 await expectOk('(put back as it was)', OWNER,
   `update public.solar_sites set capacity_dc_kwp = 0
    where site_id = (select id from public.sites where name = 'Deegod')`);
+
+// Forecasts from the Master workbook.
+const target = (site, month) => `select forecast_kwh::int from public.site_monthly_targets t
+  join public.sites s on s.id = t.site_id where s.name = '${site}' and t.year = 2026 and t.month = ${month}`;
+await expectValue('the Master file forecasts every month for its eight plants', OWNER,
+  `select count(*)::int from public.site_monthly_targets where year = 2026
+     and site_id in (select id from public.sites where name in
+       ('Bassi','Suaap','Jerthi','Indo Ka Bas','Sadas','Budsu','Ganeshgarh','Niwai'))`, 96);
+await expectValue('July is the Master figure, not June repeated', OWNER, target('Bassi', 7), 545900);
+await expectValue('June keeps the review pack figure', OWNER, target('Suaap', 6), 433700);
+await expectValue('a plant the Master file does not forecast keeps its July target', OWNER, target('Budhwara', 7), 606600);
+
+// Insolation the sun cannot deliver.
+await expectError('the daily form refuses an insolation of 44.77', OWNER,
+  `select public.save_field_entry($1, current_date - 6, '[{"label":"INV-01","kwh":9000}]'::jsonb, 44.77)`,
+  'not possible', [site.Bassi]);
+await expectValue('and a real one is still accepted', OWNER,
+  `select (public.save_field_entry($1, current_date - 6, '[{"label":"INV-01","kwh":9000}]'::jsonb, 4.477)->>'generation_kwh')::numeric::int`,
+  9000, [site.Bassi]);
+{
+  const r = await as(OWNER, `select public.import_om_generation($1::jsonb) i`, [JSON.stringify({
+    reports: {
+      '2026-09-19': [{ short: 'Niwai', generation: 12000, insolation: '44.77', outage: 'No' }],
+      '2026-09-23': [{ short: 'Niwai', generation: 12576, insolation: '3.94', outage: 'No' }],
+    },
+  })]);
+  const i = r.rows[0].i;
+  Number(i.inserted) === 2 && i.insolation_rejected.length === 1 && i.insolation_rejected[0].startsWith('2026-09-19 Niwai')
+    && i.suspect_pr.length === 1 && i.suspect_pr[0].startsWith('2026-09-23 Niwai: PR 121')
+    ? ok('the importer keeps the reading, drops an impossible insolation and flags a PR over 100%')
+    : bad('insolation import', JSON.stringify(i));
+}
+await expectValue('a dry run flags the PR too, before anything is written', OWNER,
+  `select jsonb_array_length(public.import_om_generation($1::jsonb, true)->'suspect_pr')`, 1,
+  [JSON.stringify({ reports: { '2026-09-25': [{ short: 'Niwai', generation: 12576, insolation: '3.94', outage: 'No' }] } })]);
+await expectValue('the dropped insolation is stored as not recorded', OWNER,
+  `select irradiation_kwh_m2 is null from public.generation_records g join public.sites s on s.id = g.site_id
+   where s.name = 'Niwai' and g.gen_date = '2026-09-19'`, true);
 
 // Daily Review
 const DR_PAYLOAD = JSON.stringify({

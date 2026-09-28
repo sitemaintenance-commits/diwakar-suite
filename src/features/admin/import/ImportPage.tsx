@@ -104,6 +104,8 @@ interface Result {
   employees_created?: number;
   full_day_failures?: number;
   needs_review?: string[];
+  insolation_rejected?: string[];
+  suspect_pr?: string[];
   unknown_sites?: string[];
   unknown_departments?: string[];
   unknown_employees?: string[];
@@ -134,8 +136,9 @@ const SOURCES: Source[] = [
     arg: 'p_payload',
     description: 'Daily generation, insolation, grid outage and remarks for every site.',
     where:
-      'In the O&M CRM, press "Export JSON" on the Dashboard tab and paste the file here. ' +
-      'The browser key solar-crm-v2 holds the same thing.',
+      'Use om-history-import.json: press "Export JSON" on the O&M CRM Dashboard tab, then run ' +
+      '"npm run om:history -- <export file>", which takes generation from the office workbooks and ' +
+      'insolation, outages and remarks from the export. The raw export also works, but carries its errors.',
     accept: '.json',
     prepare: (raw) => JSON.parse(raw),
   },
@@ -328,9 +331,32 @@ function ImportCard({ source, canImport }: { source: Source; canImport: boolean 
                 <p className="mt-1 text-muted-foreground">Enter these days in Generation once the real figure is known.</p>
               </div>
             )}
+            <IssueList
+              items={result.insolation_rejected}
+              label="Insolation too high to be real — the reading is kept, the insolation is stored as not recorded:"
+            />
+            <IssueList items={result.suspect_pr} label="PR above 100% — kept as written, worth a look:" />
           </div>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function IssueList({ items, label }: { items?: string[]; label: string }) {
+  if (!items?.length) return null;
+  const shown = items.slice(0, 20);
+  return (
+    <div className="text-xs">
+      <span className="text-muted-foreground">{label} </span>
+      {shown.map((u) => (
+        <Badge key={u} variant="warning" className="mb-1 mr-1">
+          {u}
+        </Badge>
+      ))}
+      {items.length > shown.length && (
+        <span className="text-muted-foreground">and {fmtNumber(items.length - shown.length)} more</span>
+      )}
+    </div>
   );
 }
