@@ -33,7 +33,7 @@ import {
 } from '@/features/crm/tenders/ai';
 
 const MAX_IMAGES = 4;
-const MAX_PDF = 20 * 1024 * 1024;
+const MAX_PDF = 14 * 1024 * 1024;
 
 // ---------------------------------------------------------------- summary view
 function List({ title, items }: { title: string; items: string[] }) {
@@ -168,7 +168,7 @@ export function TenderAiDialog({ open, onOpenChange, onCreated }: { open: boolea
   async function onOwnPdf(file: File | undefined) {
     if (!file || !result) return;
     if (file.type !== 'application/pdf') return toast.error('Choose a PDF file.');
-    if (file.size > MAX_PDF) return toast.error('The PDF is larger than 20 MB.');
+    if (file.size > MAX_PDF) return toast.error('The PDF is larger than 14 MB.');
     setBusy('pdf');
     try {
       const pdf: AiPdf = { name: file.name, data: await fileToBase64(file), size: file.size };

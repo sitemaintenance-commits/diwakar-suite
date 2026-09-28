@@ -1,11 +1,11 @@
 // tender-ai — finds a government tender from a screenshot or a few words,
-// fetches its official notice (PDF) and summarises it with Claude.
+// fetches its official notice (PDF) and summarises it with Google Gemini.
 //
 // Actions:
 //   lookup    { images?: [{ media_type, data }], text? }
 //             -> { found, fields, sources, documents, pdf, summary, notes }
-//             Claude searches the web for the tender, the function downloads
-//             the official PDF it points to and, when it gets one, Claude
+//             Gemini searches Google for the tender, the function downloads
+//             the official PDF it points to and, when it gets one, Gemini
 //             reads the PDF and writes the summary.
 //   summarize { pdf: { name, data } }              (a PDF the user uploads)
 //   summarize { document_id }                      (a PDF already attached)
@@ -15,15 +15,21 @@
 // and attaches the PDF as the signed-in user, so row-level security keeps
 // deciding who may do what. The caller must hold crm.tenders CREATE or EDIT.
 //
-// Secrets: ANTHROPIC_API_KEY (supabase secrets set ANTHROPIC_API_KEY=...).
-import Anthropic from 'npm:@anthropic-ai/sdk@0.128.0';
+// Secrets: GEMINI_API_KEY (free key from aistudio.google.com)
+//          GEMINI_MODEL   optional, defaults to the latest Flash model
+import { ApiError, FinishReason, GoogleGenAI, type GenerateContentResponse, type Part } from 'npm:@google/genai@2.24.0';
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders, json } from '../_shared/cors.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
-const MODEL = Deno.env.get('TENDER_AI_MODEL') ?? 'claude-opus-5';
-const MAX_PDF_BYTES = 20 * 1024 * 1024;
+// "-latest" follows Google's newest Flash, so a model retirement doesn't
+// break the feature. Set GEMINI_MODEL to pin one (e.g. gemini-flash-lite-latest
+// for a larger free daily quota).
+const MODEL = Deno.env.get('GEMINI_MODEL') || 'gemini-flash-latest';
+// Files go inline in the request, which Gemini caps at about 20 MB after
+// base64 encoding.
+const MAX_PDF_BYTES = 14 * 1024 * 1024;
 const MAX_IMAGES = 4;
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
@@ -33,7 +39,7 @@ class HttpError extends Error {
   }
 }
 
-const anthropic = new Anthropic({ timeout: 140_000, maxRetries: 1 });
+const gemini = new GoogleGenAI({ apiKey: Deno.env.get('GEMINI_API_KEY') ?? '' });
 
 // ------------------------------------------------------------------ schemas
 // The tender fields mirror public.tenders so the form can be pre-filled.
@@ -109,38 +115,45 @@ const EXTRACT_SCHEMA = {
   required: ['fields', 'summary'],
 };
 
-// ------------------------------------------------------------------ Claude
-// Server-side fallbacks re-run a request that a safety classifier declines
-// on another model instead of failing it.
-const BETAS = ['server-side-fallback-2026-07-01'];
-
-type Params = Record<string, unknown> & { messages: Anthropic.Beta.BetaMessageParam[] };
-
-async function callClaude(params: Params): Promise<Anthropic.Beta.BetaMessage> {
-  const messages = [...params.messages];
-  // A long web-search turn can pause; hand the partial turn back to resume it.
-  for (let i = 0; i < 4; i++) {
-    let res: Anthropic.Beta.BetaMessage;
-    try {
-      res = await anthropic.beta.messages.create(
-        // deno-lint-ignore no-explicit-any
-        { model: MODEL, betas: BETAS, fallbacks: 'default', ...params, messages } as any,
-      ) as Anthropic.Beta.BetaMessage;
-    } catch (e) {
-      if (e instanceof Anthropic.AuthenticationError) throw new HttpError(500, 'The AI service key is missing or invalid. Ask the administrator to set ANTHROPIC_API_KEY.');
-      if (e instanceof Anthropic.RateLimitError) throw new HttpError(429, 'The AI service is busy. Please try again in a minute.');
-      if (e instanceof Anthropic.APIError) throw new HttpError(502, `AI service error (${e.status ?? 'network'}): ${e.message}`);
-      throw e;
+// ------------------------------------------------------------------ Gemini
+async function callGemini(params: { system: string; parts: Part[]; tools?: boolean; schema?: unknown }): Promise<GenerateContentResponse> {
+  if (!Deno.env.get('GEMINI_API_KEY')) throw new HttpError(500, 'The AI service is not set up. Ask the administrator to set GEMINI_API_KEY.');
+  let res: GenerateContentResponse;
+  try {
+    res = await gemini.models.generateContent({
+      model: MODEL,
+      contents: [{ role: 'user', parts: params.parts }],
+      config: {
+        systemInstruction: params.system,
+        ...(params.tools ? { tools: [{ googleSearch: {} }, { urlContext: {} }] } : {}),
+        ...(params.schema ? { responseMimeType: 'application/json', responseJsonSchema: params.schema } : {}),
+        maxOutputTokens: 16000,
+        abortSignal: AbortSignal.timeout(140_000),
+      },
+    });
+  } catch (e) {
+    if (e instanceof ApiError) {
+      if (e.status === 429) throw new HttpError(429, 'The free AI quota is used up for now. Try again in a minute, or tomorrow if the daily limit is reached.');
+      if (e.status === 400 && /api key/i.test(e.message)) throw new HttpError(500, 'The AI key is invalid. Ask the administrator to check GEMINI_API_KEY.');
+      if (e.status === 401 || e.status === 403) throw new HttpError(500, 'The AI key is invalid or not allowed. Ask the administrator to check GEMINI_API_KEY.');
+      if (e.status === 404) throw new HttpError(500, `The AI model "${MODEL}" is not available. Ask the administrator to set GEMINI_MODEL.`);
+      throw new HttpError(502, `AI service error (${e.status}): ${e.message}`);
     }
-    if (res.stop_reason === 'refusal') throw new HttpError(422, 'The AI declined this request. Try a clearer screenshot or type the tender number.');
-    if (res.stop_reason !== 'pause_turn') return res;
-    messages.push({ role: 'assistant', content: res.content });
+    if (e instanceof DOMException && e.name === 'TimeoutError') throw new HttpError(504, 'The AI took too long. Try again with the tender number.');
+    throw e;
   }
-  throw new HttpError(504, 'The search took too long. Try again with the tender number.');
+  if (res.promptFeedback?.blockReason) throw new HttpError(422, 'The AI declined this request. Try a clearer screenshot or type the tender number.');
+  const finish = res.candidates?.[0]?.finishReason;
+  if (finish === FinishReason.MAX_TOKENS) throw new HttpError(502, 'The answer was cut off. Please try again.');
+  if (finish && finish !== FinishReason.STOP) throw new HttpError(422, 'The AI could not answer this one. Try a clearer screenshot or type the tender number.');
+  return res;
 }
 
-function textOf(res: Anthropic.Beta.BetaMessage): string {
-  return res.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('');
+/** Pages Google Search actually returned, for when the answer lists none. */
+function groundingSources(res: GenerateContentResponse): { url: string; title: string }[] {
+  return (res.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [])
+    .flatMap((c) => (c.web?.uri ? [{ url: c.web.uri, title: c.web.title ?? c.web.uri }] : []))
+    .slice(0, 8);
 }
 
 function parseJson<T>(text: string): T {
@@ -166,9 +179,9 @@ const LOOKUP_SYSTEM = `You help the bid team of Diwakar Solar, a solar EPC compa
 The user gives you a screenshot (often a WhatsApp forward or a tender-alert listing) and/or some text about a tender.
 
 1. Read every detail you can from the input: tender/NIT/bid number, authority, title, dates, portal.
-2. Use web search to find the tender on OFFICIAL sources: GeM (bidplus.gem.gov.in), CPPP (eprocure.gov.in), state e-procurement portals (eproc.rajasthan.gov.in, sppp.rajasthan.gov.in, etc.), or the authority's own website (.gov.in / .nic.in / PSU sites such as seci.co.in, ntpc.co.in).
+2. Use Google Search to find the tender on OFFICIAL sources: GeM (bidplus.gem.gov.in), CPPP (eprocure.gov.in), state e-procurement portals (eproc.rajasthan.gov.in, sppp.rajasthan.gov.in, etc.), or the authority's own website (.gov.in / .nic.in / PSU sites such as seci.co.in, ntpc.co.in).
    Aggregator sites (tendertiger, tender247, bidassist …) may be used to find the number, but always try to reach the official page.
-3. Look for a direct link to the official notice / NIT / bid document as a PDF. Use web fetch to confirm a link when useful. Many portals put documents behind a captcha — if so, say so in notes and give the portal page instead.
+3. Look for a direct link to the official notice / NIT / bid document as a PDF. Open the official page (URL context) to confirm a link when useful; only list links you actually saw. Many portals put documents behind a captcha — if so, say so in notes and give the portal page instead.
 4. For portal, tender_type, work_type and emd_mode use exactly one of these values or null:
    portal: ${PORTALS.join(' | ')}
    tender_type: ${TENDER_TYPES.join(' | ')} (gem = GeM bid)
@@ -190,29 +203,21 @@ async function lookup(body: { images?: unknown; text?: unknown }) {
   const images = Array.isArray(body.images) ? body.images.slice(0, MAX_IMAGES) : [];
   if (!text && images.length === 0) throw new HttpError(400, 'Add a screenshot or type something about the tender.');
 
-  const content: Anthropic.Beta.BetaContentBlockParam[] = [];
+  const parts: Part[] = [];
   for (const img of images) {
     const { media_type, data } = (img ?? {}) as { media_type?: string; data?: string };
     if (!media_type || !IMAGE_TYPES.includes(media_type) || typeof data !== 'string' || !data) {
       throw new HttpError(400, 'Screenshots must be PNG, JPEG, WEBP or GIF images.');
     }
-    content.push({ type: 'image', source: { type: 'base64', media_type: media_type as 'image/png', data } });
+    parts.push({ inlineData: { mimeType: media_type, data } });
   }
-  content.push({ type: 'text', text: text ? `About the tender:\n${text}` : 'Find the tender shown in the screenshot.' });
+  parts.push({ text: text ? `About the tender:\n${text}` : 'Find the tender shown in the screenshot.' });
 
-  const res = await callClaude({
-    max_tokens: 16000,
-    thinking: { type: 'adaptive' },
-    output_config: { effort: 'medium' },
-    system: LOOKUP_SYSTEM,
-    tools: [
-      { type: 'web_search_20260209', name: 'web_search', max_uses: 8, user_location: { type: 'approximate', country: 'IN', region: 'Rajasthan', timezone: 'Asia/Kolkata' } },
-      { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: 6 },
-    ],
-    messages: [{ role: 'user', content }],
-  });
-
-  const found = parseJson<LookupResult>(textOf(res));
+  // Search grounding and a response schema can't be combined on every
+  // model, so this call returns JSON as text and is parsed leniently.
+  const res = await callGemini({ system: LOOKUP_SYSTEM, parts, tools: true });
+  const found = parseJson<LookupResult>(res.text ?? '');
+  if (!found.sources?.length) found.sources = groundingSources(res);
   const documentUrls = (found.document_urls ?? []).filter((d) => d && typeof d.url === 'string');
 
   // Try each candidate until one is a real PDF.
@@ -277,9 +282,9 @@ async function downloadPdf(raw: string): Promise<Uint8Array> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   isPublicHttps(res.url || raw); // the redirect target must be public too
   const declared = Number(res.headers.get('content-length') ?? 0);
-  if (declared > MAX_PDF_BYTES) throw new Error('file larger than 20 MB');
+  if (declared > MAX_PDF_BYTES) throw new Error('file larger than 14 MB');
   const bytes = new Uint8Array(await res.arrayBuffer());
-  if (bytes.byteLength > MAX_PDF_BYTES) throw new Error('file larger than 20 MB');
+  if (bytes.byteLength > MAX_PDF_BYTES) throw new Error('file larger than 14 MB');
   if (!(bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46)) {
     throw new Error('the link did not return a PDF (probably a login or captcha page)');
   }
@@ -305,21 +310,15 @@ Quote numbers, dates and amounts exactly as the document states them; use null w
 Amounts in fields are in rupees (convert lakh/crore). Date-times in fields are ISO 8601 with the +05:30 offset.`;
 
 async function readPdf(data: string, hint = ''): Promise<{ fields: Record<string, unknown>; summary: unknown }> {
-  const res = await callClaude({
-    max_tokens: 16000,
-    thinking: { type: 'adaptive' },
-    output_config: { effort: 'medium', format: { type: 'json_schema', schema: EXTRACT_SCHEMA } },
+  const res = await callGemini({
     system: READ_SYSTEM,
-    messages: [{
-      role: 'user',
-      content: [
-        { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } },
-        { type: 'text', text: hint ? `The user described this tender as: ${hint}\n\nExtract and summarise.` : 'Extract and summarise this tender.' },
-      ],
-    }],
+    schema: EXTRACT_SCHEMA,
+    parts: [
+      { inlineData: { mimeType: 'application/pdf', data } },
+      { text: hint ? `The user described this tender as: ${hint}\n\nExtract and summarise.` : 'Extract and summarise this tender.' },
+    ],
   });
-  if (res.stop_reason === 'max_tokens') throw new HttpError(502, 'The summary was cut off. Please try again.');
-  return JSON.parse(textOf(res));
+  return parseJson(res.text ?? '');
 }
 
 /** Values read from the PDF win; web values fill whatever the PDF leaves blank. */
@@ -335,7 +334,7 @@ async function summarize(caller: SupabaseClient, body: { pdf?: { data?: string }
     // Read the attachment as the caller, so RLS decides whether they may.
     const { data: doc, error } = await caller.from('documents').select('storage_path, mime_type, size_bytes').eq('id', body.document_id).single();
     if (error || !doc) throw new HttpError(404, 'Document not found.');
-    if ((doc.size_bytes ?? 0) > MAX_PDF_BYTES) throw new HttpError(400, 'The document is larger than 20 MB.');
+    if ((doc.size_bytes ?? 0) > MAX_PDF_BYTES) throw new HttpError(400, 'The document is larger than 14 MB.');
     const file = await caller.storage.from('documents').download(doc.storage_path);
     if (file.error) throw new HttpError(403, file.error.message);
     const bytes = new Uint8Array(await file.data.arrayBuffer());
@@ -343,7 +342,7 @@ async function summarize(caller: SupabaseClient, body: { pdf?: { data?: string }
     data = toBase64(bytes);
   }
   if (!data) throw new HttpError(400, 'Attach the tender PDF to summarise.');
-  if (data.length > (MAX_PDF_BYTES * 4) / 3 + 16) throw new HttpError(400, 'The PDF is larger than 20 MB.');
+  if (data.length > (MAX_PDF_BYTES * 4) / 3 + 16) throw new HttpError(400, 'The PDF is larger than 14 MB.');
   return await readPdf(data, typeof body.text === 'string' ? body.text.slice(0, 2000) : '');
 }
 

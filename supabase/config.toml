@@ -71,6 +71,7 @@ otp_expiry = 86400
 [functions.admin-users]
 verify_jwt = true
 
-# Needs the ANTHROPIC_API_KEY secret:  npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+# Needs the GEMINI_API_KEY secret (free key from aistudio.google.com):
+#   npx supabase secrets set GEMINI_API_KEY=...
 [functions.tender-ai]
 verify_jwt = true
