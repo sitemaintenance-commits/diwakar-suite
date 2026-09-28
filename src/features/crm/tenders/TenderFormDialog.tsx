@@ -60,16 +60,34 @@ function fromTender(t: Tender | null): Form {
   };
 }
 
+const DATETIME_FIELDS = ['prebid_at', 'submission_due_at', 'technical_opening_at', 'financial_opening_at'];
+
+/** A new tender's form, pre-filled (e.g. from the AI lookup). */
+function fromPrefill(prefill: Record<string, string>): Form {
+  const f: Form = { ...EMPTY };
+  for (const [k, v] of Object.entries(prefill)) {
+    if (!(k in EMPTY) || !v) continue;
+    f[k] = DATETIME_FIELDS.includes(k) ? toLocalInput(v) : v;
+  }
+  return f;
+}
+
 export function TenderFormDialog({
   open,
   onOpenChange,
   tender,
   onSaved,
+  prefill,
+  afterCreate,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   tender: Tender | null;
   onSaved?: (id: string) => void;
+  /** Initial values for a new tender. */
+  prefill?: Record<string, string>;
+  /** Runs after a new tender is inserted, before onSaved (attach files etc.). */
+  afterCreate?: (id: string) => Promise<void>;
 }) {
   const isNew = !tender;
   const can = useCan('crm.tenders');
@@ -83,10 +101,10 @@ export function TenderFormDialog({
 
   useEffect(() => {
     if (open) {
-      setF(fromTender(tender));
+      setF(!tender && prefill ? fromPrefill(prefill) : fromTender(tender));
       setTouched(false);
     }
-  }, [open, tender]);
+  }, [open, tender, prefill]);
 
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
   const titleError = !f.title.trim() ? 'A title is required.' : null;
@@ -146,8 +164,15 @@ export function TenderFormDialog({
     const res = isNew
       ? await supabase.from('tenders').insert(payload).select('id').single()
       : await supabase.from('tenders').update(payload).eq('id', tender.id).select('id').single();
+    if (res.error) {
+      setBusy(false);
+      return toast.error(errorMessage(res.error));
+    }
+    if (isNew && afterCreate) {
+      // The tender exists either way; a failure here is reported, not rolled back.
+      await afterCreate(res.data.id).catch((err) => toast.error(errorMessage(err)));
+    }
     setBusy(false);
-    if (res.error) return toast.error(errorMessage(res.error));
     toast.success(isNew ? 'Tender added' : 'Tender updated');
     await qc.invalidateQueries({ queryKey: ['tenders'] });
     await qc.invalidateQueries({ queryKey: ['tender'] });

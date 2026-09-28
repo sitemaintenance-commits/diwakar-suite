@@ -262,9 +262,25 @@ export interface Tender {
   completion_days: number | null;
   assigned_to: string | null;
   notes: string | null;
+  ai_summary: TenderAiSummary | null;
+  ai_sources: { url: string; title: string }[] | null;
+  ai_summary_from: 'pdf' | 'web' | null;
+  ai_summary_at: string | null;
   created_at: string;
   created_by: string | null;
   sites?: { id: string; name: string } | null;
+}
+
+/** What the tender-ai function writes about a tender notice. */
+export interface TenderAiSummary {
+  overview: string;
+  scope: string[];
+  eligibility: string[];
+  key_dates: { label: string; value: string }[];
+  financials: { label: string; value: string }[];
+  documents_required: string[];
+  risks: string[];
+  recommendation: string;
 }
 
 export interface QuotationItem {

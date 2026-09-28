@@ -70,3 +70,7 @@ otp_expiry = 86400
 
 [functions.admin-users]
 verify_jwt = true
+
+# Needs the ANTHROPIC_API_KEY secret:  npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+[functions.tender-ai]
+verify_jwt = true

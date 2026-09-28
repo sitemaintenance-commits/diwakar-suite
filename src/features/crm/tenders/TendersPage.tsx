@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { toast } from 'sonner';
-import { AlertTriangle, Download, Gavel, IndianRupee, Plus, Trophy, Wallet } from 'lucide-react';
+import { AlertTriangle, Download, Gavel, IndianRupee, Plus, Sparkles, Trophy, Wallet } from 'lucide-react';
 import { errorMessage } from '@/lib/errors';
 import { exportCsv } from '@/lib/export';
 import { fmtCapacity, fmtDate, fmtINR, safeNum } from '@/lib/format';
@@ -18,6 +18,7 @@ import { useDashboardSummary } from '@/features/dashboard/api';
 import { fetchTenders, useAuthorities, useTenders, type TenderFilters } from '@/features/crm/api';
 import { Deadline, EMD_STATUS, StatusChip, TENDER_STATUS } from '@/features/crm/shared';
 import { TenderFormDialog } from '@/features/crm/tenders/TenderFormDialog';
+import { TenderAiDialog } from '@/features/crm/tenders/TenderAi';
 
 const PAGE_SIZE = 20;
 
@@ -41,6 +42,7 @@ export function TendersPage() {
   const [filters, setFilters] = useState<TenderFilters>(EMPTY_FILTERS);
   const tenders = useTenders(filters);
   const [formOpen, setFormOpen] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
 
   const update = (patch: Partial<TenderFilters>) => setFilters((f) => ({ ...f, page: 0, ...patch }));
   const t = summary.data?.tenders;
@@ -83,6 +85,11 @@ export function TendersPage() {
             {can.export && (
               <Button variant="outline" onClick={onExport}>
                 <Download /> Export
+              </Button>
+            )}
+            {can.create && (
+              <Button variant="outline" onClick={() => setAiOpen(true)}>
+                <Sparkles /> Find with AI
               </Button>
             )}
             {can.create && (
@@ -239,6 +246,7 @@ export function TendersPage() {
       </Card>
 
       <TenderFormDialog open={formOpen} onOpenChange={setFormOpen} tender={null} onSaved={(id) => navigate(`/crm/tenders/${id}`)} />
+      <TenderAiDialog open={aiOpen} onOpenChange={setAiOpen} onCreated={(id) => navigate(`/crm/tenders/${id}`)} />
     </>
   );
 }

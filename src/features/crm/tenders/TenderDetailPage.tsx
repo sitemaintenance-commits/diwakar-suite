@@ -45,6 +45,7 @@ import {
   TENDER_TYPE_LABEL,
 } from '@/features/crm/shared';
 import { TenderFormDialog } from '@/features/crm/tenders/TenderFormDialog';
+import { TenderAiSummaryCard } from '@/features/crm/tenders/TenderAi';
 
 const TENDER_DOC_TYPES = ['NIT / tender document', 'BOQ', 'Technical bid', 'Financial bid', 'EMD receipt', 'Corrigendum', 'LOA / work order', 'Other'];
 
@@ -211,7 +212,8 @@ export function TenderDetailPage() {
               <TabsTrigger value="followups">Follow-ups</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="overview">
+            <TabsContent value="overview" className="space-y-6">
+              <TenderAiSummaryCard tender={t} />
               <Card>
                 <CardContent className="grid grid-cols-1 gap-x-8 p-5 sm:grid-cols-2">
                   <DetailRow label="Authority / department">{t.authority}</DetailRow>
