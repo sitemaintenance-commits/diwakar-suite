@@ -103,6 +103,7 @@ interface Result {
   ignored?: number;
   employees_created?: number;
   full_day_failures?: number;
+  filled?: number;
   needs_review?: string[];
   insolation_rejected?: string[];
   suspect_pr?: string[];
@@ -183,8 +184,9 @@ export function ImportPage() {
         <CardContent className="grid gap-2 p-4 text-sm text-muted-foreground">
           <p>
             Each importer checks your permission first, refuses sites you are not assigned to, and writes what it did to
-            the audit log. Records that already exist are <strong>skipped, never overwritten</strong> — so a correction
-            made here survives a re-import.
+            the audit log. Records that already exist are <strong>never overwritten</strong> — so a correction made here
+            survives a re-import. Where an earlier import left a reading's outage, remarks or insolation blank, a later
+            one fills the blanks in; generation is never changed.
           </p>
           <p>Use <strong>Check first</strong> to see what would land before anything is written.</p>
         </CardContent>
@@ -287,6 +289,11 @@ function ImportCard({ source, canImport }: { source: Source; canImport: boolean 
               <span className="tabular">
                 {fmtNumber(result.inserted)} {result.dry_run ? 'would be added' : 'added'}
               </span>
+              {result.filled ? (
+                <span className="tabular text-muted-foreground">
+                  · {fmtNumber(result.filled)} earlier import(s) {result.dry_run ? 'would be' : ''} filled in
+                </span>
+              ) : null}
               <span className="tabular text-muted-foreground">· {fmtNumber(result.skipped)} already here</span>
               {result.ignored ? (
                 <span className="tabular text-amber-600">· {fmtNumber(result.ignored)} could not be matched</span>

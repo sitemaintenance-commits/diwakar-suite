@@ -1319,6 +1319,54 @@ await expectValue('and a real one is still accepted', OWNER,
 await expectValue('a dry run flags the PR too, before anything is written', OWNER,
   `select jsonb_array_length(public.import_om_generation($1::jsonb, true)->'suspect_pr')`, 1,
   [JSON.stringify({ reports: { '2026-09-25': [{ short: 'Niwai', generation: 12576, insolation: '3.94', outage: 'No' }] } })]);
+// A second import fills in what a generation-only first import left out,
+// without touching generation or anything edited in the suite.
+await expectOk('a generation-only first import (like production on 26 Sep)', OWNER,
+  `select public.import_om_generation($1::jsonb)`, [JSON.stringify([
+    { date: '2026-03-10', site: 'Suaap', generation: 16000 },
+    { date: '2026-03-11', site: 'Suaap', generation: 15000 },
+    { date: '2026-03-12', site: 'Suaap', generation: 14000 },
+  ])]);
+await expectOk('one of them is then corrected in the suite', OWNER,
+  `update public.generation_records set remarks = 'Checked on site'
+   where site_id = (select id from public.sites where name = 'Suaap') and gen_date = '2026-03-12'`);
+{
+  const r = await as(OWNER, `select public.import_om_generation($1::jsonb) i`, [JSON.stringify({ reports: {
+    '2026-03-10': [{ short: 'Suaap', generation: 16000, insolation: '5.4', outage: '10:00 - 10:30', remarks: 'Grid trip' }],
+    '2026-03-11': [{ short: 'Suaap', generation: 99999, insolation: '5.1', outage: 'No', remarks: '' }],
+    '2026-03-12': [{ short: 'Suaap', generation: 14000, insolation: '5.0', outage: '11:00 - 11:15', remarks: 'x' }],
+  } })]);
+  const i = r.rows[0].i;
+  Number(i.filled) === 2 && Number(i.skipped) === 1 && Number(i.inserted) === 0
+    ? ok('the second import fills the two untouched readings and leaves the corrected one alone')
+    : bad('fill import', JSON.stringify(i));
+}
+await expectValue('the outage, its hours, the remarks and the insolation arrived', OWNER,
+  `select grid_outage_hrs::text || ' / ' || remarks || ' / ' || irradiation_kwh_m2::text
+   from public.generation_records where gen_date = '2026-03-10'
+     and site_id = (select id from public.sites where name = 'Suaap')`, '0.50 / Grid trip / 5.400');
+await expectValue('generation was not changed by the import', OWNER,
+  `select generation_kwh::int from public.generation_records where gen_date = '2026-03-11'
+     and site_id = (select id from public.sites where name = 'Suaap')`, 15000);
+await expectValue('the reading corrected in the suite kept its own values', OWNER,
+  `select remarks || ' / ' || coalesce(irradiation_kwh_m2::text, 'none') from public.generation_records
+   where gen_date = '2026-03-12' and site_id = (select id from public.sites where name = 'Suaap')`, 'Checked on site / none');
+// An impossible insolation already stored by an earlier import (Kadel's
+// 9.92 in production predates the check), so it is planted past the guard.
+await db.exec(`
+  alter table public.generation_records disable trigger guard_insolation;
+  update public.generation_records set irradiation_kwh_m2 = 9.92, updated_by = null
+   where gen_date = '2026-03-11' and site_id = (select id from public.sites where name = 'Suaap');
+  alter table public.generation_records enable trigger guard_insolation;`);
+await expectValue('is cleared by the next import when it has nothing valid to put there', OWNER,
+  `select (public.import_om_generation($1::jsonb)->>'filled')::int`, 1,
+  [JSON.stringify({ reports: { '2026-03-11': [{ short: 'Suaap', generation: 15000, insolation: '', outage: 'No' }] } })]);
+await expectValue('so it reads as not recorded', OWNER,
+  `select irradiation_kwh_m2 is null from public.generation_records where gen_date = '2026-03-11'
+     and site_id = (select id from public.sites where name = 'Suaap')`, true);
+await expectValue('running it again fills nothing', OWNER,
+  `select (public.import_om_generation($1::jsonb)->>'filled')::int`, 0,
+  [JSON.stringify({ reports: { '2026-03-10': [{ short: 'Suaap', generation: 16000, insolation: '5.9', outage: '12:00 - 13:00', remarks: 'y' }] } })]);
 await expectValue('the dropped insolation is stored as not recorded', OWNER,
   `select irradiation_kwh_m2 is null from public.generation_records g join public.sites s on s.id = g.site_id
    where s.name = 'Niwai' and g.gen_date = '2026-09-19'`, true);
