@@ -86,13 +86,25 @@ The browser only holds the public anon key and the user's JWT. Every table has R
 
 | Source | What to give it |
 |---|---|
-| O&M generation | The O&M CRM's **Export JSON** (the same thing its `solar-crm-v2` browser key holds) |
+| O&M generation | `om-history-import.json` from `npm run om:history -- <export.json>` — see below |
 | Daily Review | The Daily Review CRM's `diwakar.dailyreview.sheets.cache.v1` browser key |
 | PMS working sheets | The "Daily Employee Working Sheet" responses, downloaded from Google Sheets as **CSV** |
 
 Every importer checks your permission, refuses sites you are not assigned to, records what it did in the
 audit log, and **skips anything already present** rather than overwriting it — so running an import twice is
 safe and a correction made in the suite survives a re-import. Use **Check first** for a dry run.
+
+**O&M history comes from two places, and neither is right on its own.** The office workbooks
+(`sheets/Sites DC Load <Month> 2026.xlsx`) are the accurate record of generation — the live O&M CRM copies
+2 July into 31 July for every plant, holds 0 on days the workbooks have a reading, and carries a dozen typos.
+The live app is the record of insolation, outage times and remarks. Press **Export JSON** in the O&M CRM, then:
+
+```bash
+npm run om:history -- C:\path\to\export.json
+```
+
+It writes `om-history-import.json` (import this) and `om-history-differences.csv` (every plant-day the two
+disagreed on, and which value was used — hand it to the O&M head) next to the export.
 
 The O&M sheet's free-text outage column ("No", `08:33 - 10:00`, labelled `Grid Failure :-` blocks, en dashes)
 is parsed into hours; a window that ends before it starts is treated as a typo and contributes nothing. An

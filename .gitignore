@@ -14,3 +14,5 @@ backups/
 backup*.sql
 __pycache__/
 om-generation-import.json
+om-history-import.json
+om-history-differences.csv
