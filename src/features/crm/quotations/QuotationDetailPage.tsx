@@ -144,7 +144,7 @@ export function QuotationDetailPage() {
             </div>
           </div>
 
-          <div className="grid gap-6 py-6 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-6 py-6 sm:grid-cols-2">
             <div>
               <div className="text-xs uppercase tracking-wide text-muted-foreground">To</div>
               <div className="mt-1 font-semibold">{q.client_name}</div>

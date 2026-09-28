@@ -131,7 +131,7 @@ export function QuotationFormPage() {
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Items</CardTitle>

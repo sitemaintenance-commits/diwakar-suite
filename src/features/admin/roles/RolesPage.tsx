@@ -65,7 +65,7 @@ export function RolesPage() {
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-[230px_1fr]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[230px_1fr]">
         {/* Roles list */}
         <Card className="h-fit overflow-hidden">
           <div className="border-b px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Roles</div>

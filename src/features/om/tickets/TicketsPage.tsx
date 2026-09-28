@@ -242,7 +242,7 @@ function TicketFormDialog({ open, onOpenChange, onSaved }: { open: boolean; onOp
           <DialogTitle>Raise ticket</DialogTitle>
           <DialogDescription>Report a breakdown or complaint at one of your sites.</DialogDescription>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+        <form onSubmit={onSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Site" required error={touched ? siteError : null}>
             <FilterSelect
               value={f.site_id || NONE}

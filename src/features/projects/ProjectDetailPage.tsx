@@ -81,7 +81,7 @@ export function ProjectDetailPage() {
       </div>
 
       <Tabs defaultValue="plan" className="mt-6">
-        <TabsList className="mb-6 flex-wrap">
+        <TabsList className="mb-6 h-auto flex-wrap">
           <TabsTrigger value="plan">Plan</TabsTrigger>
           <TabsTrigger value="updates">Daily updates</TabsTrigger>
           <TabsTrigger value="approvals">Approvals</TabsTrigger>
@@ -266,7 +266,7 @@ function UpdatesTab({ projectId }: { projectId: string }) {
             <CardDescription>Where each work front stands today</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Field label="Date">
                 <Input type="date" value={date} max={todayIST()} onChange={(e) => setDate(e.target.value)} />
               </Field>
@@ -274,7 +274,7 @@ function UpdatesTab({ projectId }: { projectId: string }) {
                 <Input value={engineer} onChange={(e) => setEngineer(e.target.value)} placeholder="Name" />
               </Field>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {WORK_FRONTS.map(([key, label]) => (
                 <Field key={key} label={label}>
                   <FilterSelect
@@ -445,7 +445,7 @@ function ApprovalsTab({ projectId }: { projectId: string }) {
           <DialogHeader>
             <DialogTitle>Add approval</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Approval" className="sm:col-span-2">
               <FilterSelect value={form.kind} onChange={(v) => setForm({ ...form, kind: v })} options={APPROVAL_KINDS.map((k) => [k, k])} />
             </Field>
@@ -585,7 +585,7 @@ function MaterialsTab({ projectId }: { projectId: string }) {
           <DialogHeader>
             <DialogTitle>Add material line</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Item" required className="sm:col-span-2">
               <Input value={form.item} onChange={(e) => setForm({ ...form, item: e.target.value })} />
             </Field>
@@ -736,7 +736,7 @@ function BillsTab({ projectId }: { projectId: string }) {
           <DialogHeader>
             <DialogTitle>Record a vendor bill</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Vendor" required className="sm:col-span-2">
               <FilterSelect
                 value={form.vendor_id}
@@ -879,7 +879,7 @@ function PaymentsTab({ projectId }: { projectId: string }) {
             <DialogHeader>
               <DialogTitle>Add a payment milestone</DialogTitle>
             </DialogHeader>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Milestone" required className="sm:col-span-2" hint="For example: Supply — 40%">
                 <Input value={form.milestone} onChange={(e) => setForm({ ...form, milestone: e.target.value })} />
               </Field>

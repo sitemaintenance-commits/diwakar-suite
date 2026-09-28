@@ -179,7 +179,7 @@ export function ProjectsPage() {
             />
           </div>
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle>Execution progress</CardTitle>
@@ -244,7 +244,7 @@ export function ProjectsPage() {
                 <CardTitle>Tasks needing attention</CardTitle>
                 <CardDescription>The next items due across every project</CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <CardContent className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {d.attention.map((t) => {
                   const overdue = t.due_date && new Date(t.due_date) < new Date(new Date().toDateString());
                   return (
@@ -341,7 +341,7 @@ export function ProjectsPage() {
           <DialogHeader>
             <DialogTitle>New project</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Project name" required className="sm:col-span-2">
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </Field>

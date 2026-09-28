@@ -163,7 +163,7 @@ export function DashboardPage() {
         </div>
       )}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Sites */}
         <Card className="lg:col-span-2">
           <CardHeader className="flex-row items-center justify-between">

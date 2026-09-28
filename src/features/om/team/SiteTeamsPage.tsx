@@ -90,7 +90,7 @@ export function SiteTeamsPage() {
             />
           </div>
 
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {(t?.sites ?? []).map((s) => (
               <Card key={s.site_id}>
                 <CardHeader className="pb-3">

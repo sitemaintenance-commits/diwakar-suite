@@ -161,7 +161,7 @@ export function UserFormDialog({
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="grid gap-6">
-          <section className="grid gap-4 sm:grid-cols-2">
+          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Full name" htmlFor="u_name" required error={err('full_name')}>
               <Input id="u_name" value={f.full_name} onChange={(e) => set('full_name', e.target.value)} />
             </Field>
@@ -214,7 +214,7 @@ export function UserFormDialog({
           {isNew && (
             <section className="grid gap-3 rounded-xl border bg-slate-50/60 p-4">
               <p className="text-sm font-semibold">How should this person sign in?</p>
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {(
                   [
                     ['invite', 'Send invitation email', 'They choose their own password from the email link.'],
@@ -240,7 +240,7 @@ export function UserFormDialog({
           )}
 
           {canAssign ? (
-            <section className="grid gap-5 sm:grid-cols-2">
+            <section className="grid grid-cols-1 gap-5 sm:grid-cols-2">
               <div className="grid content-start gap-2">
                 <p className="text-sm font-semibold">Roles</p>
                 <p className="text-xs text-muted-foreground">Permissions are the combination of all selected roles.</p>

@@ -200,7 +200,7 @@ export function TenderDetailPage() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <Tabs defaultValue="overview">
             <TabsList>
@@ -213,7 +213,7 @@ export function TenderDetailPage() {
 
             <TabsContent value="overview">
               <Card>
-                <CardContent className="grid gap-x-8 p-5 sm:grid-cols-2">
+                <CardContent className="grid grid-cols-1 gap-x-8 p-5 sm:grid-cols-2">
                   <DetailRow label="Authority / department">{t.authority}</DetailRow>
                   <DetailRow label="Tender type">{TENDER_TYPE_LABEL[t.tender_type] ?? titleCase(t.tender_type)}</DetailRow>
                   <DetailRow label="Scope of work">{t.work_type}</DetailRow>
@@ -250,7 +250,7 @@ export function TenderDetailPage() {
 
             <TabsContent value="money">
               <Card>
-                <CardContent className="grid gap-x-8 p-5 sm:grid-cols-2">
+                <CardContent className="grid grid-cols-1 gap-x-8 p-5 sm:grid-cols-2">
                   <DetailRow label="Tender fee">
                     {fmtINR(t.tender_fee)} {t.tender_fee_paid ? <Badge variant="success">Paid</Badge> : <Badge variant="secondary">Unpaid</Badge>}
                   </DetailRow>
@@ -268,7 +268,7 @@ export function TenderDetailPage() {
 
             <TabsContent value="result">
               <Card>
-                <CardContent className="grid gap-x-8 p-5 sm:grid-cols-2">
+                <CardContent className="grid grid-cols-1 gap-x-8 p-5 sm:grid-cols-2">
                   <DetailRow label="Our bid value">{t.our_bid_value ? fmtINR(t.our_bid_value) : null}</DetailRow>
                   <DetailRow label="Our rank">{t.our_rank ? `L${t.our_rank}` : null}</DetailRow>
                   <DetailRow label="L1 value">{t.l1_value ? fmtINR(t.l1_value) : null}</DetailRow>

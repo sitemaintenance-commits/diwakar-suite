@@ -356,7 +356,7 @@ function SiteFormDialog({
           <DialogTitle>{site ? `Edit ${site.name}` : 'Add site'}</DialogTitle>
           <DialogDescription>Technical plant details (inverters, commissioning) are managed in Solar Sites once O&amp;M is released.</DialogDescription>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+        <form onSubmit={onSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Site name" htmlFor="s_name" required>
             <Input id="s_name" value={f.name} onChange={(e) => set('name', e.target.value)} autoFocus />
           </Field>

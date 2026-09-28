@@ -181,13 +181,13 @@ export function ScorecardPage() {
             />
           </div>
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-3">
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
             <Card>
               <CardHeader>
                 <CardTitle>Leaderboard</CardTitle>
                 <CardDescription>Top performers for {fmtDate(from)} – {fmtDate(to)}</CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-3">
+              <CardContent className="grid grid-cols-1 gap-3">
                 {top.length ? (
                   top.map((r, i) => (
                     <div key={r.employee_id} className="flex items-center gap-3">

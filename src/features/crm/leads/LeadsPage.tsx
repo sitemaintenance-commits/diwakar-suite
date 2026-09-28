@@ -297,7 +297,7 @@ function LeadFormDialog({ open, onOpenChange, lead }: { open: boolean; onOpenCha
           <DialogTitle>{isNew ? 'Add lead' : `Edit ${lead.lead_code}`}</DialogTitle>
           <DialogDescription>Enquiries that are not government tenders.</DialogDescription>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+        <form onSubmit={onSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Company / organisation" htmlFor="l_company">
             <Input id="l_company" value={f.company} onChange={(e) => set('company', e.target.value)} autoFocus />
           </Field>

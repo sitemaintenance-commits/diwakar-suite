@@ -476,7 +476,7 @@ function ApplyLeaveDialog({ open, onOpenChange, onSaved }: { open: boolean; onOp
           <DialogTitle>Apply for leave</DialogTitle>
           <DialogDescription>Your request goes to whoever holds the approval permission.</DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+        <form onSubmit={submit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Leave type">
             <FilterSelect value={f.leave_type} onChange={(v) => setF((s) => ({ ...s, leave_type: v }))} options={LEAVE_TYPES.map((t) => [t, titleCase(t)] as [string, string])} />
           </Field>
@@ -629,7 +629,7 @@ function NewReviewDialog({ open, onOpenChange, onSaved }: { open: boolean; onOpe
         <DialogHeader>
           <DialogTitle>New performance review</DialogTitle>
         </DialogHeader>
-        <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+        <form onSubmit={submit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Employee" required className="sm:col-span-2">
             <FilterSelect
               value={f.employee_id || NONE}
@@ -1009,7 +1009,7 @@ function TaskFormDialog({
         <DialogHeader>
           <DialogTitle>New task</DialogTitle>
         </DialogHeader>
-        <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+        <form onSubmit={submit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Task" htmlFor="t_title" required className="sm:col-span-2">
             <Input id="t_title" value={f.title} onChange={(e) => setF((s) => ({ ...s, title: e.target.value }))} autoFocus />
           </Field>

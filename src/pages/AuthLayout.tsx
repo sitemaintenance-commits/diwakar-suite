@@ -13,7 +13,7 @@ const MODULES = [
 
 export function AuthLayout({ title, subtitle, children }: { title: string; subtitle?: ReactNode; children: ReactNode }) {
   return (
-    <div className="grid min-h-screen lg:grid-cols-[1.05fr_1fr]">
+    <div className="grid grid-cols-1 min-h-screen lg:grid-cols-[1.05fr_1fr]">
       <div className="relative hidden overflow-hidden bg-gradient-to-br from-[#E8740C] via-[#dd6a08] to-[#b8540a] p-12 text-white lg:flex lg:flex-col">
         <div className="absolute -right-24 -top-24 h-96 w-96 rounded-full bg-white/10" />
         <div className="absolute -bottom-32 -left-16 h-80 w-80 rounded-full bg-white/10" />

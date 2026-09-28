@@ -160,7 +160,7 @@ export function DailyReportsPage() {
       </Card>
 
       {review.isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-48 rounded-xl" />
           ))}
@@ -174,7 +174,7 @@ export function DailyReportsPage() {
           <EmptyState icon={ClipboardList} title="No departments" description="Departments are managed under HR → Departments." />
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {review.data.departments.map((d) => (
             <Card key={d.department_id}>
               <CardHeader className="flex-row items-start justify-between gap-2">

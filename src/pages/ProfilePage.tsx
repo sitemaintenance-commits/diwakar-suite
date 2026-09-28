@@ -85,7 +85,7 @@ export function ProfilePage() {
   return (
     <>
       <PageHeader icon={UserRound} title="My profile" description="Your personal details, access and password." />
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Personal details</CardTitle>
@@ -123,7 +123,7 @@ export function ProfilePage() {
                 <p className="mt-1 text-xs text-muted-foreground">Last sign-in {fmtDateTime(profile.last_login_at, 'never')}</p>
               </div>
             </div>
-            <form onSubmit={saveProfile} className="grid gap-4 sm:grid-cols-2">
+            <form onSubmit={saveProfile} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Full name" htmlFor="p_name" required>
                 <Input id="p_name" value={name} onChange={(e) => setName(e.target.value)} />
               </Field>

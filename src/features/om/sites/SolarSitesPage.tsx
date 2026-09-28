@@ -51,7 +51,7 @@ export function SolarSitesPage() {
       />
 
       {sites.isLoading || solar.isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-56 rounded-xl" />
           ))}
@@ -65,7 +65,7 @@ export function SolarSitesPage() {
           <EmptyState icon={Sun} title="No sites assigned" description="Ask your administrator to assign sites to your account." />
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {rows.map((site) => {
             const ss = byId[site.id];
             return (
@@ -217,7 +217,7 @@ function SolarSiteDialog({ entry, onClose }: { entry: { site: Site; solar: Solar
           <DialogTitle>{entry.site.name} — plant details</DialogTitle>
           <DialogDescription>Used for CUF, expected generation and O&amp;M planning.</DialogDescription>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+        <form onSubmit={onSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="DC capacity (kWp)" htmlFor="s_dc">
             <Input id="s_dc" inputMode="decimal" value={f.capacity_dc_kwp} onChange={(e) => set('capacity_dc_kwp', e.target.value)} autoFocus />
           </Field>
@@ -343,7 +343,7 @@ function EquipmentDialog({ site, onClose }: { site: Site | null; onClose: () => 
           </Button>
         )}
         {adding && (
-          <form onSubmit={add} className="grid gap-3 rounded-lg border p-3 sm:grid-cols-3">
+          <form onSubmit={add} className="grid grid-cols-1 gap-3 rounded-lg border p-3 sm:grid-cols-3">
             <Field label="Type">
               <FilterSelect value={f.type} onChange={(v) => set('type', v)} options={EQUIPMENT_TYPES.map((t) => [t, EQUIPMENT_LABEL[t]] as [string, string])} />
             </Field>

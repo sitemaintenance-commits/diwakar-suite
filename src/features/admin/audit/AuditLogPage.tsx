@@ -100,7 +100,7 @@ export function AuditLogPage() {
       />
 
       <Card>
-        <div className="grid gap-3 border-b p-4 md:grid-cols-2 xl:grid-cols-[1.4fr_1fr_1fr_1fr_0.8fr_0.8fr_auto] xl:items-end">
+        <div className="grid grid-cols-1 gap-3 border-b p-4 md:grid-cols-2 xl:grid-cols-[1.4fr_1fr_1fr_1fr_0.8fr_0.8fr_auto] xl:items-end">
           <Field label="Search">
             <SearchInput value={filters.search} onChange={(v) => update({ search: v })} placeholder="Summary, user…" className="sm:w-full" />
           </Field>

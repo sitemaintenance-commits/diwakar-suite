@@ -172,7 +172,7 @@ export function DailyEntryPage() {
           <EmptyState icon={Sun} title="No site assigned" description="Ask the O&M head to assign your site to your account." />
         </Card>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <Card className="lg:col-span-2">
             <CardHeader>
               <CardTitle>Daily generation form</CardTitle>
@@ -187,7 +187,7 @@ export function DailyEntryPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-5">
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="Date" htmlFor="fe_date">
                   <Input id="fe_date" type="date" value={date} max={todayIST()} onChange={(e) => setDate(e.target.value)} />
                 </Field>

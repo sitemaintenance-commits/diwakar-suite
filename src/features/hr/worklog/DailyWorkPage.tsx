@@ -244,7 +244,7 @@ export function DailyWorkPage() {
             <CardTitle>Your last two weeks</CardTitle>
             <CardDescription>Every day you reported, and how much of it closed</CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <CardContent className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {data.recent.map((d) => (
               <button
                 key={d.date}

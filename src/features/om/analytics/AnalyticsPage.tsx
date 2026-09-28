@@ -421,7 +421,7 @@ function ShutdownTab() {
             <StatCard label="Month days" value={fmtNumber(s?.month_days)} hint={monthLabel(s?.month)} icon={CalendarDays} tone="slate" />
           </div>
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-3">
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
             <Card className="lg:col-span-2">
               <CardHeader>
                 <CardTitle>Month site-wise</CardTitle>
@@ -604,7 +604,7 @@ function PortfolioTab() {
             </CardContent>
           </Card>
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle>Cumulative ranking</CardTitle>

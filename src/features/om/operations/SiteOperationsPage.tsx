@@ -337,7 +337,7 @@ export function SiteOperationsPage() {
                 {done('patrol')}/{sections.patrol.length}
               </Badge>
             </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {sections.patrol.map((item) => (
                 <div key={item.id} className="rounded-xl border p-3">
                   <div className="flex items-center gap-2 text-sm font-semibold">
@@ -369,7 +369,7 @@ export function SiteOperationsPage() {
                 {done('security')}/{sections.security.length}
               </Badge>
             </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {sections.security.map((item) => (
                 <div key={item.id} className="flex items-center justify-between gap-2 rounded-xl border p-3">
                   <div className="min-w-0">

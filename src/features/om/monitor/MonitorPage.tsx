@@ -134,7 +134,7 @@ function DayView() {
             <StatCard label="AC CUF" value={pct(d.ac_cuf)} hint={`${fmtNumber(d.capacity_ac_kw)} kW AC`} icon={Gauge} tone="violet" />
           </div>
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-3">
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
             <Card>
               <CardHeader>
                 <CardTitle>Site ranking</CardTitle>
@@ -308,7 +308,7 @@ function PeriodView() {
             <StatCard label="Grid availability" value={ratio(m.grid_availability)} hint="From recorded grid outage hours" icon={Activity} tone="amber" />
           </div>
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-3">
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
             <Card className="lg:col-span-2">
               <CardHeader>
                 <CardTitle>Daily generation (kWh)</CardTitle>

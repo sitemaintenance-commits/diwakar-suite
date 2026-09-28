@@ -173,7 +173,7 @@ export function TenderFormDialog({
               <TabsTrigger value="result">Bid & result</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="basics" className="grid gap-4 sm:grid-cols-2">
+            <TabsContent value="basics" className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Tender title" htmlFor="t_title" required error={touched ? titleError : null} className="sm:col-span-2">
                 <Input id="t_title" value={f.title} onChange={(e) => set('title', e.target.value)} placeholder="Supply & installation of 2 MW solar plant" autoFocus />
               </Field>
@@ -231,7 +231,7 @@ export function TenderFormDialog({
               </Field>
             </TabsContent>
 
-            <TabsContent value="dates" className="grid gap-4 sm:grid-cols-2">
+            <TabsContent value="dates" className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Published on" htmlFor="t_pub">
                 <Input id="t_pub" type="date" value={f.published_on} onChange={(e) => set('published_on', e.target.value)} />
               </Field>
@@ -252,7 +252,7 @@ export function TenderFormDialog({
               </Field>
             </TabsContent>
 
-            <TabsContent value="money" className="grid gap-4 sm:grid-cols-2">
+            <TabsContent value="money" className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Tender fee (₹)" htmlFor="t_fee">
                 <Input id="t_fee" inputMode="decimal" value={f.tender_fee} onChange={(e) => set('tender_fee', e.target.value)} />
               </Field>
@@ -276,7 +276,7 @@ export function TenderFormDialog({
               </Field>
             </TabsContent>
 
-            <TabsContent value="result" className="grid gap-4 sm:grid-cols-2">
+            <TabsContent value="result" className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="Our bid value (₹)" htmlFor="t_bid">
                 <Input id="t_bid" inputMode="decimal" value={f.our_bid_value} onChange={(e) => set('our_bid_value', e.target.value)} />
               </Field>
