@@ -192,6 +192,10 @@ export function AttendancePage() {
   const [saving, setSaving] = useState(false);
 
   const canMarkOthers = can.create || can.edit;
+  // A past day someone filed Daily Work for is a working day: whoever did
+  // not file and is not marked counts as absent, so the form starts there.
+  const workingDay = (dayRecords.data ?? []).some((r) => r.source === 'daily_work');
+  const unmarked: AttendanceStatus = date < todayIST() && workingDay ? 'absent' : 'present';
 
   useEffect(() => {
     const byEmployee = Object.fromEntries((dayRecords.data ?? []).map((r) => [r.employee_id, r]));
@@ -199,17 +203,20 @@ export function AttendancePage() {
       Object.fromEntries(
         (employees.data ?? []).map((e) => [
           e.id,
-          { status: (byEmployee[e.id]?.status ?? 'present') as AttendanceStatus, remarks: byEmployee[e.id]?.remarks ?? '' },
+          {
+            status: (byEmployee[e.id]?.status ?? unmarked) as AttendanceStatus,
+            remarks: byEmployee[e.id]?.remarks ?? (unmarked === 'absent' ? 'No Daily Work filed' : ''),
+          },
         ]),
       ),
     );
-  }, [employees.data, dayRecords.data]);
+  }, [employees.data, dayRecords.data, unmarked]);
 
   async function save() {
     const rows = (employees.data ?? []).map((e) => ({
       employee_id: e.id,
       att_date: date,
-      status: marks[e.id]?.status ?? 'present',
+      status: marks[e.id]?.status ?? unmarked,
       remarks: marks[e.id]?.remarks || null,
     }));
     if (!rows.length) return;
@@ -241,7 +248,11 @@ export function AttendancePage() {
           <div>
             <CardTitle>{fmtDate(date)}</CardTitle>
             <CardDescription>
-              {canMarkOthers ? 'Mark the team and save.' : 'Your own attendance for the selected day.'}
+              {canMarkOthers
+                ? unmarked === 'absent'
+                  ? 'Anyone who did not file Daily Work this day starts as absent. Correct it and save.'
+                  : 'Mark the team and save.'
+                : 'Your own attendance for the selected day.'}
             </CardDescription>
           </div>
           <div className="flex items-end gap-3">
@@ -288,7 +299,7 @@ export function AttendancePage() {
                     </TableCell>
                     <TableCell>
                       <FilterSelect
-                        value={marks[e.id]?.status ?? 'present'}
+                        value={marks[e.id]?.status ?? unmarked}
                         onChange={(v) => setMarks((m) => ({ ...m, [e.id]: { ...m[e.id], status: v as AttendanceStatus } }))}
                         options={Object.entries(ATTENDANCE_STATUS).map(([k, v]) => [k, v.label] as [string, string])}
                       />

@@ -275,7 +275,8 @@ export function ScorecardPage() {
                 <p className="mt-1 text-xs text-muted-foreground">
                   KPI starts at {s?.weights.kpi_floor}% for filing the sheet and rises with the work closed; work in progress
                   counts half. Discipline is the days reported out of {fmtNumber(s?.working_days)} working day(s). Attendance
-                  comes from the register, or falls back to discipline where attendance is not marked.
+                  is the working days present: a filed sheet marks you present, a working day with no sheet and no
+                  mark counts as absent, and leave, holidays and week-offs are left out.
                 </p>
               </CardContent>
             </Card>
@@ -330,7 +331,7 @@ export function ScorecardPage() {
                           <TableCell className="tabular text-right">
                             {fmtNumber(r.attendance)}%
                             {r.attendance_source === 'discipline' && (
-                              <span className="ml-1 text-xs text-muted-foreground" title="No attendance marked; discipline used">
+                              <span className="ml-1 text-xs text-muted-foreground" title="Every working day was leave, a holiday or a week off; discipline used">
                                 *
                               </span>
                             )}

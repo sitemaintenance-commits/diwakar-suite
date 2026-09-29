@@ -485,6 +485,8 @@ export interface Attendance {
   work_hours: number | string | null;
   site_id: string | null;
   remarks: string | null;
+  /** 'daily_work' when marked present automatically by a filed Daily Work sheet. */
+  source?: string;
 }
 
 export interface LeaveRequest {

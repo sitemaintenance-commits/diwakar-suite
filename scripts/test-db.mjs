@@ -1665,6 +1665,19 @@ await expectValue('"KESHAV  AGARWAL" with two spaces is Keshav Agarwal', OWNER,
   await expectOk('(reopened)', OWNER,
     `update public.work_logs set status = 'draft' where employee_id = ${ketan} and log_date = current_date - 4`);
   await expectValue('its automatic mark goes with it', OWNER, att('current_date - 4'), 'none');
+
+  // A working day with no sheet and no mark is an absence.
+  const banwari = `app.employee_by_name('Banwari Verma')`;
+  await expectOk('Banwari files for one of the two working days only', OWNER,
+    `select public.save_work_log(current_date - 2, ${task}, 'medium', null, true, ${banwari})`);
+  await expectValue('the day he did not file counts as absent: 1 of 2 working days', OWNER,
+    `select x->>'attendance' || '% ' || (x->>'attendance_source') from jsonb_array_elements(
+       public.get_pms_scores(current_date - 3, current_date - 2)->'rows') x
+     where (x->>'employee_id')::uuid = ${banwari}`, '50% register');
+  await expectValue('HR marked Ketan absent one day and half day the other: 25%', OWNER,
+    `select (x->>'attendance')::int from jsonb_array_elements(
+       public.get_pms_scores(current_date - 3, current_date - 2)->'rows') x
+     where (x->>'employee_id')::uuid = ${ketan}`, 25);
 }
 
 await expectValue('the Daily Review round is still the six departments that file one', OWNER,
