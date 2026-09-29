@@ -1599,6 +1599,38 @@ await expectValue('"KESHAV  AGARWAL" with two spaces is Keshav Agarwal', OWNER,
     ? ok('importing the same forms again adds nothing')
     : bad('pms re-import', JSON.stringify(again.rows[0].i));
 }
+// Filing the Daily Work sheet marks you present.
+{
+  const ketan = `app.employee_by_name('Ketan Sharma')`;
+  const att = (d) => `select coalesce((select status::text || ' / ' || source from public.attendance
+    where employee_id = ${ketan} and att_date = ${d} and deleted_at is null), 'none')`;
+  const task = `'[{"seq":1,"description":"Gate patrol","status":"completed"}]'::jsonb`;
+  await expectOk('HR saves a draft for Ketan', OWNER,
+    `select public.save_work_log(current_date - 2, ${task}, 'medium', null, false, ${ketan})`);
+  await expectValue('a draft does not mark anyone present', OWNER, att('current_date - 2'), 'none');
+  await expectOk('the sheet is submitted', OWNER,
+    `select public.save_work_log(current_date - 2, ${task}, 'medium', null, true, ${ketan})`);
+  await expectValue('submitting it marks him present, automatically', OWNER, att('current_date - 2'), 'present / daily_work');
+  await expectValue('and the imported history marked every filed day too', OWNER,
+    `select count(*)::int from public.work_logs w where w.status <> 'draft' and w.deleted_at is null
+       and not exists (select 1 from public.attendance a where a.employee_id = w.employee_id and a.att_date = w.log_date)`, 0);
+  await expectOk('HR marks a day absent by hand first', OWNER,
+    `select public.save_attendance(jsonb_build_array(jsonb_build_object(
+       'employee_id', (${ketan})::text, 'att_date', (current_date - 3)::text, 'status', 'absent')))`);
+  await expectOk('then a sheet is filed for that day', OWNER,
+    `select public.save_work_log(current_date - 3, ${task}, 'medium', null, true, ${ketan})`);
+  await expectValue('HR\'s own mark wins', OWNER, att('current_date - 3'), 'absent / manual');
+  await expectOk('HR changes an automatic mark to half day', OWNER,
+    `select public.save_attendance(jsonb_build_array(jsonb_build_object(
+       'employee_id', (${ketan})::text, 'att_date', (current_date - 2)::text, 'status', 'half_day')))`);
+  await expectValue('which makes it HR\'s record', OWNER, att('current_date - 2'), 'half_day / manual');
+  await expectOk('a sheet is filed and then taken back to draft', OWNER,
+    `select public.save_work_log(current_date - 4, ${task}, 'medium', null, true, ${ketan})`);
+  await expectOk('(reopened)', OWNER,
+    `update public.work_logs set status = 'draft' where employee_id = ${ketan} and log_date = current_date - 4`);
+  await expectValue('its automatic mark goes with it', OWNER, att('current_date - 4'), 'none');
+}
+
 await expectValue('the Daily Review round is still the six departments that file one', OWNER,
   `select (public.get_daily_review('2026-08-20')->'totals'->>'departments')::int`, 6);
 await expectValue('Tender, Land & Legal, Marketing and Security exist for HR, outside the round', OWNER,
