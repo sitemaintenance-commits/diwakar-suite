@@ -1694,6 +1694,57 @@ await expectValue('the imported history scores like any other sheet', OWNER,
      public.get_pms_scores('2026-01-01', '2026-01-31')->'rows') x
    where x->>'employee' = 'Technician One'`, 90);
 
+console.log('\nHR employee master import');
+{
+  // Made-up people in the HR system's export format; real data never lives here.
+  const rows = JSON.stringify([
+    { code: 'DRIPL_1111', name: 'Ketan Sharma', email: 'Ketan.Test@Example.com', phone: '91-9000000001',
+      department: 'Opreation & Maintenance', job_title: 'Security Officer', location: 'Head Office',
+      legal_entity: 'Test Entity', joined: '2026-08-21', dob: '1990-01-02', gender: 'Male', status: 'Working' },
+    { code: 'DRIPL_1101', name: 'Banwari Lal Test', department: 'HR', job_title: 'HR Generalist', status: 'Working' },
+    { code: 'DRIPL_9001', name: 'test  technician', phone: '9000000002', department: 'Opretion and Maintenace',
+      job_title: 'Technician Bassi', location: 'Budsu, Nagaur ', joined: '2026-03-25', status: 'Working' },
+    { code: 'DRIPL_9002', name: 'Test Buyer', department: 'Procrument & Logiscitcs',
+      job_title: 'Procrument & Logiscitcs Manager', location: 'Jerthi, Sikar Project', status: 'Working' },
+    { code: 'DRIPL_9003', name: 'Test Leaver', department: 'Project', job_title: 'Site Engineer', exit_date: '2026-09-01' },
+    { code: 'DRIPL_9004', name: 'Ketan Sharma', department: 'Project', job_title: 'Site Engineer' },
+  ]);
+  const preview = (await as(OWNER, `select public.import_employees($1::jsonb) r`, [rows])).rows[0].r;
+  preview.added.length === 3 && preview.updated.length === 2 && preview.skipped.length === 1
+    ? ok('the preview finds 3 new, 2 to fill in and 1 name clash')
+    : bad('employee import preview', JSON.stringify(preview).slice(0, 400));
+  await expectValue('and a preview writes nothing', OWNER,
+    `select count(*)::int from public.employees where employee_code like 'DRIPL_900%'`, 0);
+  await expectError('someone without HR rights cannot import', SALES,
+    `select public.import_employees($1::jsonb, true)`, 'hr.employees', [rows]);
+  await expectOk('HR imports the sheet', OWNER, `select public.import_employees($1::jsonb, true)`, [rows]);
+  const emp = (code) => `select e.full_name || ' / ' || d.name || ' / ' || g.name || ' / ' || coalesce(e.work_location, '-')
+      || ' / ' || coalesce(e.phone, '-') || ' / ' || e.status from public.employees e
+      join public.departments d on d.id = e.department_id join public.designations g on g.id = e.designation_id
+     where e.employee_code = '${code}'`;
+  await expectValue('a new technician lands in O&M, the plant as location, title tidied', OWNER, emp('DRIPL_9001'),
+    'Test Technician / O&M / Service / Technician / Budsu, Nagaur / +91 9000000002 / active');
+  await expectValue("the sheet's misspellings are corrected", OWNER, emp('DRIPL_9002'),
+    'Test Buyer / Procurement & Stores / Procurement & Logistics Manager / Jerthi, Sikar / - / active');
+  await expectValue('someone with an exit date comes in inactive', OWNER,
+    `select status::text from public.employees where employee_code = 'DRIPL_9003'`, 'inactive');
+  await expectValue('an existing employee only has blanks filled; the PMS department stays', OWNER, emp('DRIPL_1111'),
+    'Ketan Sharma / Security / Security Officer / Head Office / +91 9000000001 / active');
+  await expectValue('with the e-mail tidied and the private data behind its own permission', OWNER,
+    `select e.email::text || ' / ' || p.date_of_birth || ' / ' || p.gender from public.employees e
+       join public.employee_private p on p.employee_id = e.id where e.employee_code = 'DRIPL_1111'`,
+    'ketan.test@example.com / 1990-01-02 / Male');
+  await expectValue('a different spelling of a name becomes an alias', OWNER,
+    `select app.employee_by_name('Banwari Lal Test') = (select id from public.employees where employee_code = 'DRIPL_1101')`, true);
+  {
+    const again = (await as(OWNER, `select public.import_employees($1::jsonb) r`, [rows])).rows[0].r;
+    again.added.length === 0 && again.updated.length === 0
+      && again.differences.some((d) => d.code === 'DRIPL_1101' && d.field === 'Designation' && d.sheet === 'HR Generalist')
+      ? ok('importing the same sheet again changes nothing, and shows where the sheet differs')
+      : bad('employee re-import', JSON.stringify(again).slice(0, 400));
+  }
+}
+
 console.log('\nDeactivation');
 await expectOk('Admin deactivates Technician', ADMIN, `select public.admin_set_user_status($1, 'inactive')`, [TECH]);
 await expectValue('deactivated user loses every permission immediately', TECH, `select public.has_permission('dashboard','view')`, false);

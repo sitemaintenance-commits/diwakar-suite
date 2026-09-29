@@ -133,6 +133,9 @@ export interface Employee {
   reporting_manager_id: string | null;
   joining_date: string | null;
   status: RecordStatus;
+  /** Head Office or a plant, as the HR system records it. */
+  work_location?: string | null;
+  legal_entity?: string | null;
 }
 
 export interface UserRow {

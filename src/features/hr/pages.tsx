@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  CalendarCheck, CalendarOff, CheckCircle2, Contact, Download, ListChecks, Loader2, Plus, Save, Star, TrendingUp, X,
+  CalendarCheck, CalendarOff, CheckCircle2, Contact, Download, ListChecks, Loader2, Plus, Save, Star, TrendingUp, Upload, X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
@@ -28,6 +28,7 @@ import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { useDepartments, usePeople, useSites } from '@/features/admin/api';
 import { StatusChip } from '@/features/crm/shared';
 import { PRIORITY, TASK_STATUS } from '@/features/om/shared';
+import { EmployeeImportDialog } from '@/features/hr/EmployeeImportDialog';
 import { fetchTasks, useAttendance, useEmployees, useHrSummary, useLeaveRequests, useReviewGoals, useReviews, useTasks, type TaskFilters } from '@/features/hr/api';
 
 const NONE = '__none__';
@@ -66,6 +67,7 @@ export function EmployeesPage() {
   const [departmentId, setDepartmentId] = useState('all');
   const [status, setStatus] = useState('active');
   const employees = useEmployees(search, departmentId, status);
+  const [importOpen, setImportOpen] = useState(false);
 
   async function onExport() {
     try {
@@ -76,6 +78,7 @@ export function EmployeesPage() {
         { header: 'Phone', value: (r) => r.phone },
         { header: 'Department', value: (r) => r.departments?.name },
         { header: 'Designation', value: (r) => r.designations?.name },
+        { header: 'Location', value: (r) => r.work_location },
         { header: 'Joining date', value: (r) => r.joining_date },
         { header: 'Status', value: (r) => r.status },
       ]);
@@ -91,13 +94,21 @@ export function EmployeesPage() {
         title="Employees"
         description="The people directory. Accounts and access are managed in User Management; salary and identity data sit behind a separate permission."
         actions={
-          can.export && (
-            <Button variant="outline" onClick={onExport}>
-              <Download /> Export
-            </Button>
-          )
+          <>
+            {can.create && can.edit && (
+              <Button variant="outline" onClick={() => setImportOpen(true)}>
+                <Upload /> Import HR sheet
+              </Button>
+            )}
+            {can.export && (
+              <Button variant="outline" onClick={onExport}>
+                <Download /> Export
+              </Button>
+            )}
+          </>
         }
       />
+      <EmployeeImportDialog open={importOpen} onOpenChange={setImportOpen} />
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Active employees" value={safeNum(summary.data?.employees)} icon={Contact} loading={summary.isLoading} />
@@ -139,6 +150,7 @@ export function EmployeesPage() {
               <TableRow>
                 <TableHead>Employee</TableHead>
                 <TableHead className="hidden md:table-cell">Department</TableHead>
+                <TableHead className="hidden xl:table-cell">Location</TableHead>
                 <TableHead className="hidden lg:table-cell">Contact</TableHead>
                 <TableHead>Joined</TableHead>
                 <TableHead>Status</TableHead>
@@ -160,6 +172,7 @@ export function EmployeesPage() {
                     <div className="text-sm">{e.departments?.name ?? '—'}</div>
                     <div className="text-xs text-muted-foreground">{e.designations?.name ?? ''}</div>
                   </TableCell>
+                  <TableCell className="hidden xl:table-cell text-sm">{e.work_location ?? '—'}</TableCell>
                   <TableCell className="hidden lg:table-cell text-sm">
                     <div>{e.email ?? '—'}</div>
                     <div className="text-xs text-muted-foreground">{e.phone ?? ''}</div>
