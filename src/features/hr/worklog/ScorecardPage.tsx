@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { Award, Download, Gauge, ListChecks, TriangleAlert, Users } from 'lucide-react';
 import { errorMessage } from '@/lib/errors';
 import { fmtDate, fmtNumber, safeNum, todayIST } from '@/lib/format';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
 import { useCan } from '@/auth/AccessProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -82,20 +82,27 @@ export function ScorecardPage() {
   async function onExport() {
     if (!s?.rows.length) return;
     try {
-      await exportCsv('hr.scorecard', `performance-${from}-to-${to}`, s.rows, [
-        { header: 'Employee number', value: (r: PmsScoreRow) => r.employee_code },
-        { header: 'Employee', value: (r) => r.employee },
-        { header: 'Designation', value: (r) => r.designation ?? '' },
-        { header: 'Department', value: (r) => r.department ?? '' },
-        { header: 'Days reported', value: (r) => r.days },
+      const pct = { numFmt: '0', width: 11 } as const;
+      await exportXlsx('hr.scorecard', `performance-${from}-to-${to}`, s.rows, [
+        { header: 'Employee number', value: (r: PmsScoreRow) => r.employee_code, width: 14 },
+        { header: 'Employee', value: (r) => r.employee, width: 24 },
+        { header: 'Designation', value: (r) => r.designation ?? '', width: 24 },
+        { header: 'Department', value: (r) => r.department ?? '', width: 22 },
+        { header: 'Days reported', value: (r) => Number(r.days), width: 11 },
         { header: 'Completed', value: (r) => `${r.completed}/${r.tasks}` },
-        { header: 'KPI %', value: (r) => r.kpi },
-        { header: 'Competency %', value: (r) => r.competency },
-        { header: 'Discipline %', value: (r) => r.discipline },
-        { header: 'Attendance %', value: (r) => r.attendance },
-        { header: 'Final %', value: (r) => r.final },
-        { header: 'Rating', value: (r) => r.rating },
-      ]);
+        { header: 'KPI %', value: (r) => Number(r.kpi), ...pct },
+        { header: 'Competency %', value: (r) => Number(r.competency), ...pct },
+        { header: 'Discipline %', value: (r) => Number(r.discipline), ...pct },
+        { header: 'Attendance %', value: (r) => Number(r.attendance), ...pct },
+        { header: 'Final %', value: (r) => Number(r.final), ...pct },
+        { header: 'Rating', value: (r) => r.rating, width: 18 },
+      ], {
+        sheet: 'Performance',
+        title: [
+          'EMPLOYEE PERFORMANCE - 60/20/10/10',
+          `${fmtDate(from)} to ${fmtDate(to)} · ${fmtNumber(s.working_days)} working day(s) · team score ${fmtNumber(s.team_score)}%`,
+        ],
+      });
       toast.success('Exported.');
     } catch (e) {
       toast.error(errorMessage(e));
@@ -114,7 +121,7 @@ export function ScorecardPage() {
           can.export ? (
             <Button variant="outline" size="sm" onClick={onExport} disabled={!s?.rows.length}>
               <Download className="mr-2 h-4 w-4" />
-              Export CSV
+              Export Excel
             </Button>
           ) : undefined
         }

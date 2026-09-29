@@ -1474,8 +1474,8 @@ await expectValue('a CCM remark does not by itself make a department unhealthy',
 await expectValue('the founder note lands on the day it belongs to', OWNER,
   `select note from public.daily_headlines where headline_date = '2026-01-06'`,
   'Founder: keep an eye on Digod.');
-await expectValue('Accounts and Finance is out of the daily round', OWNER,
-  `select status::text from public.departments where name = 'Accounts & Finance'`, 'inactive');
+await expectValue('Accounts and Finance is out of the daily round (but active for HR)', OWNER,
+  `select status::text || ' / ' || in_daily_review::text from public.departments where name = 'Accounts & Finance'`, 'active / false');
 
 // Solar Sites portfolio
 await expectValue('the O&M register is called Generation Sites', OWNER,
@@ -1557,14 +1557,53 @@ const PMS_PAYLOAD = JSON.stringify([
 {
   const r = await as(OWNER, `select public.import_work_logs($1::jsonb) i`, [PMS_PAYLOAD]);
   const i = r.rows[0].i;
-  Number(i.inserted) === 2 && Number(i.employees_created) === 1
-    ? ok('work sheets import, and an employee missing from the master is created')
+  Number(i.inserted) === 1 && Number(i.employees_created) === 0 && i.unknown_employees[0] === 'Somebody Unknown'
+    ? ok('work sheets import, and a name not on the master is reported, not made into an employee')
     : bad('pms import', JSON.stringify(i));
 }
 await expectValue('the task statuses are mapped from the form wording', OWNER,
   `select count(*) filter (where t.status = 'completed') || '/' || count(*) filter (where t.status = 'in_progress')
    from public.work_log_tasks t join public.work_logs w on w.id = t.log_id
-   where w.log_date = '2026-01-05'`, '2/1');
+   where w.log_date = '2026-01-05'`, '1/1');
+
+console.log('\nPMS people - the master, its spellings, and the history');
+await expectValue('the 21 PMS employees are on the master with their DRIPL numbers', OWNER,
+  `select count(*)::int from public.employees where employee_code like 'DRIPL\\_%'`, 20);
+await expectValue('and Shivdatt Singh, who has no DRIPL number yet, is there too', OWNER,
+  `select employee_code like 'DS-%' from public.employees where full_name = 'Shivdatt Singh'`, true);
+await expectValue('"Banwari" is Banwari Verma', OWNER,
+  `select e.employee_code from public.employees e where e.id = app.employee_by_name('  banwari ')`, 'DRIPL_1101');
+await expectValue('"RAMKESH DAINI" is Ramkesh Saini', OWNER,
+  `select e.full_name from public.employees e where e.id = app.employee_by_name('RAMKESH DAINI')`, 'Ramkesh Saini');
+await expectValue('"KESHAV  AGARWAL" with two spaces is Keshav Agarwal', OWNER,
+  `select e.employee_code from public.employees e where e.id = app.employee_by_name('KESHAV  AGARWAL')`, 'DRIPL_1099');
+{
+  const two = JSON.stringify([
+    { employee: 'Banwari', date: '2026-08-20', priority: '', tasks: [
+      { description: 'Attendance updated in Manual Register', status: 'Completed' },
+      { description: 'Interview calling', status: 'In Progress' }] },
+    { employee: 'Banwari Verma', date: '2026-08-20', priority: 'High', remarks: 'Second form', tasks: [
+      { description: 'Interview calling', status: 'In Progress' },
+      { description: 'UA number follow-up', status: 'Completed' }] },
+  ]);
+  const r = await as(OWNER, `select public.import_work_logs($1::jsonb) i`, [two]);
+  const i = r.rows[0].i;
+  Number(i.inserted) === 1 && Number(i.merged) === 1
+    ? ok('a second form for the same person and day adds to that day\'s sheet')
+    : bad('pms merge', JSON.stringify(i));
+  await expectValue('without repeating a task, and at the higher priority', OWNER,
+    `select w.task_count || ' / ' || w.priority || ' / ' || w.remarks from public.work_logs w
+     where w.log_date = '2026-08-20' and w.employee_id = app.employee_by_name('Banwari Verma')`, '3 / high / Second form');
+  const again = await as(OWNER, `select public.import_work_logs($1::jsonb) i`, [two]);
+  Number(again.rows[0].i.inserted) === 0 && Number(again.rows[0].i.merged) === 0
+    ? ok('importing the same forms again adds nothing')
+    : bad('pms re-import', JSON.stringify(again.rows[0].i));
+}
+await expectValue('the Daily Review round is still the six departments that file one', OWNER,
+  `select (public.get_daily_review('2026-08-20')->'totals'->>'departments')::int`, 6);
+await expectValue('Tender, Land & Legal, Marketing and Security exist for HR, outside the round', OWNER,
+  `select count(*)::int from public.departments
+    where name in ('Tender', 'Land & Legal', 'Marketing & Social Media', 'Security') and status = 'active' and not in_daily_review`, 4);
 await expectValue('and the counts on the sheet are computed, not trusted', OWNER,
   `select task_count || '-' || completed || '-' || in_progress from public.work_logs w
    join public.employees e on e.id = w.employee_id

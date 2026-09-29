@@ -9,7 +9,7 @@ import { CheckCircle2, ClipboardCheck, Download, Loader2, Plus, Save, Send, Tras
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
 import { fmtDate, fmtNumber, todayIST } from '@/lib/format';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
 import { useCan } from '@/auth/AccessProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { EmptyState, ErrorState, PageHeader, StatCard } from '@/components/common';
 import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { useMyWorkLog, useWorkLogDay, type WorkTaskStatus } from '@/features/hr/worklog/api';
+import { useEmployees } from '@/features/hr/api';
+
+const ME = '__me__';
 
 const MAX_TASKS = 10;
 
@@ -41,7 +44,11 @@ export function DailyWorkPage() {
   const can = useCan('hr.worklog');
   const qc = useQueryClient();
   const [date, setDate] = useState(todayIST());
-  const sheet = useMyWorkLog(date);
+  // HR can file for someone without a login -- the PMS form never needed
+  // one. The database decides who may, through hr.worklog EDIT and scope.
+  const [filingFor, setFilingFor] = useState(ME);
+  const employeeId = filingFor === ME ? undefined : filingFor;
+  const sheet = useMyWorkLog(date, employeeId);
   const data = sheet.data;
 
   const [rows, setRows] = useState<Row[]>([]);
@@ -53,13 +60,14 @@ export function DailyWorkPage() {
   const loadedFor = useRef('');
   useEffect(() => {
     if (!data) return;
-    if (loadedFor.current === date) return;
-    loadedFor.current = date;
+    const key = `${filingFor}|${date}`;
+    if (loadedFor.current === key) return;
+    loadedFor.current = key;
     const existing = data.tasks.map((t) => ({ description: t.description, status: t.status }));
     setRows(existing.length ? existing : [{ description: '', status: 'not_started' }]);
     setPriority(data.log?.priority ?? 'medium');
     setRemarks(data.log?.remarks ?? '');
-  }, [data, date]);
+  }, [data, date, filingFor]);
 
   const filled = rows.filter((r) => r.description.trim() !== '');
   const counts = useMemo(() => {
@@ -84,7 +92,7 @@ export function DailyWorkPage() {
       p_priority: priority,
       p_remarks: remarks.trim() || null,
       p_submit: submit,
-      p_employee_id: null,
+      p_employee_id: employeeId ?? null,
     });
     setBusy(null);
     if (error) return toast.error(errorMessage(error));
@@ -115,15 +123,19 @@ export function DailyWorkPage() {
     );
   }
 
+  const picker = can.edit ? <FilingFor value={filingFor} onChange={setFilingFor} /> : null;
+
   if (!data?.employee) {
     return (
       <>
-        <PageHeader icon={ClipboardCheck} title="Daily Work" />
+        <PageHeader icon={ClipboardCheck} title="Daily Work" actions={picker} />
         <Card>
           <EmptyState
             icon={ClipboardCheck}
             title="Your login is not linked to an employee record"
-            description="Ask HR to link your user account to your employee record in Employees, then this sheet will open."
+            description={can.edit
+              ? 'Choose the employee you are filing for above, or ask an administrator to link your login to your employee record.'
+              : 'Ask HR to link your user account to your employee record in Employees, then this sheet will open.'}
           />
         </Card>
       </>
@@ -137,7 +149,10 @@ export function DailyWorkPage() {
         title="Daily Work"
         description={`${data.employee.name} · ${data.employee.designation ?? '—'} · ${data.employee.department ?? '—'}`}
         actions={
-          <Badge variant={submitted ? 'success' : 'secondary'}>{submitted ? 'Submitted' : 'Draft'}</Badge>
+          <>
+            {picker}
+            <Badge variant={submitted ? 'success' : 'secondary'}>{submitted ? 'Submitted' : 'Draft'}</Badge>
+          </>
         }
       />
 
@@ -276,23 +291,24 @@ function DaySheets({ canExport }: { canExport: boolean }) {
   async function onExport() {
     if (!entries.length) return;
     try {
-      await exportCsv(
+      await exportXlsx(
         'hr.worklog',
         `daily-work-${date}`,
         entries.flatMap((e) => e.tasks.map((t) => ({ e, t }))),
         [
-          { header: 'Date', value: (r) => r.e.date },
-          { header: 'Employee number', value: (r) => r.e.employee_code },
-          { header: 'Employee', value: (r) => r.e.employee },
-          { header: 'Department', value: (r) => r.e.department ?? '' },
-          { header: 'Task', value: (r) => `Task ${r.t.seq}` },
-          { header: 'Description', value: (r) => r.t.description },
-          { header: 'Status', value: (r) => STATUS[r.t.status].label },
+          { header: 'Date', value: (r) => r.e.date, width: 11 },
+          { header: 'Employee number', value: (r) => r.e.employee_code, width: 14 },
+          { header: 'Employee', value: (r) => r.e.employee, width: 24 },
+          { header: 'Department', value: (r) => r.e.department ?? '', width: 20 },
+          { header: 'Task', value: (r) => `Task ${r.t.seq}`, width: 8 },
+          { header: 'Description', value: (r) => r.t.description, width: 60 },
+          { header: 'Status', value: (r) => STATUS[r.t.status].label, width: 12 },
           { header: 'Priority', value: (r) => r.e.priority },
           { header: 'Summary', value: (r) => `${r.e.completed}/${r.e.task_count}` },
-          { header: 'Score %', value: (r) => r.e.score },
-          { header: 'Remarks', value: (r) => r.e.remarks ?? '' },
+          { header: 'Score %', value: (r) => Number(r.e.score), numFmt: '0' },
+          { header: 'Remarks', value: (r) => r.e.remarks ?? '', width: 40 },
         ],
+        { sheet: 'Daily Work', title: ['DAILY EMPLOYEE WORKING SHEET', `Date: ${fmtDate(date)} · ${fmtNumber(entries.length)} sheet(s) filed`] },
       );
       toast.success('Exported.');
     } catch (e) {
@@ -312,7 +328,7 @@ function DaySheets({ canExport }: { canExport: boolean }) {
           {canExport && (
             <Button variant="outline" size="sm" onClick={onExport} disabled={!entries.length}>
               <Download className="mr-2 h-4 w-4" />
-              Export CSV
+              Export Excel
             </Button>
           )}
         </div>
@@ -368,5 +384,21 @@ function DaySheets({ canExport }: { canExport: boolean }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+
+/** "Filing for": yourself, or -- for HR -- any active employee. */
+function FilingFor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const employees = useEmployees('', 'all', 'active');
+  if (employees.isError) return null;
+  const options: [string, string][] = [
+    [ME, 'My own sheet'],
+    ...(employees.data ?? []).map((e) => [e.id, `${e.full_name} · ${e.employee_code}`] as [string, string]),
+  ];
+  return (
+    <div className="w-64">
+      <FilterSelect value={value} onChange={onChange} options={options} placeholder="Filing for" />
+    </div>
   );
 }

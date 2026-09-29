@@ -44,7 +44,8 @@ const OWNER = await mkUser('owner@diwakarsolar.com', 'Diwakar Owner');
 await db.query(`select app.bootstrap_super_admin('owner@diwakarsolar.com')`);
 await signIn(OWNER);
 // Site capacities, districts and tilts come from the migration (the real portfolio).
-await db.query(`insert into public.designations (name) values ('Site Engineer'), ('O&M Technician'), ('Sales Manager'), ('HR Executive')`);
+await db.query(`insert into public.designations (name) values ('Site Engineer'), ('O&M Technician'), ('Sales Manager'), ('HR Executive')
+  on conflict (name) do nothing`);
 
 const PEOPLE = [
   ['admin@diwakarsolar.com', 'Anita Sharma', 'admin', [], true, 'ADMIN'],

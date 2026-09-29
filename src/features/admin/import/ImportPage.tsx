@@ -102,6 +102,7 @@ interface Result {
   skipped?: number;
   ignored?: number;
   employees_created?: number;
+  merged?: number;
   full_day_failures?: number;
   filled?: number;
   needs_review?: string[];
@@ -297,6 +298,11 @@ function ImportCard({ source, canImport }: { source: Source; canImport: boolean 
               <span className="tabular text-muted-foreground">· {fmtNumber(result.skipped)} already here</span>
               {result.ignored ? (
                 <span className="tabular text-amber-600">· {fmtNumber(result.ignored)} could not be matched</span>
+              ) : null}
+              {result.merged ? (
+                <span className="tabular text-muted-foreground">
+                  · {fmtNumber(result.merged)} second form(s) for a day {result.dry_run ? 'would be' : ''} added to that day
+                </span>
               ) : null}
               {result.employees_created ? (
                 <span className="tabular text-muted-foreground">· {fmtNumber(result.employees_created)} employee(s) created</span>
