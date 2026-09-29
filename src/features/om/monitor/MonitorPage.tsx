@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { Activity, CalendarDays, Download, Gauge, Sun, TriangleAlert, Zap } from 'lucide-react';
 import { fmtCapacity, fmtDate, fmtNumber, safeNum, todayIST } from '@/lib/format';
 import { errorMessage } from '@/lib/errors';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
 import { useCan } from '@/auth/AccessProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,7 @@ import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { useSites } from '@/features/admin/api';
 import { useMonitor } from '@/features/om/api';
 import { useDailyPerformance } from '@/features/om/opsApi';
-import { fmtKwh, GenerationChart } from '@/features/om/shared';
+import { fmtKwh, fmtKwhDay, GenerationChart } from '@/features/om/shared';
 
 function monthStart() {
   const t = todayIST();
@@ -63,23 +63,49 @@ function DayView() {
   async function onExport() {
     if (!d?.sites.length) return;
     try {
-      await exportCsv('om.monitor', `site-performance-${date}`, d.sites, [
-        { header: 'Site name', value: (r) => r.name },
-        { header: 'DC kW', value: (r) => safeNum(r.capacity_dc_kwp) },
-        { header: 'AC kW', value: (r) => safeNum(r.capacity_ac_kw) },
-        { header: 'Actual generation (kWh)', value: (r) => safeNum(r.generation_kwh) },
-        { header: 'Tilt', value: (r) => (r.tilt === null ? '' : safeNum(r.tilt)) },
-        { header: 'Specific yield', value: (r) => (r.specific_yield === null ? '' : safeNum(r.specific_yield)) },
-        { header: 'PR %', value: (r) => (r.pr === null ? '' : safeNum(r.pr)) },
-        { header: 'Insolation', value: (r) => (r.insolation === null ? '' : safeNum(r.insolation)) },
-        { header: 'DC CUF %', value: (r) => (r.dc_cuf === null ? '' : safeNum(r.dc_cuf)) },
-        { header: 'AC CUF %', value: (r) => (r.ac_cuf === null ? '' : safeNum(r.ac_cuf)) },
-        { header: 'Grid outage (h)', value: (r) => safeNum(r.grid_outage) },
-        { header: 'Weather', value: (r) => r.weather ?? '' },
-        { header: 'Failure side', value: (r) => (r.failure_side === 'plant' ? 'Plant' : r.failure_side === 'gss' ? 'GSS' : '') },
-        { header: 'Failure reason', value: (r) => r.failure_reason ?? '' },
-        { header: 'Remarks', value: (r) => r.remarks ?? '' },
-      ]);
+      const num = (v: unknown) => (v === null || v === undefined ? null : safeNum(v));
+      const sum = (k: 'capacity_dc_kwp' | 'capacity_ac_kw' | 'generation_kwh') => d.sites.reduce((s, r) => s + safeNum(r[k]), 0);
+      const day = new Date(`${date}T00:00:00`);
+      await exportXlsx(
+        'om.monitor',
+        `daily-report-${date}`,
+        d.sites,
+        [
+          { header: 'S.No', value: (r) => d.sites.indexOf(r) + 1, width: 6 },
+          { header: 'Site name', value: (r) => (r.location ? `${r.name} - ${r.location}` : r.name), width: 28 },
+          { header: 'DC (kWp)', value: (r) => num(r.capacity_dc_kwp), numFmt: '#,##0' },
+          { header: 'AC (kW)', value: (r) => num(r.capacity_ac_kw), numFmt: '#,##0' },
+          { header: 'Actual gen. (kWh)', value: (r) => (r.reported ? num(r.generation_kwh) : null), numFmt: '#,##0.00', width: 16 },
+          { header: 'Tilt', value: (r) => num(r.tilt), numFmt: '0"°"' },
+          { header: 'S.Y (kWh/kWp)', value: (r) => num(r.specific_yield), numFmt: '0.00' },
+          { header: 'PR (%)', value: (r) => num(r.pr), numFmt: '0.00' },
+          { header: 'Inso. (kWh/m²)', value: (r) => num(r.insolation), numFmt: '0.00' },
+          { header: 'DC CUF (%)', value: (r) => num(r.dc_cuf), numFmt: '0.00' },
+          { header: 'AC CUF (%)', value: (r) => num(r.ac_cuf), numFmt: '0.00' },
+          { header: 'Grid outage (h)', value: (r) => num(r.grid_outage), numFmt: '0.00' },
+          { header: 'Plant outage (h)', value: (r) => num(r.plant_outage), numFmt: '0.00' },
+          { header: 'Weather', value: (r) => r.weather ?? '', width: 16 },
+          { header: 'Failure side', value: (r) => (r.failure_side === 'plant' ? 'Plant side' : r.failure_side === 'gss' ? 'GSS side' : '') },
+          { header: 'Failure reason', value: (r) => r.failure_reason ?? '', width: 34 },
+          { header: 'Remarks', value: (r) => (r.reported ? r.remarks ?? '' : 'No reading filed'), width: 40 },
+        ],
+        {
+          sheet: 'Daily Report',
+          title: [
+            'DAILY SOLAR GENERATION REPORT (ALL SITES)',
+            `Date: ${fmtDate(date)} · ${day.toLocaleDateString('en-IN', { weekday: 'long' })} · ${fmtNumber(d.reported_count)} of ${fmtNumber(d.site_count)} sites reported`,
+          ],
+          totals: {
+            1: 'TOTAL',
+            2: sum('capacity_dc_kwp'),
+            3: sum('capacity_ac_kw'),
+            4: sum('generation_kwh'),
+            7: num(d.avg_pr),
+            9: num(d.dc_cuf),
+            10: num(d.ac_cuf),
+          },
+        },
+      );
       toast.success('Exported.');
     } catch (e) {
       toast.error(errorMessage(e));
@@ -102,7 +128,7 @@ function DayView() {
           {can.export && (
             <Button variant="outline" size="sm" onClick={onExport} disabled={!d?.sites.length}>
               <Download className="mr-2 h-4 w-4" />
-              Export CSV
+              Export Excel
             </Button>
           )}
         </CardContent>
@@ -125,7 +151,7 @@ function DayView() {
       ) : (
         <>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <StatCard label="Total generation" value={fmtKwh(d.total_generation, 1)} hint={fmtDate(date)} icon={Zap} />
+            <StatCard label="Total generation" value={fmtKwhDay(d.total_generation, 1)} hint={fmtDate(date)} icon={Zap} />
             <StatCard
               label="Average PR"
               value={pct(d.avg_pr)}
@@ -152,7 +178,7 @@ function DayView() {
                           <span className="tabular mr-2 text-muted-foreground">{i + 1}</span>
                           <span className="font-medium">{r.name}</span>
                         </span>
-                        <span className="tabular shrink-0 text-muted-foreground">{fmtKwh(r.generation_kwh, 1)}</span>
+                        <span className="tabular shrink-0 text-muted-foreground">{fmtKwhDay(r.generation_kwh, 1)}</span>
                       </div>
                       <div className="h-2 rounded-full bg-muted">
                         <div

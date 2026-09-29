@@ -23,7 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/misc';
 import { EmptyState, ErrorState, Field, PageHeader } from '@/components/common';
 import { FilterSelect } from '@/features/admin/users/UsersPage';
-import { fmtKwh } from '@/features/om/shared';
+import { fmtKwhDay } from '@/features/om/shared';
 import { useInverterAnalysis } from '@/features/om/opsApi';
 
 interface EntrySite {
@@ -53,7 +53,8 @@ interface EntrySite {
 interface FieldEntryData {
   date: string;
   sites: EntrySite[];
-  failure_reasons: { side: 'gss' | 'plant'; label: string }[];
+  /** Absent when the database predates the reason list (migration 20260929000001). */
+  failure_reasons?: { side: 'gss' | 'plant'; label: string }[];
   recent: { date: string; site: string; generation_kwh: number | string; source: string }[];
 }
 
@@ -182,7 +183,7 @@ export function DailyEntryPage() {
     setBusy(false);
     if (error) return toast.error(errorMessage(error));
     loadedFor.current = '';   // pick up the stored version on the next load
-    toast.success(`${site.name}: ${fmtKwh(total, 1)} saved for ${fmtDate(date)}`);
+    toast.success(`${site.name}: ${fmtKwhDay(total, 1)} saved for ${fmtDate(date)}`);
     await qc.invalidateQueries({ queryKey: ['field-entry'] });
     await qc.invalidateQueries({ queryKey: ['generation'] });
     await qc.invalidateQueries({ queryKey: ['generation-summary'] });
@@ -225,6 +226,15 @@ export function DailyEntryPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-5">
+              {data.data && !data.data.failure_reasons && (
+                <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    The database has not been updated for this form yet, so the failure reasons are missing and saving will
+                    fail. An administrator needs to run the latest database update (migration 20260929000001).
+                  </span>
+                </div>
+              )}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="Date" htmlFor="fe_date">
                   <Input id="fe_date" type="date" value={date} max={todayIST()} onChange={(e) => setDate(e.target.value)} />
@@ -292,7 +302,7 @@ export function DailyEntryPage() {
                         onChange={(v) => {
                           setSide(v as 'gss' | 'plant');
                           // A reason from the other side no longer fits.
-                          if (reason && reason !== OTHER && !data.data?.failure_reasons.some((r) => r.label === reason && r.side === v)) setReason('');
+                          if (reason && reason !== OTHER && !data.data?.failure_reasons?.some((r) => r.label === reason && r.side === v)) setReason('');
                         }}
                         options={[['gss', SIDE_LABEL.gss], ['plant', SIDE_LABEL.plant]]}
                       />
@@ -327,7 +337,7 @@ export function DailyEntryPage() {
               <div className="flex flex-col gap-3 rounded-xl border bg-slate-50/70 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="text-xs text-muted-foreground">Total generation</div>
-                  <div className="tabular text-2xl font-bold">{fmtKwh(total, 1)}</div>
+                  <div className="tabular text-2xl font-bold">{fmtKwhDay(total, 1)}</div>
                 </div>
                 <Button size="lg" onClick={save} disabled={busy}>
                   {busy ? <Loader2 className="animate-spin" /> : <Save />} {site?.entry ? 'Update entry' : 'Save entry'}
@@ -376,7 +386,7 @@ export function DailyEntryPage() {
                           {fmtDate(r.date)}
                           {sites.length > 1 && <span className="block text-xs text-muted-foreground">{r.site}</span>}
                         </span>
-                        <span className="tabular font-medium">{fmtKwh(r.generation_kwh)}</span>
+                        <span className="tabular font-medium">{fmtKwhDay(r.generation_kwh)}</span>
                       </li>
                     ))}
                   </ul>

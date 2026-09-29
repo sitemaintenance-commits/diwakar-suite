@@ -41,6 +41,11 @@ export const TICKET_CATEGORIES = [
 ];
 
 /** kWh with the unit, never "NaN". */
+/** Always in kWh -- the unit the plants report a day in. */
+export function fmtKwhDay(value: unknown, digits = 0): string {
+  return `${fmtNumber(safeNum(value), digits)} kWh`;
+}
+
 export function fmtKwh(value: unknown, digits = 0): string {
   const n = safeNum(value);
   if (n >= 1_000_000) return `${fmtNumber(n / 1_000_000, 2)} GWh`;
