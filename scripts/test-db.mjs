@@ -654,11 +654,11 @@ await expectValue('HR can file its own department report', OWNER,
 console.log('\nField entry — the technician form that replaces the Google Form');
 await expectValue('the real portfolio is loaded with DC and AC capacity', OWNER,
   `select count(*)::int from public.solar_sites where capacity_dc_kwp > 0`, 12);
-await expectValue('the Daily Report tab settles the contested capacities', OWNER,
+await expectValue('the O&M monthly record settles the contested capacities', OWNER,
   `select string_agg(s.name || ':' || ss.capacity_dc_kwp::int || '/' || ss.capacity_ac_kw::int, ' ' order by s.name)
    from public.solar_sites ss join public.sites s on s.id = ss.site_id
    where s.name in ('Jerthi','Bhojusar','Thikariya')`,
-  'Bhojusar:3280/2475 Jerthi:3361/2750 Thikariya:4473/3300');
+  'Bhojusar:3263/2475 Jerthi:3496/2750 Thikariya:4473/3300');
 await expectValue('Sadas carries its real capacity and tilt', OWNER,
   `select capacity_dc_kwp::int || '/' || capacity_ac_kw::int || ' @' || tilt_degrees::int
    from public.solar_sites ss join public.sites s on s.id = ss.site_id where s.name = 'Sadas'`, '2903/2065 @22');
@@ -1104,12 +1104,15 @@ await expectValue('the peak sun hours are a setting, confirmed as 11', OWNER,
 await expectValue('the June and July targets came across', OWNER,
   `select count(*)::int from public.site_monthly_targets where year = 2026 and month in (6,7)`, 22);
 
-// A controlled month: Sadas (2,903 kWp DC) in May 2026, 31 days.
-//   400,000 kWh generated, 23 hours of outage
-//   shutdown days  = 23 / 11            = 2.0909
-//   effective days = 31 - 2.0909        = 28.9091
-//   S.Y. per day   = 400000/28.9091/2903 = 4.77
-//   DC CUF         = 400000/(2903*24*28.9091)*100 = 19.86
+// A controlled month: Sadas (2,903 kWp DC, 2,065 kW AC) in May 2026, 31 days.
+//   The O&M monthly record says 436,174.3 kWh; the two daily readings
+//   below (400,000 kWh) are not the month's total, so the record wins.
+//   Outage: 23 hours from the daily readings.
+//   shutdown days  = 23 / 11                         = 2.0909
+//   effective days = 31 - 2.0909                     = 28.9091
+//   S.Y. per day   = 436174.3/28.9091/2903           = 5.20
+//   DC CUF         = 436174.3/(2903*24*31)*100       = 20.19  (the workbook: 20.195)
+//   AC CUF         = 436174.3/(2065*24*31)*100       = 28.39  (the workbook: 28.390)
 await expectOk('two May readings for Sadas', OWNER,
   `select public.save_generation(jsonb_build_array(
      jsonb_build_object('site_id', $1::text, 'gen_date', '2026-05-10', 'generation_kwh', 250000,
@@ -1122,11 +1125,44 @@ await expectOk('two May readings for Sadas', OWNER,
   Number(r.rows[0].m.days_in_month) === 31
     && Math.abs(Number(row.shutdown_days) - 2.0909) < 0.001
     && Math.abs(Number(row.effective_days) - 28.91) < 0.01
-    && Math.abs(Number(row.specific_yield) - 4.77) < 0.01
-    && Math.abs(Number(row.dc_cuf) - 19.86) < 0.01
-    ? ok('S.Y. is per effective day and CUF excludes the downtime, as the review pack does')
+    && Math.abs(Number(row.actual) - 436174.3) < 0.01
+    && Math.abs(Number(row.specific_yield) - 5.20) < 0.01
+    && Math.abs(Number(row.dc_cuf) - 20.19) < 0.01
+    && Math.abs(Number(row.ac_cuf) - 28.39) < 0.01
+    ? ok('the month uses its recorded total, S.Y. is per effective day, and CUF is on calendar days like the workbook')
     : bad('month review', JSON.stringify(row));
 }
+console.log('\nCUF on AC & DC capacity - the O&M monthly record');
+await expectValue("the workbook's 119 plant-months are the monthly record", OWNER,
+  `select count(*)::int from public.site_monthly_generation where source = 'workbook'`, 119);
+{
+  // The Main tab, as of May 2026. Its figures, to three decimals:
+  const main = { Suaap: [18.254, 22.344], Bassi: [18.392, 24.623], Budsu: [19.037, 24.12], Jerthi: [18.459, 23.467],
+    Niwai: [16.664, 19.996], 'Indo Ka Bas': [21.666, 28.66], Ganeshgarh: [18.972, 25.081], Budhwara: [21.914, 28.82],
+    Kadel: [23.433, 29.577], Thikariya: [23.278, 31.553] };
+  const r = await as(OWNER, `select public.get_cuf_report(2026, '2026-05-01') c`);
+  const plants = Object.fromEntries(r.rows[0].c.plants.map((p) => [p.name, p]));
+  const off = Object.entries(main).filter(([n, [dc, ac]]) =>
+    Math.abs(Number(plants[n]?.cuf_dc) - dc) > 0.001 || Math.abs(Number(plants[n]?.cuf_ac) - ac) > 0.001);
+  off.length === 0
+    ? ok('the report reproduces the Main tab to three decimals for every plant it lists')
+    : bad('cuf main', JSON.stringify(off.map(([n]) => [n, plants[n]?.cuf_dc, plants[n]?.cuf_ac, plants[n]?.days])));
+  // Sadas: the Main tab counts 607 days for October 2024 - May 2026, which is 608.
+  Number(plants.Sadas?.days) === 608 && Math.abs(Number(plants.Sadas?.cuf_dc) - 17.56) < 0.01
+    ? ok('Sadas counts the 608 days those months have (the Main tab typed 607)')
+    : bad('cuf sadas', JSON.stringify(plants.Sadas));
+}
+await expectValue("a month's CUF matches its plant tab (Sadas, August 2026)", OWNER,
+  `select (x->>'cuf_dc')::numeric::text || ' / ' || (x->>'cuf_ac')::numeric::text
+     from jsonb_array_elements(public.get_cuf_report(2026)->'monthly') x
+    where x->>'site' = 'Sadas' and (x->>'month')::int = 8`, '11.532 / 16.212');
+await expectValue('with the JMR and the TL loss beside it', OWNER,
+  `select (x->>'jmr_kwh')::numeric::int || ' / ' || (x->>'tl_loss_pct')::numeric::text
+     from jsonb_array_elements(public.get_cuf_report(2026)->'monthly') x
+    where x->>'site' = 'Sadas' and (x->>'month')::int = 8`, '240720 / 3.355');
+await expectError('a sales user cannot open the CUF report', SALES,
+  `select public.get_cuf_report()`, 'om.analytics VIEW');
+
 await expectValue('a month with no target shows no forecast rather than a guess', OWNER,
   `select (x->>'forecast') is null from jsonb_array_elements(public.get_month_review(2026, 5)->'rows') x
    where x->>'site' = 'Budhwara'`, true);

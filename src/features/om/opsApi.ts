@@ -367,6 +367,8 @@ export interface MonthReviewRow {
   diff: number | string | null;
   specific_yield: number | string | null;
   dc_cuf: number | string | null;
+  ac_cuf?: number | string | null;
+  capacity_ac_kw?: number | string | null;
   insolation: number | string | null;
   pr: number | string | null;
   reported_days: number;
@@ -400,5 +402,52 @@ export function useMonthReview(year: number, month: number) {
   return useQuery({
     queryKey: ['month-review', year, month],
     queryFn: () => rpc<MonthReview>('get_month_review', { p_year: year, p_month: month }, EMPTY_REVIEW),
+  });
+}
+
+// ---------------------------------------------------------------- CUF report
+/** One plant's CUF since it first ran on full DC capacity -- the O&M workbook's Main tab. */
+export interface CufPlant {
+  site_id: string;
+  name: string;
+  location: string | null;
+  capacity_dc_kwp: number | string | null;
+  capacity_ac_kw: number | string | null;
+  loa_capacity_kw: number | string | null;
+  full_load_from: string | null;
+  total_kwh: number | string | null;
+  days: number | null;
+  months: number | null;
+  cuf_dc: number | string | null;
+  cuf_ac: number | string | null;
+}
+
+/** One plant-month: the month's generation, JMR, TL loss and CUF on calendar days. */
+export interface CufMonth {
+  site_id: string;
+  site: string;
+  year: number;
+  month: number;
+  generation_kwh: number | string | null;
+  source: 'monthly record' | 'daily readings' | null;
+  jmr_kwh: number | string | null;
+  tl_loss_pct: number | string | null;
+  days: number;
+  running: boolean;
+  cuf_dc: number | string | null;
+  cuf_ac: number | string | null;
+}
+
+export interface CufReport {
+  year: number;
+  upto: string;
+  plants: CufPlant[];
+  monthly: CufMonth[];
+}
+
+export function useCufReport(year: number, upto: string) {
+  return useQuery({
+    queryKey: ['cuf-report', year, upto],
+    queryFn: () => rpc<CufReport>('get_cuf_report', { p_year: year, p_upto: upto }, { year, upto, plants: [], monthly: [] }),
   });
 }

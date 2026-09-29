@@ -23,6 +23,7 @@ import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { useSites } from '@/features/admin/api';
 import { fmtKwh } from '@/features/om/shared';
 import { useMonthReview, usePortfolio, useShutdown, useSiteAnalysis } from '@/features/om/opsApi';
+import { CufTab } from '@/features/om/analytics/CufTab';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -149,6 +150,7 @@ export function AnalyticsPage() {
           <TabsTrigger value="review">Month review</TabsTrigger>
           <TabsTrigger value="shutdown">Shutdown</TabsTrigger>
           <TabsTrigger value="portfolio">Portfolio</TabsTrigger>
+          <TabsTrigger value="cuf">CUF (AC &amp; DC)</TabsTrigger>
         </TabsList>
         <TabsContent value="trend">
           <SiteTrend />
@@ -158,6 +160,9 @@ export function AnalyticsPage() {
         </TabsContent>
         <TabsContent value="shutdown">
           <ShutdownTab />
+        </TabsContent>
+        <TabsContent value="cuf">
+          <CufTab />
         </TabsContent>
         <TabsContent value="portfolio">
           <PortfolioTab />
@@ -731,6 +736,7 @@ function MonthReviewTab() {
         { header: 'Diff', value: (x) => (x.diff === null ? '' : safeNum(x.diff)) },
         { header: 'S.Y. (per day)', value: (x) => (x.specific_yield === null ? '' : safeNum(x.specific_yield)) },
         { header: 'DC CUF %', value: (x) => (x.dc_cuf === null ? '' : safeNum(x.dc_cuf)) },
+        { header: 'AC CUF %', value: (x) => (x.ac_cuf === null || x.ac_cuf === undefined ? '' : safeNum(x.ac_cuf)) },
         { header: 'Insolation', value: (x) => (x.insolation === null ? '' : safeNum(x.insolation)) },
         { header: 'PR %', value: (x) => (x.pr === null ? '' : safeNum(x.pr)) },
       ]);
@@ -769,7 +775,8 @@ function MonthReviewTab() {
           </div>
           <p className="text-xs text-muted-foreground">
             Effective days = {fmtNumber(r?.days_in_month)} days &minus; outage hours &divide;{' '}
-            {fmtNumber(r?.peak_sun_hours)} peak sun hours. S.Y. and CUF both use them.
+            {fmtNumber(r?.peak_sun_hours)} peak sun hours; S.Y. and the prorated forecast use them. CUF uses all the
+            days in the month, as the O&amp;M monthly record does. Actual is the month&apos;s recorded total where there is one.
           </p>
           {can.export && (
             <Button variant="outline" size="sm" onClick={onExport} disabled={!r?.rows.length}>
@@ -838,6 +845,7 @@ function MonthReviewTab() {
                         <TableHead className="text-right">Diff</TableHead>
                         <TableHead className="text-right">S.Y.</TableHead>
                         <TableHead className="text-right">DC CUF %</TableHead>
+                        <TableHead className="text-right">AC CUF %</TableHead>
                         <TableHead className="text-right">Inso.</TableHead>
                         <TableHead className="text-right">PR %</TableHead>
                       </TableRow>
@@ -857,6 +865,7 @@ function MonthReviewTab() {
                           </TableCell>
                           <TableCell className="tabular text-right">{x.specific_yield === null ? '—' : fmtNumber(x.specific_yield, 2)}</TableCell>
                           <TableCell className="tabular text-right">{x.dc_cuf === null ? '—' : fmtNumber(x.dc_cuf, 2)}</TableCell>
+                          <TableCell className="tabular text-right">{x.ac_cuf === null || x.ac_cuf === undefined ? '—' : fmtNumber(x.ac_cuf, 2)}</TableCell>
                           <TableCell className="tabular text-right">{x.insolation === null ? '—' : fmtNumber(x.insolation, 2)}</TableCell>
                           <TableCell className="tabular text-right">{x.pr === null ? '—' : fmtNumber(x.pr, 2)}</TableCell>
                         </TableRow>
