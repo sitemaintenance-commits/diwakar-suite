@@ -1727,6 +1727,7 @@ await expectRows('creator can read saved analysis jobs', OWNER, `select id from 
 await expectRows('another admin cannot read private analysis jobs', ADMIN, `select id from public.tender_analysis_jobs`, 0);
 await expectError('client cannot forge a completed analysis job', OWNER, `insert into public.tender_analysis_jobs(created_by, files, status) values (auth.uid(), '[]', 'completed')`, 'permission denied');
 await expectError('client cannot overwrite an analysis result', OWNER, `update public.tender_analysis_jobs set result = '{}'`, 'permission denied');
+await expectError('client cannot save an analysis step result', OWNER, `select public.tender_analysis_save_part((select id from public.tender_analysis_jobs limit 1), 'synopsis', '{}')`, 'permission denied');
 await expectOk('tender user uploads to own analysis folder', OWNER, `insert into storage.objects(bucket_id, name) values ('tender-analysis', $1 || '/source.pdf')`, [OWNER]);
 await expectError('tender user cannot upload to another folder', OWNER, `insert into storage.objects(bucket_id, name) values ('tender-analysis', $1 || '/source.pdf')`, 'row-level security', [ADMIN]);
 await expectRows('another user cannot read the analysis source', ADMIN, `select id from storage.objects where bucket_id = 'tender-analysis'`, 0);

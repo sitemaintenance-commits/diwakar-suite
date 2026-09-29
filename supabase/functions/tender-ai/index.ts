@@ -12,6 +12,11 @@
 //   summarize { document_id }                      (a PDF already attached)
 //             -> { fields, summary }
 //
+//   analyse      { files: [{ path, name }], tender_id? } -> { id }
+//   analyse_part { job_id, part }   (called by the function itself)
+//             A background job over a whole tender package, run as a chain
+//             of function calls so a 300-page RfS fits Supabase's limits.
+//
 // Analysis jobs are persisted server-side; tender updates use the caller's
 // permissions. The caller must hold crm.tenders CREATE or EDIT.
 //
@@ -146,9 +151,14 @@ const SYNOPSIS_SCHEMA = {
     'financials', 'documents_required', 'boq_highlights', 'submission_requirements']) },
   required: ['fields', 'summary'],
 };
-const JUDGEMENT_SCHEMA = {
+const RISKS_SCHEMA = {
   type: 'object', additionalProperties: false,
-  properties: { summary: summaryPart(['risk_analysis', 'risks', 'go_no_go', 'contradictions', 'missing_information', 'recommendation']) },
+  properties: { summary: summaryPart(['risk_analysis', 'risks']) },
+  required: ['summary'],
+};
+const DECISION_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  properties: { summary: summaryPart(['go_no_go', 'contradictions', 'missing_information', 'recommendation']) },
   required: ['summary'],
 };
 
@@ -607,63 +617,142 @@ Always distinguish source facts from your judgement. The recommendation is advis
 
 type PdfInput = { blob: Blob; name: string };
 type StoredInput = { path: string; name: string };
-async function withPdfParts<T>(files: PdfInput[], deadline: number, run: (parts: Part[]) => Promise<T>): Promise<T> {
-  const uploaded: string[] = [];
-  const parts: Part[] = [];
+type GeminiFile = { name: string; uri: string; filename: string };
+
+/** Uploads PDFs to Gemini's Files API and waits until Google has processed them. */
+async function uploadToGemini(files: PdfInput[], deadline: number): Promise<GeminiFile[]> {
+  const done: GeminiFile[] = [];
   try {
     for (const file of files) {
-      if (Date.now() > deadline - 10_000) throw new HttpError(504, 'Upload timed out. Retry with fewer PDFs.');
+      if (Date.now() > deadline - 10_000) throw new HttpError(504, 'Uploading the PDFs to the AI took too long. Retry, or upload fewer PDFs at once.');
       const magic = new Uint8Array(await file.blob.slice(0, 5).arrayBuffer());
       if (new TextDecoder().decode(magic) !== '%PDF-') throw new HttpError(400, `${file.name} is not a PDF.`);
       if (file.blob.size > MAX_FILE_BYTES) throw new HttpError(400, 'PDF exceeds 50 MB.');
       // No httpOptions here: the SDK replaces its resumable-upload headers with
       // them, and the upload then goes to a URL Google answers 404.
       let remote = await gemini.files.upload({ file: file.blob, config: { mimeType: 'application/pdf', displayName: file.name } });
-      if (!remote.name) throw new Error('AI file upload failed.');
-      uploaded.push(remote.name);
+      const name = remote.name;
+      if (!name) throw new Error('AI file upload failed.');
       while (remote.state === 'PROCESSING') {
-        if (Date.now() > deadline - 10_000) throw new HttpError(504, 'PDF processing timed out. Retry with fewer PDFs.');
-        await sleep(1500);
-        remote = await gemini.files.get({ name: remote.name!, config: { httpOptions: { timeout: Math.max(1000, deadline - Date.now()) } } });
+        if (Date.now() > deadline - 10_000) {
+          await deleteGeminiFiles([name]);
+          throw new HttpError(504, 'Google took too long to process the PDFs. Retry, or upload fewer PDFs at once.');
+        }
+        await sleep(2000);
+        remote = await gemini.files.get({ name, config: { httpOptions: { timeout: Math.max(1000, deadline - Date.now()) } } });
       }
-      if (remote.state === 'FAILED' || !remote.uri) throw new Error(`AI could not process ${file.name}.`);
-      parts.push({ text: `Source filename: ${file.name}` }, { fileData: { fileUri: remote.uri, mimeType: 'application/pdf' } });
+      if (remote.state === 'FAILED' || !remote.uri) {
+        await deleteGeminiFiles([name]);
+        throw new Error(`AI could not process ${file.name}.`);
+      }
+      done.push({ name, uri: remote.uri, filename: file.name });
     }
-    return await run(parts);
-  } finally {
-    await Promise.allSettled(uploaded.map((name) => gemini.files.delete({ name, config: { httpOptions: { timeout: 5000 } } })));
+    return done;
+  } catch (e) {
+    await deleteGeminiFiles(done.map((f) => f.name));
+    throw e;
   }
 }
 
+async function deleteGeminiFiles(names: string[]) {
+  await Promise.allSettled(names.map((name) => gemini.files.delete({ name, config: { httpOptions: { timeout: 5000 } } })));
+}
+
+function geminiParts(files: GeminiFile[]): Part[] {
+  return files.flatMap((f) => [{ text: `Source filename: ${f.filename}` }, { fileData: { fileUri: f.uri, mimeType: 'application/pdf' } }]);
+}
+
+async function withPdfParts<T>(files: PdfInput[], deadline: number, run: (parts: Part[]) => Promise<T>): Promise<T> {
+  const uploaded = await uploadToGemini(files, deadline);
+  try {
+    return await run(geminiParts(uploaded));
+  } finally {
+    await deleteGeminiFiles(uploaded.map((f) => f.name));
+  }
+}
+
+// The five steps as three answers. Each is short enough to finish inside one
+// function run even for a 300-page RfS; together they would not.
+type PartName = 'synopsis' | 'risks' | 'decision';
+const PART_NAMES: PartName[] = ['synopsis', 'risks', 'decision'];
+const PARTS: Record<PartName, { schema: unknown; instruction: string }> = {
+  synopsis: { schema: SYNOPSIS_SCHEMA, instruction: 'In this answer complete only steps 1 and 2 (document reading and synopsis) and the tender fields; other answers cover steps 3-5.' },
+  risks: { schema: RISKS_SCHEMA, instruction: 'In this answer complete only step 3 (risk analysis), and list the top risks in plain words in risks; other answers cover the rest.' },
+  decision: { schema: DECISION_SCHEMA, instruction: 'In this answer complete only steps 4 and 5 (go/no-go and contradictions), missing_information and the recommendation; other answers cover the synopsis and clause risks.' },
+};
+
+async function companyProfile(client: SupabaseClient): Promise<string> {
+  const { data, error } = await client.from('app_settings').select('value').eq('key', 'tender_company_profile').maybeSingle();
+  return error ? '' : String(data?.value ?? '').slice(0, 20000);
+}
+
+async function runPart(part: PartName, parts: Part[], profile: string, deadline: number): Promise<Record<string, unknown>> {
+  const context = { text: `Current date: ${new Date().toISOString()}. Company profile (unverified user-provided evidence): ${profile || 'NOT PROVIDED. Decision must be REVIEW REQUIRED.'}` };
+  const res = await callGemini({ deadline, schema: PARTS[part].schema, parts: [...parts, context], system: `${ANALYSIS_SYSTEM}\n${PARTS[part].instruction}` });
+  return parseJson<Record<string, unknown>>(res.text ?? '');
+}
+
+/** Joins the three answers into { fields, summary } and checks it is whole. */
+function combineParts(answers: Record<string, Record<string, unknown>>, profile: string) {
+  const summaryOf = (p: string) => (answers[p]?.summary ?? {}) as Record<string, unknown>;
+  const result = {
+    fields: (answers.synopsis?.fields ?? null) as Record<string, unknown>,
+    summary: { ...summaryOf('synopsis'), ...summaryOf('risks'), ...summaryOf('decision') } as Record<string, unknown>,
+  };
+  if (!result.fields || !Array.isArray(result.summary.risk_analysis) || !result.summary.go_no_go) throw new Error('AI returned incomplete analysis. Please retry.');
+  if (!profile) {
+    (result.summary.go_no_go as Record<string, unknown>).decision = 'REVIEW REQUIRED';
+    result.summary.recommendation = 'Add the company qualification profile in System Settings and rerun the analysis before making a bid decision.';
+  }
+  return result;
+}
+
+/** One function run: used for the tender page's "Summarise PDF" on a single PDF. */
 async function analyseFiles(caller: SupabaseClient, files: PdfInput[], deadline: number) {
-  const { data, error } = await caller.from('app_settings').select('value').eq('key', 'tender_company_profile').maybeSingle();
-  const profile = error ? '' : String(data?.value ?? '').slice(0, 20000);
+  const profile = await companyProfile(caller);
   return withPdfParts(files, deadline, async (parts) => {
-    // Two halves at once over the same uploaded files: one long answer took
-    // longer than the function may run, two half-length ones do not.
-    const context = { text: `Current date: ${new Date().toISOString()}. Company profile (unverified user-provided evidence): ${profile || 'NOT PROVIDED. Decision must be REVIEW REQUIRED.'}` };
-    const [synopsis, judgement] = await Promise.all([
-      callGemini({ deadline, schema: SYNOPSIS_SCHEMA, parts: [...parts, context],
-        system: `${ANALYSIS_SYSTEM}
-In this answer complete only steps 1 and 2 (document reading and synopsis) and the tender fields; another answer covers steps 3-5.` }),
-      callGemini({ deadline, schema: JUDGEMENT_SCHEMA, parts: [...parts, context],
-        system: `${ANALYSIS_SYSTEM}
-In this answer complete only steps 3, 4 and 5 (risks, go/no-go, contradictions) and the recommendation; another answer covers the synopsis.` }),
-    ]);
-    const a = parseJson<{ fields: Record<string, unknown>; summary: Record<string, unknown> }>(synopsis.text ?? '');
-    const b = parseJson<{ summary: Record<string, unknown> }>(judgement.text ?? '');
-    const result = { fields: a.fields, summary: { ...(a.summary ?? {}), ...(b.summary ?? {}) } };
-    if (!result.fields || !result.summary || !Array.isArray(result.summary.risk_analysis) || !result.summary.go_no_go) throw new Error('AI returned incomplete analysis. Please retry.');
-    if (!profile) {
-      const decision = result.summary.go_no_go as Record<string, unknown>;
-      decision.decision = 'REVIEW REQUIRED';
-      result.summary.recommendation = 'Add the company qualification profile in System Settings and rerun the analysis before making a bid decision.';
-    }
-    return result;
+    const answers = await Promise.all(PART_NAMES.map((p) => runPart(p, parts, profile, deadline)));
+    return combineParts(Object.fromEntries(PART_NAMES.map((p, i) => [p, answers[i]])), profile);
   });
 }
 
-async function startAnalysis(caller: SupabaseClient, userId: string, body: { files?: StoredInput[]; tender_id?: string }) {
+// ------------------------------------------------------------------ analysis jobs
+// A job is a chain of function runs, each with its own time budget:
+//   analyse        -> saves the job, then (background) uploads the PDFs to
+//                     Gemini and starts the three parts
+//   analyse_part   -> (background) one part; the last part to finish combines
+//                     them, saves the tender and deletes the Gemini copies
+// Each run calls the next with the user's own token, so every step still runs
+// with the user's permissions.
+const serviceClient = () => createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
+
+function inBackground(work: () => Promise<void>) {
+  const runtime = (globalThis as unknown as { EdgeRuntime: { waitUntil: (p: Promise<void>) => void } }).EdgeRuntime;
+  runtime.waitUntil(work());
+}
+
+async function failJob(jobId: string, e: unknown) {
+  const admin = serviceClient();
+  const message = e instanceof Error ? e.message : 'Analysis failed. Please retry.';
+  console.error(`analysis job ${jobId} failed:`, message);
+  const { data } = await admin.from('tender_analysis_jobs')
+    .update({ status: 'failed', error: message, updated_at: new Date().toISOString() })
+    .eq('id', jobId).eq('status', 'processing').select('gemini_files').maybeSingle();
+  const files = (data?.gemini_files ?? []) as GeminiFile[];
+  if (files.length) await deleteGeminiFiles(files.map((f) => f.name));
+}
+
+async function startPart(authHeader: string, jobId: string, part: PartName) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/tender-ai`, {
+    method: 'POST',
+    headers: { Authorization: authHeader, apikey: ANON_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'analyse_part', job_id: jobId, part }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) throw new Error(`Could not start the ${part} step (${res.status}).`);
+}
+
+async function startAnalysis(caller: SupabaseClient, authHeader: string, userId: string, body: { files?: StoredInput[]; tender_id?: string }) {
   const files = body.files;
   if (!Array.isArray(files) || !files.length || files.length > 8 || files.some((f) => typeof f.path !== 'string' || !f.path.startsWith(`${userId}/`) || typeof f.name !== 'string')) throw new HttpError(400, 'Choose 1–8 PDFs uploaded by you.');
   if (body.tender_id) {
@@ -671,10 +760,12 @@ async function startAnalysis(caller: SupabaseClient, userId: string, body: { fil
     const permission = await caller.rpc('has_permission', { p_module: 'crm.tenders', p_action: 'edit' });
     if (error || !data || !permission.data) throw new HttpError(403, 'You cannot analyse this tender.');
   }
-  const admin = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
-  const { data: job, error } = await admin.from('tender_analysis_jobs').insert({ created_by: userId, tender_id: body.tender_id || null, files }).select('id').single();
+  const admin = serviceClient();
+  const { data: job, error } = await admin.from('tender_analysis_jobs')
+    .insert({ created_by: userId, tender_id: body.tender_id || null, files, step: 'preparing' }).select('id').single();
   if (error) throw error;
-  const work = async () => {
+
+  inBackground(async () => {
     try {
       const deadline = Date.now() + REQUEST_BUDGET_MS;
       const inputs: PdfInput[] = [];
@@ -686,21 +777,55 @@ async function startAnalysis(caller: SupabaseClient, userId: string, body: { fil
         if (total > MAX_FILE_BYTES) throw new Error('The combined PDF package exceeds 50 MB.');
         inputs.push({ blob: result.data, name: file.name.slice(0, 200) });
       }
-      const result = await analyseFiles(caller, inputs, deadline);
-      if (body.tender_id) {
-        const saved = await caller.from('tenders').update({ ai_summary: result.summary, ai_summary_from: 'pdf', ai_summary_at: new Date().toISOString() }).eq('id', body.tender_id).select('id').single();
+      const uploaded = await uploadToGemini(inputs, deadline);
+      const saved = await admin.from('tender_analysis_jobs')
+        .update({ gemini_files: uploaded, step: 'analysing', updated_at: new Date().toISOString() })
+        .eq('id', job.id).eq('status', 'processing');
+      if (saved.error) {
+        await deleteGeminiFiles(uploaded.map((f) => f.name));
+        throw saved.error;
+      }
+      await Promise.all(PART_NAMES.map((part) => startPart(authHeader, job.id, part)));
+    } catch (e) {
+      await failJob(job.id, e);
+    }
+  });
+  return { id: job.id };
+}
+
+async function startAnalysisPart(caller: SupabaseClient, body: { job_id?: unknown; part?: unknown }) {
+  const jobId = typeof body.job_id === 'string' ? body.job_id : '';
+  const part = body.part as PartName;
+  if (!jobId || !PART_NAMES.includes(part)) throw new HttpError(400, 'Unknown analysis step.');
+  // Read as the caller: RLS only shows a job to the user who started it.
+  const { data: job, error } = await caller.from('tender_analysis_jobs').select('id, tender_id, status, gemini_files').eq('id', jobId).maybeSingle();
+  if (error || !job) throw new HttpError(404, 'Analysis not found.');
+  if (job.status !== 'processing' || !Array.isArray(job.gemini_files)) throw new HttpError(409, 'This analysis is not waiting for this step.');
+
+  inBackground(async () => {
+    const admin = serviceClient();
+    try {
+      const profile = await companyProfile(caller);
+      const answer = await runPart(part, geminiParts(job.gemini_files as GeminiFile[]), profile, Date.now() + REQUEST_BUDGET_MS);
+      const { data: parts, error: saveError } = await admin.rpc('tender_analysis_save_part', { p_job: jobId, p_part: part, p_value: answer });
+      if (saveError) throw saveError;
+      // Every part saves; the one that completes the set finishes the job.
+      if (!parts || !PART_NAMES.every((p) => p in (parts as Record<string, unknown>))) return;
+      const result = combineParts(parts as Record<string, Record<string, unknown>>, profile);
+      if (job.tender_id) {
+        const saved = await caller.from('tenders').update({ ai_summary: result.summary, ai_summary_from: 'pdf', ai_summary_at: new Date().toISOString() }).eq('id', job.tender_id).select('id').single();
         if (saved.error) throw saved.error;
       }
-      const saved = await admin.from('tender_analysis_jobs').update({ status: 'completed', result, updated_at: new Date().toISOString() }).eq('id', job.id);
-      if (saved.error) throw saved.error;
+      const done = await admin.from('tender_analysis_jobs')
+        .update({ status: 'completed', result, gemini_files: null, step: null, updated_at: new Date().toISOString() })
+        .eq('id', jobId).eq('status', 'processing');
+      if (done.error) throw done.error;
+      await deleteGeminiFiles((job.gemini_files as GeminiFile[]).map((f) => f.name));
     } catch (e) {
-      await admin.from('tender_analysis_jobs').update({ status: 'failed', error: e instanceof Error ? e.message : 'Analysis failed. Please retry.', updated_at: new Date().toISOString() }).eq('id', job.id);
+      await failJob(jobId, e);
     }
-  };
-  // The persisted job survives browser navigation. A killed worker is detected by the UI's stale-job timeout.
-  const runtime = (globalThis as unknown as { EdgeRuntime: { waitUntil: (p: Promise<void>) => void } }).EdgeRuntime;
-  runtime.waitUntil(work());
-  return { id: job.id };
+  });
+  return { id: jobId, part };
 }
 
 /** Values read from the PDF win; web values fill whatever the PDF leaves blank. */
@@ -760,7 +885,9 @@ Deno.serve(async (req) => {
       case 'summarize':
         return json(req, await summarize(caller, body));
       case 'analyse':
-        return json(req, await startAnalysis(caller, userData.user.id, body), 202);
+        return json(req, await startAnalysis(caller, authHeader, userData.user.id, body), 202);
+      case 'analyse_part':
+        return json(req, await startAnalysisPart(caller, body), 202);
       default:
         throw new HttpError(400, 'Unknown action.');
     }

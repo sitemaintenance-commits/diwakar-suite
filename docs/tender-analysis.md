@@ -2,7 +2,7 @@
 
 ## Enable the feature
 
-1. Apply migrations, including `20260929000006_tender_analysis.sql`.
+1. Apply migrations, including `20260929000006_tender_analysis.sql` and `20260929000007_tender_analysis_steps.sql`.
 2. Deploy the `tender-ai` Supabase function, then deploy the frontend.
 3. Keep `GEMINI_API_KEY` and `TAVILY_API_KEY` configured. `GEMINI_MODEL` and `GEMINI_FALLBACK_MODELS` select models; no browser API keys are needed. The function uses Supabase's standard service-role environment variable only to persist job results.
 4. Fill in **System Settings → Company profile for tender eligibility**.
@@ -19,9 +19,15 @@ Results cover document/OCR coverage, synopsis, risk clauses, company go/no-go an
 
 ## Background execution and limits
 
-The server returns a job ID and continues with `EdgeRuntime.waitUntil`. Closing the dialog or browser does not cancel work. Reopen the dialog to see saved analyses. Existing tender analyses are also saved to the tender using the caller's permissions. Source attachment is a separate button.
+A job runs as a chain of Supabase function calls, each with its own ~135-second budget, because a 100–300 page RfS cannot be uploaded to Gemini and analysed inside one call (Supabase stops a function at 150 s):
 
-The analysis has a 135-second budget, including Files API processing. The synopsis and the risk, go/no-go and contradiction steps run as two parallel Gemini calls over the same uploaded files, so each answer is half as long. This is a bounded background job, not an unlimited durable queue. If the platform terminates the worker, the UI identifies a job older than three minutes as timed out and offers retry. There is no automatic retry or scheduled recovery. Split very large/slow packages if needed, noting that separate runs cannot check cross-package contradictions. On local Supabase, use the documented per-worker runtime policy to allow background execution.
+1. `analyse` saves the job and returns its ID. In the background it uploads the PDFs to Gemini's Files API and waits until Google has processed every page.
+2. It then starts three `analyse_part` calls at once — synopsis (steps 1–2), risk clauses (step 3), and go/no-go with contradictions (steps 4–5) — each in its own function run over the same uploaded files.
+3. Each part is saved with `tender_analysis_save_part`, which merges it into the job in one statement so parts finishing together cannot overwrite each other. The part that completes the set combines them, saves the tender summary and deletes the Gemini copies.
+
+Every step runs with the user's own token, so permissions apply throughout. Closing the dialog or browser does not stop the job; reopen the dialog to see progress ("2 of 3 steps done") and saved results. A job that records no progress for five minutes is shown as stopped and can be retried. There is no automatic retry. If one PDF upload alone takes longer than a function run, upload the main RfS on its own. On local Supabase, use the documented per-worker runtime policy to allow background execution.
+
+"Summarise PDF" on the tender page still runs in a single call, so it suits one PDF of moderate size; use **Analyse tender PDF** for full packages.
 
 ## Verification
 

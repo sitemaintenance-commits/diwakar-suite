@@ -13,8 +13,21 @@ import { callTenderAi, fieldsToForm, saveTenderSummary, type AiFields } from './
 import { TenderFormDialog } from './TenderFormDialog';
 
 type StoredFile = { path: string; name: string };
-type Job = { id: string; tender_id: string | null; files: StoredFile[]; status: 'processing' | 'completed' | 'failed'; created_at: string; error: string | null; result: { fields: AiFields; summary: TenderAiSummary } | null };
-const expired = (job: Job) => job.status === 'processing' && Date.now() - Date.parse(job.created_at) > 180_000;
+type Job = {
+  id: string; tender_id: string | null; files: StoredFile[]; status: 'processing' | 'completed' | 'failed';
+  created_at: string; updated_at: string; error: string | null; step: 'preparing' | 'analysing' | null;
+  parts: Record<string, unknown> | null; result: { fields: AiFields; summary: TenderAiSummary } | null;
+};
+// Each step of a job runs for at most ~2.5 minutes and records its progress,
+// so a job silent for longer than that plus slack has lost its worker.
+const expired = (job: Job) => job.status === 'processing' && Date.now() - Date.parse(job.updated_at ?? job.created_at) > 300_000;
+const STEP_LABELS: Record<string, string> = { synopsis: 'Synopsis', risks: 'Risk clauses', decision: 'Go/no-go & contradictions' };
+function progressText(job: Job) {
+  if (job.step !== 'analysing') return 'Uploading the PDFs to the AI and waiting for Google to read every page…';
+  const done = Object.keys(job.parts ?? {});
+  const left = Object.keys(STEP_LABELS).filter((k) => !done.includes(k)).map((k) => STEP_LABELS[k]);
+  return `Analysing: ${done.length} of 3 steps done${left.length ? ` — still working on ${left.join(', ')}` : ''}…`;
+}
 
 export function TenderAnalysisDialog({ open, onOpenChange, tenderId, onCreated }: {
   open: boolean; onOpenChange: (open: boolean) => void; tenderId?: string; onCreated?: (id: string) => void;
@@ -91,8 +104,8 @@ export function TenderAnalysisDialog({ open, onOpenChange, tenderId, onCreated }
           {jobs.isLoading && <p>Loading saved analyses…</p>}
           {jobs.error && <p role="alert" className="text-red-700">{errorMessage(jobs.error)}</p>}
           {!!jobs.data?.length && <label className="block text-sm">Saved analyses<select className="mt-1 block w-full rounded-md border p-2" value={job?.id ?? ''} onChange={(e) => setSelected(e.target.value)}>{jobs.data.map((j) => <option key={j.id} value={j.id}>{new Date(j.created_at).toLocaleString()} · {j.files.map((f) => f.name).join(', ')} · {expired(j) ? 'timed out' : j.status}</option>)}</select></label>}
-          {running && <div role="status" className="rounded-lg bg-violet-50 p-4 text-sm text-violet-800"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Reading PDFs and checking synopsis, risks, eligibility and contradictions. You can close this window; return here for saved results.</div>}
-          {job && (job.status === 'failed' || expired(job)) && <div role="alert" className="space-y-2 rounded-lg bg-amber-50 p-4 text-sm"><p>{expired(job) ? 'The worker timed out before saving a result. Retry, or upload a smaller package.' : job.error}</p><Button variant="outline" disabled={busy} onClick={() => void start(job.files)}>Retry analysis</Button></div>}
+          {running && <div role="status" className="rounded-lg bg-violet-50 p-4 text-sm text-violet-800"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />{progressText(job)} A 300-page RfS usually takes 2–5 minutes. You can close this window; return here for saved results.</div>}
+          {job && (job.status === 'failed' || expired(job)) && <div role="alert" className="space-y-2 rounded-lg bg-amber-50 p-4 text-sm"><p>{expired(job) ? 'The analysis stopped making progress. Retry; if it happens again, upload the main RfS on its own.' : job.error}</p><Button variant="outline" disabled={busy} onClick={() => void start(job.files)}>Retry analysis</Button></div>}
           {job?.status === 'completed' && job.result && <div className="space-y-4"><AiSummaryView summary={job.result.summary} /><p className="text-xs text-slate-500">Verify cited clauses and page numbers in the originals before committing to a bid.</p>{tenderId ? <Button disabled={busy} onClick={async () => { setBusy(true); try { await attachToTender(tenderId); toast.success('Source PDFs attached and analysis saved'); } catch (e) { toast.error(errorMessage(e)); } finally { setBusy(false); } }}>Attach source PDFs to tender</Button> : <Button onClick={() => setFormOpen(true)}>Create tender from analysis</Button>}</div>}
         </div>
       </DialogContent>
