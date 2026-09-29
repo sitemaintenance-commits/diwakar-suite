@@ -71,7 +71,8 @@ otp_expiry = 86400
 [functions.admin-users]
 verify_jwt = true
 
-# Needs the GEMINI_API_KEY secret (free key from aistudio.google.com):
-#   npx supabase secrets set GEMINI_API_KEY=...
+# Needs the GEMINI_API_KEY secret (free key from aistudio.google.com)
+# and TAVILY_API_KEY (free key from tavily.com, for web search):
+#   npx supabase secrets set GEMINI_API_KEY=... TAVILY_API_KEY=...
 [functions.tender-ai]
 verify_jwt = true

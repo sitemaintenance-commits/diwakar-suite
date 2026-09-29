@@ -32,6 +32,8 @@ export interface LookupResult {
   documents: AiLink[];
   pdf: AiPdf | null;
   download_failures: string[];
+  /** The web searches that were run, for the user to see. */
+  searched_for?: string[];
   notes: string;
 }
 

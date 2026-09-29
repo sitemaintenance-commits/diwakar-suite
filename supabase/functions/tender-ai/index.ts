@@ -3,10 +3,11 @@
 //
 // Actions:
 //   lookup    { images?: [{ media_type, data }], text? }
-//             -> { found, fields, sources, documents, pdf, summary, notes }
-//             Gemini searches Google for the tender, the function downloads
-//             the official PDF it points to and, when it gets one, Gemini
-//             reads the PDF and writes the summary.
+//             -> { found, fields, sources, documents, pdf, summary, searched_for, notes }
+//             Gemini reads the input and writes search queries, Tavily
+//             searches the web (official sites first), Gemini matches the
+//             results to the tender, the function downloads the official PDF
+//             when a result links to one, and Gemini summarises it.
 //   summarize { pdf: { name, data } }              (a PDF the user uploads)
 //   summarize { document_id }                      (a PDF already attached)
 //             -> { fields, summary }
@@ -17,6 +18,8 @@
 //
 // Secrets: GEMINI_API_KEY (free key from aistudio.google.com)
 //          GEMINI_MODEL   optional, defaults to the latest Flash model
+//          TAVILY_API_KEY free key from tavily.com (web search)
+import { tavily } from 'npm:@tavily/core@0.7.13';
 import { ApiError, FinishReason, GoogleGenAI, type GenerateContentResponse, type Part } from 'npm:@google/genai@2.24.0';
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders, json } from '../_shared/cors.ts';
@@ -163,7 +166,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * (503) and each model has its own quota (429), so a busy model is retried
  * briefly and then the next model in MODELS is tried, all within `deadline`.
  */
-async function callGemini(params: { system: string; parts: Part[]; tools?: boolean; schema?: unknown; deadline: number }): Promise<GenerateContentResponse> {
+async function callGemini(params: { system: string; parts: Part[]; schema?: unknown; deadline: number }): Promise<GenerateContentResponse> {
   if (!Deno.env.get('GEMINI_API_KEY')) throw new HttpError(500, 'The AI service is not set up. Ask the administrator to set GEMINI_API_KEY.');
   let res: GenerateContentResponse | undefined;
   let lastError: unknown = new HttpError(504, 'The AI took too long. Try again with the tender number.');
@@ -178,7 +181,6 @@ async function callGemini(params: { system: string; parts: Part[]; tools?: boole
           contents: [{ role: 'user', parts: params.parts }],
           config: {
             systemInstruction: params.system,
-            ...(params.tools ? { tools: [{ googleSearch: {} }, { urlContext: {} }] } : {}),
             ...(params.schema ? { responseMimeType: 'application/json', responseJsonSchema: params.schema } : {}),
             maxOutputTokens: 16000,
             abortSignal: AbortSignal.timeout(left),
@@ -207,12 +209,6 @@ async function callGemini(params: { system: string; parts: Part[]; tools?: boole
   return res;
 }
 
-/** Pages Google Search actually returned, for when the answer lists none. */
-function groundingSources(res: GenerateContentResponse): { url: string; title: string }[] {
-  return (res.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [])
-    .flatMap((c) => (c.web?.uri ? [{ url: c.web.uri, title: c.web.title ?? c.web.uri }] : []))
-    .slice(0, 8);
-}
 
 function parseJson<T>(text: string): T {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -223,8 +219,126 @@ function parseJson<T>(text: string): T {
   return JSON.parse(body.slice(start, end + 1)) as T;
 }
 
+// ------------------------------------------------------------------ search
+// Tavily (free: ~1,000 searches a month, no card) finds the tender; Gemini
+// only reads. Two searches per lookup: one on official sites only, one open
+// (news and alert sites often carry the tender number the portal needs).
+const OFFICIAL_DOMAINS = [
+  'gov.in', 'nic.in', 'gem.gov.in', 'eprocure.gov.in', 'coalindia.in', 'seci.co.in', 'ntpc.co.in',
+  'nhpcindia.com', 'sjvn.co.in', 'powergrid.in', 'ireps.gov.in', 'railtel.in', 'nlcindia.in',
+];
+
+interface Hit {
+  url: string;
+  title: string;
+  content: string;
+  official: boolean;
+}
+
+function isOfficial(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return OFFICIAL_DOMAINS.some((d) => host === d || host.endsWith(`.${d}`));
+  } catch {
+    return false;
+  }
+}
+
+async function searchWeb(queries: string[]): Promise<{ hits: Hit[]; error: string | null }> {
+  const key = Deno.env.get('TAVILY_API_KEY');
+  if (!key) return { hits: [], error: 'web search is not set up (TAVILY_API_KEY missing)' };
+  const client = tavily({ apiKey: key });
+  const q = queries.map((x) => x.trim()).filter(Boolean).slice(0, 2);
+  const plans = [
+    { query: q[0], includeDomains: OFFICIAL_DOMAINS },
+    { query: q[1] ?? q[0] },
+  ].filter((p) => p.query);
+  const settled = await Promise.allSettled(
+    plans.map((p) =>
+      client.search(p.query, {
+        searchDepth: 'basic', // 1 credit each
+        maxResults: 6,
+        country: 'india',
+        timeout: 30,
+        ...(p.includeDomains ? { includeDomains: p.includeDomains } : {}),
+      }),
+    ),
+  );
+  const seen = new Set<string>();
+  const hits: Hit[] = [];
+  const errors: string[] = [];
+  for (const r of settled) {
+    if (r.status === 'rejected') {
+      errors.push(r.reason instanceof Error ? r.reason.message : String(r.reason));
+      continue;
+    }
+    for (const x of r.value.results ?? []) {
+      if (!x.url || seen.has(x.url)) continue;
+      seen.add(x.url);
+      hits.push({ url: x.url, title: x.title ?? x.url, content: (x.content ?? '').slice(0, 1500), official: isOfficial(x.url) });
+    }
+  }
+  if (errors.length) console.error('Tavily search failed:', errors.join(' | '));
+  const error = hits.length === 0 && errors.length ? `web search failed (${errors[0].slice(0, 160)})` : null;
+  return { hits, error };
+}
+
 // ------------------------------------------------------------------ lookup
-interface LookupResult {
+const PICK_LISTS = `For portal, tender_type, work_type and emd_mode use exactly one of these values or null:
+   portal: ${PORTALS.join(' | ')}
+   tender_type: ${TENDER_TYPES.join(' | ')} (gem = GeM bid)
+   work_type: ${WORK_TYPES.join(' | ')}
+   emd_mode: ${EMD_MODES.join(' | ')}
+Never invent numbers or dates; use null when unknown. Amounts in rupees (convert lakh/crore). Date-times ISO 8601 with +05:30.`;
+
+const READ_INPUT_SYSTEM = `You help the bid team of Diwakar Solar, a solar EPC company in Rajasthan, India, find government tenders.
+The user gives you a screenshot (often a WhatsApp forward, LinkedIn post or tender-alert listing) and/or some text about a tender.
+Read every detail you can from it, and write two web search queries that would find this exact tender:
+the first aimed at the official notice (tender/NIT/bid number if known, authority, key words such as capacity and location),
+the second broader (authority + subject + "tender" + year).
+${PICK_LISTS}`;
+
+const READ_INPUT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    fields: FIELDS_SCHEMA,
+    queries: { type: 'array', items: { type: 'string' }, description: 'Exactly two search queries' },
+  },
+  required: ['fields', 'queries'],
+};
+
+const MATCH_SYSTEM = `You help the bid team of Diwakar Solar, a solar EPC company in Rajasthan, India.
+You get what the user told us about a tender, and web search results (numbered, with URL, title and an excerpt).
+1. Decide whether the results show THIS tender (same authority and subject; same number if known). found = true only then.
+2. Complete the tender fields from the results that match. Prefer official sites over news or aggregator sites.
+3. document_urls: links from the results that are the official notice / NIT / bid document itself (usually ending in .pdf or a GeM showbidDocument link). Copy URLs exactly; never make one up.
+4. sources: the result links that describe this tender, official ones first.
+5. Write the summary from what the matching results say. Say plainly in notes what is not confirmed, and where the full document is (portal name), since many portals need a captcha to download.
+${PICK_LISTS}`;
+
+const LINK = {
+  type: 'object',
+  additionalProperties: false,
+  properties: { url: { type: 'string' }, title: { type: 'string' } },
+  required: ['url', 'title'],
+};
+
+const MATCH_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    found: { type: 'boolean' },
+    fields: FIELDS_SCHEMA,
+    document_urls: { type: 'array', items: LINK },
+    sources: { type: 'array', items: LINK },
+    summary: SUMMARY_SCHEMA,
+    notes: { type: 'string' },
+  },
+  required: ['found', 'fields', 'document_urls', 'sources', 'summary', 'notes'],
+};
+
+interface MatchResult {
   found: boolean;
   fields: Record<string, unknown>;
   document_urls: { url: string; title: string }[];
@@ -233,34 +347,36 @@ interface LookupResult {
   notes: string;
 }
 
-const LOOKUP_SYSTEM = `You help the bid team of Diwakar Solar, a solar EPC company in Rajasthan, India, find government tenders.
-The user gives you a screenshot (often a WhatsApp forward or a tender-alert listing) and/or some text about a tender.
-
-1. Read every detail you can from the input: tender/NIT/bid number, authority, title, dates, portal.
-2. Use Google Search to find the tender on OFFICIAL sources: GeM (bidplus.gem.gov.in), CPPP (eprocure.gov.in), state e-procurement portals (eproc.rajasthan.gov.in, sppp.rajasthan.gov.in, etc.), or the authority's own website (.gov.in / .nic.in / PSU sites such as seci.co.in, ntpc.co.in).
-   Aggregator sites (tendertiger, tender247, bidassist …) may be used to find the number, but always try to reach the official page.
-3. Look for a direct link to the official notice / NIT / bid document as a PDF. Open the official page (URL context) to confirm a link when useful; only list links you actually saw. Many portals put documents behind a captcha — if so, say so in notes and give the portal page instead.
-4. For portal, tender_type, work_type and emd_mode use exactly one of these values or null:
-   portal: ${PORTALS.join(' | ')}
-   tender_type: ${TENDER_TYPES.join(' | ')} (gem = GeM bid)
-   work_type: ${WORK_TYPES.join(' | ')}
-   emd_mode: ${EMD_MODES.join(' | ')}
-5. Never invent numbers, dates or links. Use null when unknown. Amounts in rupees (convert lakh/crore). Dates in India time.
-
-Finish with ONLY a JSON object (no prose) of this shape:
-{"found": boolean,
- "fields": { ${Object.keys(FIELD_PROPS).map((k) => `"${k}": …`).join(', ')} },
- "document_urls": [{"url": "direct PDF link on an official site", "title": "…"}],
- "sources": [{"url": "…", "title": "…"}],
- "summary": {"overview": "…", "scope": [], "eligibility": [], "key_dates": [{"label": "…", "value": "…"}], "financials": [], "documents_required": [], "risks": [], "recommendation": "…"},
- "notes": "what you could not confirm, captcha-protected downloads, corrigenda, etc."}
-The summary is from the web pages you read; it will be replaced if the PDF can be downloaded.`;
-
-const NO_SEARCH = `
-
-Web search is NOT available for this request. Do not search and do not guess links.
-Read everything you can from the input only, leave document_urls and sources empty, and
-in notes say where the tender can be found (portal name) if the input shows it.`;
+/** Gemini decides which search results are this tender and reads them. */
+async function matchResults(given: Record<string, unknown>, text: string, hits: Hit[], deadline: number): Promise<MatchResult> {
+  const listing = hits
+    .map((h, i) => `[${i + 1}] ${h.official ? '(official) ' : ''}${h.title}\nURL: ${h.url}\n${h.content}`)
+    .join('\n\n');
+  const matchRes = await callGemini({
+    system: MATCH_SYSTEM,
+    schema: MATCH_SCHEMA,
+    deadline,
+    parts: [{
+      text: `What the user gave us (read from their screenshot / text):\n${JSON.stringify(given)}\n${text ? `User's words: ${text}\n` : ''}\nSearch results:\n\n${listing}`,
+    }],
+  });
+  const found = parseJson<MatchResult>(matchRes.text ?? '');
+  // Keep only links that really came back from the search.
+  const known = new Map(hits.map((h) => [h.url, h]));
+  found.document_urls = (found.document_urls ?? []).filter((d) => d && known.has(d.url));
+  found.sources = (found.sources ?? []).filter((d) => d && known.has(d.url));
+  if (found.sources.length === 0) {
+    found.sources = hits.filter((h) => h.official).concat(hits.filter((h) => !h.official)).slice(0, 5).map((h) => ({ url: h.url, title: h.title }));
+  }
+  // Direct PDF links in the results are worth trying even if not picked.
+  for (const h of hits) {
+    if (/\.pdf($|\?)/i.test(h.url) && h.official && !found.document_urls.some((d) => d.url === h.url)) {
+      found.document_urls.push({ url: h.url, title: h.title });
+    }
+  }
+  found.fields = mergeFields(given, found.fields ?? {});
+  return found;
+}
 
 async function lookup(body: { images?: unknown; text?: unknown }) {
   const text = typeof body.text === 'string' ? body.text.trim().slice(0, 4000) : '';
@@ -276,31 +392,51 @@ async function lookup(body: { images?: unknown; text?: unknown }) {
     }
     parts.push({ inlineData: { mimeType: media_type, data } });
   }
-  parts.push({ text: text ? `About the tender:\n${text}` : 'Find the tender shown in the screenshot.' });
+  parts.push({ text: text ? `About the tender:\n${text}` : 'Read the tender shown in the screenshot.' });
 
-  // Search grounding and a response schema can't be combined on every
-  // model, so this call returns JSON as text and is parsed leniently.
-  // Google Search grounding has its own quota, and some models give it no
-  // free allowance. When it is refused, still read what the screenshot says.
-  let res: GenerateContentResponse;
-  let searched = true;
-  try {
-    res = await callGemini({ system: LOOKUP_SYSTEM, parts, tools: true, deadline });
-  } catch (e) {
-    if (!(e instanceof HttpError) || e.status !== 429) throw e;
-    searched = false;
-    res = await callGemini({ system: LOOKUP_SYSTEM + NO_SEARCH, parts, deadline });
+  // 1. Read the screenshot / text.
+  const readRes = await callGemini({ system: READ_INPUT_SYSTEM, schema: READ_INPUT_SCHEMA, parts, deadline });
+  const input = parseJson<{ fields: Record<string, unknown>; queries: string[] }>(readRes.text ?? '');
+  const queries = (input.queries ?? []).filter((q) => typeof q === 'string' && q.trim());
+  if (queries.length === 0) {
+    const f = input.fields ?? {};
+    queries.push([f.reference_no, f.authority, f.title].filter(Boolean).join(' ') || text.slice(0, 200));
   }
-  const found = parseJson<LookupResult>(res.text ?? '');
-  if (!searched) {
-    found.found = false;
-    found.document_urls = [];
-    found.notes = `Web search was not available (free quota), so this was read from your input only and not checked online. ${found.notes ?? ''}`.trim();
-  }
-  if (!found.sources?.length) found.sources = groundingSources(res);
-  const documentUrls = (found.document_urls ?? []).filter((d) => d && typeof d.url === 'string');
 
-  // Try each candidate until one is a real PDF.
+  // 2. Search the web.
+  const { hits, error: searchError } = await searchWeb(queries);
+
+  // 3. Match the results to the tender. Without results, what the input said is all we have.
+  let found: MatchResult | null = null;
+  let summarySource: 'pdf' | 'web' | 'input' = 'web';
+  let matchError: string | null = null;
+  if (hits.length > 0) {
+    try {
+      found = await matchResults(input.fields ?? {}, text, hits, deadline);
+    } catch (e) {
+      // Gemini busy: still hand back what was read and what was found.
+      if (!(e instanceof HttpError)) throw e;
+      matchError = e.message;
+    }
+  }
+  if (!found) {
+    summarySource = 'input';
+    found = {
+      found: false,
+      fields: input.fields ?? {},
+      document_urls: [],
+      sources: hits.slice(0, 5).map((h) => ({ url: h.url, title: h.title })),
+      summary: null,
+      notes: matchError
+        ? `The web search found ${hits.length} result(s) but the AI could not check them just now (${matchError}). Open the links below.`
+        : searchError
+        ? `Could not search the web (${searchError}), so this was read from your input only.`
+        : 'The web search found nothing for this tender, so this was read from your input only. Try adding the tender number.',
+    };
+  }
+  const documentUrls = found.document_urls;
+
+  // 4. Download the official PDF, trying each candidate until one is a real PDF.
   let pdf: { name: string; data: string; url: string; size: number } | null = null;
   const failures: string[] = [];
   for (const d of documentUrls.slice(0, 4)) {
@@ -315,8 +451,6 @@ async function lookup(body: { images?: unknown; text?: unknown }) {
 
   let fields = found.fields ?? {};
   let summary: unknown = found.summary ?? null;
-  // 'input' = read from the screenshot / text only, nothing checked online.
-  let summarySource: 'pdf' | 'web' | 'input' = searched ? 'web' : 'input';
   let notes = found.notes ?? '';
   if (pdf) {
     // The PDF is the valuable part; if reading it fails, keep it anyway and
@@ -331,16 +465,18 @@ async function lookup(body: { images?: unknown; text?: unknown }) {
       notes = `The PDF was downloaded but could not be summarised just now — use "Summarise PDF" on the tender page after creating it. ${notes}`.trim();
     }
   }
+  console.log(`lookup: queries=${JSON.stringify(queries)} hits=${hits.length} found=${found.found} pdf=${pdf ? pdf.url : 'none'}`);
 
   return {
     found: Boolean(found.found),
     fields,
     summary,
     summary_source: summarySource,
-    sources: (found.sources ?? []).filter((s) => s && typeof s.url === 'string'),
+    sources: found.sources,
     documents: documentUrls,
     pdf,
     download_failures: failures,
+    searched_for: hits.length || !searchError ? queries.slice(0, 2) : [],
     notes,
   };
 }

@@ -333,14 +333,19 @@ export function TenderAiDialog({ open, onOpenChange, onCreated }: { open: boolea
                   <Links title="Document links" links={result.documents} />
                   <Links title="Sources" links={result.sources} />
                 </div>
-                {result.notes && <p className="mt-3 text-xs text-slate-500">{result.notes}</p>}
+                {result.searched_for && result.searched_for.length > 0 && (
+                  <p className="mt-3 text-xs text-slate-500">
+                    <span className="font-medium">Searched the web for:</span> {result.searched_for.map((q) => `“${q}”`).join(' · ')}
+                  </p>
+                )}
+                {result.notes && <p className="mt-2 text-xs text-slate-500">{result.notes}</p>}
               </div>
 
               {result.summary && (
                 <div className="rounded-xl border p-4">
                   <h4 className="mb-3 flex items-center gap-2 font-semibold text-slate-900">
                     <Sparkles className="h-4 w-4 text-violet-500" /> Summary
-                    <Badge variant="secondary">{result.summary_source === 'pdf' ? 'from the PDF' : result.summary_source === 'web' ? 'from portal pages' : 'from your screenshot only'}</Badge>
+                    <Badge variant="secondary">{result.summary_source === 'pdf' ? 'from the PDF' : result.summary_source === 'web' ? 'from web search results' : 'from your screenshot only'}</Badge>
                   </h4>
                   <AiSummaryView summary={result.summary} />
                 </div>
@@ -421,7 +426,7 @@ export function TenderAiSummaryCard({ tender }: { tender: Tender }) {
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
         <CardTitle className="flex items-center gap-2 text-base">
           <Sparkles className="h-4 w-4 text-violet-500" /> AI summary
-          {tender.ai_summary_from && <Badge variant="secondary">{tender.ai_summary_from === 'pdf' ? 'from the PDF' : 'from portal pages'}</Badge>}
+          {tender.ai_summary_from && <Badge variant="secondary">{tender.ai_summary_from === 'pdf' ? 'from the PDF' : 'from web search results'}</Badge>}
         </CardTitle>
         {canRun && (
           <div className="flex items-center gap-2">
