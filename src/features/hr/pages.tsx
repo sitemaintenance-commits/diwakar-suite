@@ -549,7 +549,7 @@ export function PerformancePage() {
     <>
       <PageHeader
         icon={TrendingUp}
-        title="Performance"
+        title="Employee Review"
         description="Review periods, goals and ratings. Everyone can see their own review; completing one needs the APPROVE permission."
         actions={
           can.create && (
