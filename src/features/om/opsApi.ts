@@ -197,6 +197,10 @@ export interface DailyPerformance {
     remarks: string | null;
     source: string | null;
     reported: boolean;
+    weather?: string | null;
+    had_failure?: boolean | null;
+    failure_side?: 'gss' | 'plant' | null;
+    failure_reason?: string | null;
   }[];
   ranking: { name: string; generation_kwh: number | string; specific_yield: number | string | null; pr: number | string | null }[];
 }

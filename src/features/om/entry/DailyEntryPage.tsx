@@ -1,6 +1,9 @@
 // The technician's daily field form — the direct replacement for the
-// Google Form used by the O&M CRM today. Same fields, same order:
-//   Date · Site · Insolation · Grid outage · INV-01 … INV-n · Remarks
+// "SOLAR PLANT DAILY GENERATION REPORT" Google Form. Same questions, same
+// order:
+//   Date · Site · INV-01 … INV-n · Any grid / plant failure today? ·
+//   Which side? · Failure reason · Failure timing · Details · Weather
+// plus the insolation reading, which the form never asked for.
 // The total is the sum of the inverter readings and is computed in the
 // database on save. A technician only sees the sites assigned to them,
 // and nothing else on this page.
@@ -40,12 +43,17 @@ interface EntrySite {
     remarks: string | null;
     readings: { label: string; kwh: number | string }[];
     source: string;
+    weather: string | null;
+    had_failure: boolean | null;
+    failure_side: 'gss' | 'plant' | null;
+    failure_reason: string | null;
   } | null;
 }
 
 interface FieldEntryData {
   date: string;
   sites: EntrySite[];
+  failure_reasons: { side: 'gss' | 'plant'; label: string }[];
   recent: { date: string; site: string; generation_kwh: number | string; source: string }[];
 }
 
@@ -84,6 +92,11 @@ export function outageHours(windows: OutageWindow[], kind?: OutageWindow['kind']
     .reduce((n, w) => n + windowMinutes(w), 0) / 60;
 }
 
+/** The Google Form's weather choices, in its order. */
+export const WEATHER = ['Clear Weather', 'Lightly Cloudy', 'Fully Cloudy', 'Light Rain', 'Heavy Rain', 'Sandstorm', 'Dusty / Hazy'];
+export const SIDE_LABEL = { gss: 'GSS side failure', plant: 'Plant side failure' } as const;
+const OTHER = 'Other';
+
 const label = (i: number) => `INV-${String(i + 1).padStart(2, '0')}`;
 
 export function DailyEntryPage() {
@@ -96,6 +109,10 @@ export function DailyEntryPage() {
   const [insolation, setInsolation] = useState('');
   const [windows, setWindows] = useState<OutageWindow[]>([]);
   const [remarks, setRemarks] = useState('');
+  const [weather, setWeather] = useState('');
+  const [failure, setFailure] = useState<'' | 'yes' | 'no'>('');
+  const [side, setSide] = useState<'' | 'gss' | 'plant'>('');
+  const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
 
   const sites = data.data?.sites ?? [];
@@ -119,7 +136,17 @@ export function DailyEntryPage() {
     setInsolation(site.entry?.irradiation != null ? String(safeNum(site.entry.irradiation)) : '');
     setWindows(site.entry?.outage_windows ?? []);
     setRemarks(site.entry?.remarks ?? '');
+    setWeather(site.entry?.weather ?? '');
+    const e = site.entry;
+    setFailure(!e ? '' : e.had_failure ?? (safeNum(e.grid_outage_hrs) + safeNum(e.plant_outage_hrs) > 0) ? 'yes' : 'no');
+    setSide(e?.failure_side ?? '');
+    setReason(e?.failure_reason ?? '');
   }, [site, siteId, date]);
+
+  const reasons = useMemo(
+    () => (data.data?.failure_reasons ?? []).filter((r) => !side || r.side === side),
+    [data.data?.failure_reasons, side],
+  );
 
   const total = useMemo(() => readings.reduce((sum, r) => sum + safeNum(r), 0), [readings]);
   const filled = readings.filter((r) => r.trim() !== '').length;
@@ -127,6 +154,13 @@ export function DailyEntryPage() {
   async function save() {
     if (!site) return;
     if (filled === 0) return toast.error('Enter at least one inverter reading.');
+    if (!failure) return toast.error('Answer whether there was a grid or plant failure today.');
+    if (failure === 'yes') {
+      if (!side) return toast.error('Choose which side the failure came from.');
+      if (!reason) return toast.error('Choose the failure reason.');
+      if (reason === OTHER && !remarks.trim()) return toast.error('Describe the failure in the details.');
+    }
+    if (!weather) return toast.error('Choose the weather condition.');
     setBusy(true);
     const { error } = await supabase.rpc('save_field_entry', {
       p_site_id: site.site_id,
@@ -139,7 +173,11 @@ export function DailyEntryPage() {
       p_grid_outage: 0,
       p_plant_outage: 0,
       p_remarks: remarks.trim() || null,
-      p_outage_windows: windows.filter((w) => isTime(w.from) && isTime(w.to)),
+      p_outage_windows: failure === 'yes' ? windows.filter((w) => isTime(w.from) && isTime(w.to)) : [],
+      p_weather: weather,
+      p_had_failure: failure === 'yes',
+      p_failure_side: failure === 'yes' ? side : null,
+      p_failure_reason: failure === 'yes' ? reason : null,
     });
     setBusy(false);
     if (error) return toast.error(errorMessage(error));
@@ -230,10 +268,60 @@ export function DailyEntryPage() {
                 </div>
               </div>
 
-              <OutageEditor windows={windows} onChange={setWindows} />
+              <div className="grid gap-4 rounded-xl border p-4">
+                <div>
+                  <p className="text-sm font-medium">
+                    Any grid / plant failure today? <span className="text-destructive">*</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground">Answer Yes if there was any shutdown, grid failure or plant interruption.</p>
+                </div>
+                <Choice
+                  value={failure}
+                  onChange={(v) => {
+                    setFailure(v as 'yes' | 'no');
+                    if (v === 'no') setWindows([]);
+                  }}
+                  options={[['yes', 'Yes'], ['no', 'No']]}
+                />
 
-              <Field label="Remarks" htmlFor="fe_rem" hint="Breakdowns, cleaning, visitors, anything the O&M head should know.">
+                {failure === 'yes' && (
+                  <>
+                    <Field label="Failure / shutdown from which side?">
+                      <Choice
+                        value={side}
+                        onChange={(v) => {
+                          setSide(v as 'gss' | 'plant');
+                          // A reason from the other side no longer fits.
+                          if (reason && reason !== OTHER && !data.data?.failure_reasons.some((r) => r.label === reason && r.side === v)) setReason('');
+                        }}
+                        options={[['gss', SIDE_LABEL.gss], ['plant', SIDE_LABEL.plant]]}
+                      />
+                    </Field>
+                    <Field label="Failure reason" hint={side ? 'The causes the team records most often. Choose Other and describe it below if none fits.' : 'Choose the side first.'}>
+                      <FilterSelect
+                        value={reason}
+                        onChange={setReason}
+                        placeholder={side ? 'Choose the reason' : 'Choose the side first'}
+                        options={[...reasons.map((r) => [r.label, r.label] as [string, string]), [OTHER, 'Other (describe in the details)']]}
+                      />
+                    </Field>
+                    <OutageEditor windows={windows} onChange={setWindows} defaultKind={side === 'plant' ? 'plant' : 'grid'} />
+                  </>
+                )}
+              </div>
+
+              <Field
+                label={failure === 'yes' ? 'Failure details' : 'Remarks'}
+                htmlFor="fe_rem"
+                hint={failure === 'yes'
+                  ? 'The issue, the equipment affected and the action taken.'
+                  : 'Cleaning, visitors, anything else the O&M head should know.'}
+              >
                 <Textarea id="fe_rem" rows={3} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+              </Field>
+
+              <Field label="Weather condition *">
+                <FilterSelect value={weather} onChange={setWeather} placeholder="Choose" options={WEATHER.map((w) => [w, w] as [string, string])} />
               </Field>
 
               <div className="flex flex-col gap-3 rounded-xl border bg-slate-50/70 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -377,9 +465,11 @@ function InverterHealth({ siteId, date }: { siteId: string | undefined; date: st
 function OutageEditor({
   windows,
   onChange,
+  defaultKind = 'grid',
 }: {
   windows: OutageWindow[];
   onChange: (w: OutageWindow[]) => void;
+  defaultKind?: OutageWindow['kind'];
 }) {
   const set = (i: number, patch: Partial<OutageWindow>) =>
     onChange(windows.map((w, j) => (j === i ? { ...w, ...patch } : w)));
@@ -391,9 +481,9 @@ function OutageEditor({
     <div className="grid gap-2 rounded-xl border p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-sm font-medium">Outage windows</p>
+          <p className="text-sm font-medium">Failure timing</p>
           <p className="text-xs text-muted-foreground">
-            When the plant was down. Leave empty if it ran all day.
+            From and to, for every interruption today.
           </p>
         </div>
         <div className="tabular text-xs text-muted-foreground">
@@ -448,12 +538,35 @@ function OutageEditor({
         <Button
           variant="outline"
           size="sm"
-          onClick={() => onChange([...windows, { kind: 'grid', from: '', to: '' }])}
+          onClick={() => onChange([...windows, { kind: defaultKind, from: '', to: '' }])}
         >
           <Plus className="mr-2 h-4 w-4" />
           Add window
         </Button>
       </div>
+    </div>
+  );
+}
+
+
+/** A small segmented choice, the Google Form's radio buttons. */
+function Choice({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: [string, string][] }) {
+  return (
+    <div role="radiogroup" className="flex flex-wrap gap-2">
+      {options.map(([v, text]) => (
+        <button
+          key={v}
+          type="button"
+          role="radio"
+          aria-checked={value === v}
+          onClick={() => onChange(v)}
+          className={`cursor-pointer rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+            value === v ? 'border-primary bg-primary text-primary-foreground' : 'bg-card hover:bg-muted'
+          }`}
+        >
+          {text}
+        </button>
+      ))}
     </div>
   );
 }

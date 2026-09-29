@@ -1285,6 +1285,63 @@ await expectOk('(put back as it was)', OWNER,
   `update public.solar_sites set capacity_dc_kwp = 0
    where site_id = (select id from public.sites where name = 'Deegod')`);
 
+// The Daily Entry asks what the technicians' Google Form asks.
+console.log('\nDaily Entry - weather, failure side and reason');
+await expectValue('the reason list has the fifteen causes found in the history', OWNER,
+  `select count(*)::int from public.om_failure_reasons where is_active`, 15);
+await expectValue('the form loads the reasons with the day', OWNER,
+  `select jsonb_array_length(public.get_field_entry()->'failure_reasons')`, 15);
+const entryArgs = `$1, current_date - 9, '[{"label":"INV-01","kwh":8000}]'::jsonb, 5.1, 0, 0`;
+await expectError('a failure needs a side', OWNER,
+  `select public.save_field_entry(${entryArgs}, null, '[{"kind":"grid","from":"10:00","to":"10:20"}]'::jsonb,
+     'Clear Weather', true, null, '33 kV grid outage from the GSS side')`, 'which side', [site.Bassi]);
+await expectError('and a reason', OWNER,
+  `select public.save_field_entry(${entryArgs}, null, '[{"kind":"grid","from":"10:00","to":"10:20"}]'::jsonb,
+     'Clear Weather', true, 'gss', null)`, 'failure reason', [site.Bassi]);
+await expectError('"Other" needs the details written down', OWNER,
+  `select public.save_field_entry(${entryArgs}, null, '[]'::jsonb, 'Clear Weather', true, 'plant', 'Other')`,
+  'Describe the failure', [site.Bassi]);
+await expectError('"no failure" cannot come with outage times', OWNER,
+  `select public.save_field_entry(${entryArgs}, null, '[{"kind":"grid","from":"10:00","to":"10:20"}]'::jsonb,
+     'Clear Weather', false, null, null)`, 'no failure', [site.Bassi]);
+await expectError('the weather must be one of the form\'s choices', OWNER,
+  `select public.save_field_entry(${entryArgs}, null, '[]'::jsonb, 'Blazing', false, null, null)`,
+  'generation_weather_check', [site.Bassi]);
+await expectValue('a full entry saves the answers', OWNER,
+  `select (public.save_field_entry(${entryArgs}, 'Tripped twice', '[{"kind":"grid","from":"10:00","to":"10:20"}]'::jsonb,
+     'Lightly Cloudy', true, 'gss', '33 kV grid outage from the GSS side')->>'had_failure')::boolean`, true, [site.Bassi]);
+await expectValue('and they come back on the form', OWNER,
+  `select e->>'weather' || ' / ' || (e->>'failure_side') || ' / ' || (e->>'failure_reason')
+   from jsonb_array_elements(public.get_field_entry(current_date - 9)->'sites') s, lateral (select s->'entry' as e) x
+   where s->>'name' = 'Bassi'`, 'Lightly Cloudy / gss / 33 kV grid outage from the GSS side');
+await expectValue('the day view shows the weather and the reason', OWNER,
+  `select s->>'weather' || ' / ' || (s->>'failure_reason')
+   from jsonb_array_elements(public.get_daily_performance(current_date - 9)->'sites') s where s->>'name' = 'Bassi'`,
+  'Lightly Cloudy / 33 kV grid outage from the GSS side');
+
+// Legacy remarks are read for the same answers.
+await expectOk('three legacy days with the remarks the team writes', OWNER,
+  `select public.import_om_generation($1::jsonb)`, [JSON.stringify({ reports: {
+    '2026-02-02': [{ short: 'Kadel', generation: 15000, insolation: '', outage: '11:00 - 11:14',
+      remarks: 'OK, Lightly Cloudy Weather, Grid Failure = 14 M (Due to a 33 kV grid outage from the GSS side)' }],
+    '2026-02-03': [{ short: 'Kadel', generation: 14000, insolation: '', outage: 'Plant Trip :-\n12:00 - 12:35',
+      remarks: 'OK, Clear Weather, Plant Trip = 35 M (Due to plant-side B-phase fuse burnt)' }],
+    '2026-02-04': [{ short: 'Kadel', generation: 9000, insolation: '', outage: '13:00 - 13:30',
+      remarks: 'Fully Cloudy & Stormy Weather, Grid Failure = 30 M (Due to 33 kV grid outage from the GSS side)' }],
+  } })]);
+const legacyDay = (d) => `select coalesce(weather,'-') || ' / ' || coalesce(failure_side,'-') || ' / ' || coalesce(failure_reason,'-')
+  from public.generation_records where gen_date = '${d}' and site_id = (select id from public.sites where name = 'Kadel')`;
+await expectValue('a GSS outage remark gives weather, side and reason', OWNER, legacyDay('2026-02-02'),
+  'Lightly Cloudy / gss / 33 kV grid outage from the GSS side');
+await expectValue('a plant trip for a burnt fuse is a plant-side fuse failure', OWNER, legacyDay('2026-02-03'),
+  'Clear Weather / plant / Fuse burnt (DO / HT fuse)');
+await expectValue('"stormy weather" does not make a grid outage a storm outage', OWNER, legacyDay('2026-02-04'),
+  'Fully Cloudy / gss / 33 kV grid outage from the GSS side');
+await expectValue('a technician can read the reason list', TECH,
+  `select count(*)::int > 0 from public.om_failure_reasons`, true);
+await expectError('but cannot change it', TECH,
+  `insert into public.om_failure_reasons (side, label) values ('gss', 'Made up')`, 'row-level security');
+
 // Forecasts from the Master workbook.
 const target = (site, month) => `select forecast_kwh::int from public.site_monthly_targets t
   join public.sites s on s.id = t.site_id where s.name = '${site}' and t.year = 2026 and t.month = ${month}`;

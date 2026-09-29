@@ -75,6 +75,9 @@ function DayView() {
         { header: 'DC CUF %', value: (r) => (r.dc_cuf === null ? '' : safeNum(r.dc_cuf)) },
         { header: 'AC CUF %', value: (r) => (r.ac_cuf === null ? '' : safeNum(r.ac_cuf)) },
         { header: 'Grid outage (h)', value: (r) => safeNum(r.grid_outage) },
+        { header: 'Weather', value: (r) => r.weather ?? '' },
+        { header: 'Failure side', value: (r) => (r.failure_side === 'plant' ? 'Plant' : r.failure_side === 'gss' ? 'GSS' : '') },
+        { header: 'Failure reason', value: (r) => r.failure_reason ?? '' },
         { header: 'Remarks', value: (r) => r.remarks ?? '' },
       ]);
       toast.success('Exported.');
@@ -187,6 +190,8 @@ function DayView() {
                         <TableHead className="text-right">DC CUF %</TableHead>
                         <TableHead className="text-right">AC CUF %</TableHead>
                         <TableHead className="text-right">Grid outage</TableHead>
+                        <TableHead>Weather</TableHead>
+                        <TableHead>Failure reason</TableHead>
                         <TableHead>Remarks</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -212,6 +217,19 @@ function DayView() {
                           <TableCell className="tabular text-right">{s.dc_cuf === null ? '—' : fmtNumber(s.dc_cuf, 2)}</TableCell>
                           <TableCell className="tabular text-right">{s.ac_cuf === null ? '—' : fmtNumber(s.ac_cuf, 2)}</TableCell>
                           <TableCell className="tabular text-right">{fmtNumber(s.grid_outage, 2)}</TableCell>
+                          <TableCell className="whitespace-nowrap text-sm">{s.weather ?? '—'}</TableCell>
+                          <TableCell className="max-w-[14rem] text-sm">
+                            {s.failure_reason ? (
+                              <>
+                                <span className="block truncate">{s.failure_reason}</span>
+                                <span className="text-xs text-muted-foreground">{s.failure_side === 'plant' ? 'Plant side' : 'GSS side'}</span>
+                              </>
+                            ) : s.had_failure ? (
+                              'Not stated'
+                            ) : (
+                              '—'
+                            )}
+                          </TableCell>
                           <TableCell className="max-w-[16rem] truncate text-sm text-muted-foreground">{s.remarks ?? '—'}</TableCell>
                         </TableRow>
                       ))}
