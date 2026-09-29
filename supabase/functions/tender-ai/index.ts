@@ -598,7 +598,9 @@ async function withPdfParts<T>(files: PdfInput[], deadline: number, run: (parts:
       const magic = new Uint8Array(await file.blob.slice(0, 5).arrayBuffer());
       if (new TextDecoder().decode(magic) !== '%PDF-') throw new HttpError(400, `${file.name} is not a PDF.`);
       if (file.blob.size > MAX_FILE_BYTES) throw new HttpError(400, 'PDF exceeds 50 MB.');
-      let remote = await gemini.files.upload({ file: file.blob, config: { mimeType: 'application/pdf', displayName: file.name, httpOptions: { timeout: Math.max(1000, deadline - Date.now()) } } });
+      // No httpOptions here: the SDK replaces its resumable-upload headers with
+      // them, and the upload then goes to a URL Google answers 404.
+      let remote = await gemini.files.upload({ file: file.blob, config: { mimeType: 'application/pdf', displayName: file.name } });
       if (!remote.name) throw new Error('AI file upload failed.');
       uploaded.push(remote.name);
       while (remote.state === 'PROCESSING') {
