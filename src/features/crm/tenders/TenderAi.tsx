@@ -6,6 +6,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AlertTriangle, CheckCircle2, ExternalLink, FileText, ImagePlus, Loader2, RotateCcw, Sparkles, Upload, X } from 'lucide-react';
 import { errorMessage } from '@/lib/errors';
+import { supabase } from '@/lib/supabase';
+import { TenderAnalysisDialog } from './TenderAnalysisDialog';
 import { fmtDateTime, fmtINR } from '@/lib/format';
 import type { Tender, TenderAiSummary } from '@/lib/types';
 import { useCan } from '@/auth/AccessProvider';
@@ -71,11 +73,18 @@ export function AiSummaryView({ summary }: { summary: TenderAiSummary }) {
   return (
     <div className="space-y-4">
       <p className="text-sm leading-relaxed text-slate-700">{summary.overview}</p>
+      <List title="1. Document reading / OCR coverage" items={summary.processing ?? []} />
+      <h3 className="font-semibold">{summary.processing ? '2. Tender synopsis' : 'Tender synopsis'}</h3>
       <Pairs title="Key dates" items={summary.key_dates} />
       <Pairs title="Money" items={summary.financials} />
       <List title="Scope of work" items={summary.scope} />
       <List title="Eligibility" items={summary.eligibility} />
       <List title="Documents to submit" items={summary.documents_required} />
+      <List title="BOQ highlights" items={summary.boq_highlights ?? []} />
+      <List title="Submission requirements" items={summary.submission_requirements ?? []} />
+      {summary.risk_analysis && <section className="space-y-2"><h3 className="font-semibold">3. Risk analysis</h3>{summary.risk_analysis.map((r, i) => <div key={i} className="rounded-lg border border-amber-200 p-3 text-sm"><b>{r.category} · {r.severity}</b><p>{r.finding}</p><p className="mt-1 whitespace-pre-wrap text-slate-500">{r.evidence}</p><p className="mt-1">Action: {r.action}</p></div>)}</section>}
+      {summary.go_no_go && <section className="space-y-2 rounded-lg border p-3 text-sm"><h3 className="font-semibold">4. Go / no-go: {summary.go_no_go.decision}</h3><List title="Reasons" items={summary.go_no_go.reasons} />{summary.go_no_go.checks.map((c, i) => <div key={i}><b>{c.criterion} · {c.status}</b><p className="whitespace-pre-wrap text-slate-600">{c.evidence}</p></div>)}</section>}
+      {summary.contradictions && <section className="space-y-2 text-sm"><h3 className="font-semibold">5. Contradiction check</h3>{summary.contradictions.length === 0 && <p>No conflicts identified in the supplied files. Check the coverage and missing information below.</p>}{summary.contradictions.map((c, i) => <div key={i} className="rounded-lg border p-3"><b>{c.finding}</b><p className="whitespace-pre-wrap text-slate-500">{c.evidence}</p><p>Action: {c.action}</p></div>)}<List title="Missing information / limits" items={summary.missing_information ?? []} /></section>}
       {summary.risks?.length > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
           <List title="Watch out for" items={summary.risks} />
@@ -197,7 +206,9 @@ export function TenderAiDialog({ open, onOpenChange, onCreated }: { open: boolea
   async function afterCreate(id: string) {
     if (!result) return;
     if (result.pdf) {
-      const file = base64ToFile(result.pdf.data, result.pdf.name);
+      const stored = result.pdf.storage_path ? await supabase.storage.from('tender-analysis').download(result.pdf.storage_path) : null;
+      if (stored?.error) throw stored.error;
+      const file = stored?.data ? new File([stored.data], result.pdf.name, { type: 'application/pdf' }) : base64ToFile(result.pdf.data, result.pdf.name);
       await uploadDocument({ moduleKey: 'crm.tenders', entityType: 'tender', entityId: id, file, category: 'NIT / tender document' });
     }
     // A summary of the screenshot alone adds nothing the tender fields don't
@@ -219,7 +230,7 @@ export function TenderAiDialog({ open, onOpenChange, onCreated }: { open: boolea
               <Sparkles className="h-5 w-5 text-violet-500" /> Find tender with AI
             </DialogTitle>
             <DialogDescription>
-              Paste or upload a screenshot of the tender (WhatsApp forward, alert e-mail, newspaper), or type the tender number. AI finds the official notice and summarises it.
+              Paste or upload a screenshot, or type the tender number. AI looks for the full official RfS / RFP and checks that it matches this tender.
             </DialogDescription>
           </DialogHeader>
 
@@ -276,7 +287,7 @@ export function TenderAiDialog({ open, onOpenChange, onCreated }: { open: boolea
               </Field>
               {busy === 'lookup' && (
                 <div className="flex items-center gap-2 rounded-lg bg-violet-50 px-3 py-2 text-sm text-violet-800">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Searching official portals and reading the notice — this usually takes 30–90 seconds…
+                  <Loader2 className="h-4 w-4 animate-spin" /> Searching official portals and verifying the full tender document…
                 </div>
               )}
             </div>
@@ -326,7 +337,7 @@ export function TenderAiDialog({ open, onOpenChange, onCreated }: { open: boolea
                   </p>
                 ) : (
                   <p className="text-sm text-amber-700">
-                    The PDF could not be downloaded automatically (most portals put it behind a captcha or login). Open the portal link below, download the NIT and upload it here to get a summary from the document itself.
+                    A full matching tender PDF could not be confirmed or downloaded. Open the official portal, download the RfS / RFP, then use Analyse tender PDF for packages up to 50 MB.
                   </p>
                 )}
                 <div className="mt-3 space-y-3">
@@ -339,6 +350,7 @@ export function TenderAiDialog({ open, onOpenChange, onCreated }: { open: boolea
                   </p>
                 )}
                 {result.notes && <p className="mt-2 text-xs text-slate-500">{result.notes}</p>}
+                {!!result.download_failures?.length && <List title="Download checks" items={result.download_failures} />}
               </div>
 
               {result.summary && (
@@ -395,6 +407,7 @@ export function TenderAiDialog({ open, onOpenChange, onCreated }: { open: boolea
 
 // ---------------------------------------------------------------- tender page card
 export function TenderAiSummaryCard({ tender }: { tender: Tender }) {
+  const [analysisOpen, setAnalysisOpen] = useState(false);
   const can = useCan('crm.tenders');
   const qc = useQueryClient();
   const docs = useDocuments('tender', tender.id);
@@ -410,7 +423,7 @@ export function TenderAiSummaryCard({ tender }: { tender: Tender }) {
       const read = await summarizeDocument(chosen);
       await saveTenderSummary(tender.id, read.summary, 'pdf', null);
       await qc.invalidateQueries({ queryKey: ['tender', tender.id] });
-      toast.success('Summary updated');
+      toast.success('Tender analysis updated');
     } catch (e) {
       toast.error(errorMessage(e));
     } finally {
@@ -419,28 +432,30 @@ export function TenderAiSummaryCard({ tender }: { tender: Tender }) {
   }
 
   const canRun = can.edit && pdfs.length > 0;
-  if (!tender.ai_summary && !canRun) return null;
+  if (!tender.ai_summary && !can.edit) return null;
 
   return (
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
         <CardTitle className="flex items-center gap-2 text-base">
-          <Sparkles className="h-4 w-4 text-violet-500" /> AI summary
+          <Sparkles className="h-4 w-4 text-violet-500" /> Tender analysis
           {tender.ai_summary_from && <Badge variant="secondary">{tender.ai_summary_from === 'pdf' ? 'from the PDF' : 'from web search results'}</Badge>}
         </CardTitle>
+        {can.edit && <Button size="sm" onClick={() => setAnalysisOpen(true)}><Upload /> Analyse tender PDF</Button>}
         {canRun && (
           <div className="flex items-center gap-2">
             {pdfs.length > 1 && (
               <FilterSelect value={chosen} onChange={setDocId} options={pdfs.map((d) => [d.id, d.file_name] as [string, string])} />
             )}
             <Button size="sm" variant="outline" disabled={busy} onClick={run}>
-              {busy ? <Loader2 className="animate-spin" /> : <Sparkles />} {tender.ai_summary ? 'Re-summarise PDF' : 'Summarise PDF'}
+              {busy ? <Loader2 className="animate-spin" /> : <Sparkles />} Analyse attached PDF
             </Button>
           </div>
         )}
       </CardHeader>
       <CardContent className="space-y-4">
-        {busy && <p className="text-sm text-violet-700">Reading the document — this can take up to a minute…</p>}
+        <TenderAnalysisDialog open={analysisOpen} onOpenChange={setAnalysisOpen} tenderId={tender.id} />
+        {busy && <p className="text-sm text-violet-700">Reading the attached PDF and running all five checks. Keep this page open until it finishes.</p>}
         {tender.ai_summary ? (
           <>
             <AiSummaryView summary={tender.ai_summary} />
@@ -448,7 +463,7 @@ export function TenderAiSummaryCard({ tender }: { tender: Tender }) {
             {tender.ai_summary_at && <p className="text-xs text-slate-400">Generated {fmtDateTime(tender.ai_summary_at)}. AI can make mistakes — check against the document.</p>}
           </>
         ) : (
-          <p className="text-sm text-slate-500">Get a two-minute summary of the attached tender PDF: scope, eligibility, dates, money and risks.</p>
+          <p className="text-sm text-slate-500">Upload the full tender package for document reading, synopsis, clause risks, company eligibility and contradiction checks.</p>
         )}
       </CardContent>
     </Card>

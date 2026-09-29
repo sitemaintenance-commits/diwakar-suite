@@ -8,6 +8,7 @@ import { useAccess, useCan } from '@/auth/AccessProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/misc';
 import { Field, PageHeader } from '@/components/common';
 import { qk, useSettings } from '@/features/admin/api';
@@ -22,10 +23,12 @@ export function SettingsPage() {
   const settings = useSettings();
   const [f, setF] = useState({ company_name: '', brand_name: '', suite_name: '', support_email: '', fiscal_year_start_month: '4' });
   const [busy, setBusy] = useState(false);
+  const [bidProfile, setBidProfile] = useState('');
 
   useEffect(() => {
     const s = settings.data;
     if (!s) return;
+    setBidProfile(String(s.tender_company_profile ?? ''));
     setF({
       company_name: String(s.company_name ?? ''),
       brand_name: String(s.brand_name ?? ''),
@@ -41,6 +44,7 @@ export function SettingsPage() {
     e.preventDefault();
     setBusy(true);
     const rows = [
+      { key: 'tender_company_profile', value: bidProfile.trim() },
       { key: 'company_name', value: f.company_name.trim() },
       { key: 'brand_name', value: f.brand_name.trim() },
       { key: 'suite_name', value: f.suite_name.trim() },
@@ -106,6 +110,10 @@ export function SettingsPage() {
                 )}
               </Field>
             </CardContent>
+          </Card>
+          <Card className="lg:col-span-2">
+            <CardHeader><CardTitle>Company profile for tender eligibility</CardTitle><CardDescription>Used by AI for go/no-go checks. Include financial years, amounts in INR, project dates and certificate expiry dates.</CardDescription></CardHeader>
+            <CardContent><Field label="Bid qualification evidence" hint="Annual turnover and net worth; completed projects with value, capacity and completion dates; registrations and certificates; MSME/NSIC status; available finance, staffing and commercial limits. Leave unknown facts blank."><Textarea rows={9} value={bidProfile} disabled={!can.edit} onChange={(e) => setBidProfile(e.target.value)} placeholder="FY 2025–26 turnover: …\nNet worth as of …: …\nCompleted projects: …\nCertificates and validity: …\nMSME / NSIC: …\nBid capacity and commercial limits: …" /></Field></CardContent>
           </Card>
           {can.edit && (
             <div className="lg:col-span-2">

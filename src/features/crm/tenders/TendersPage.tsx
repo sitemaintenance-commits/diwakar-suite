@@ -19,6 +19,7 @@ import { fetchTenders, useAuthorities, useTenders, type TenderFilters } from '@/
 import { Deadline, EMD_STATUS, StatusChip, TENDER_STATUS } from '@/features/crm/shared';
 import { TenderFormDialog } from '@/features/crm/tenders/TenderFormDialog';
 import { TenderAiDialog } from '@/features/crm/tenders/TenderAi';
+import { TenderAnalysisDialog } from './TenderAnalysisDialog';
 
 const PAGE_SIZE = 20;
 
@@ -43,6 +44,7 @@ export function TendersPage() {
   const tenders = useTenders(filters);
   const [formOpen, setFormOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [analysisOpen, setAnalysisOpen] = useState(false);
 
   const update = (patch: Partial<TenderFilters>) => setFilters((f) => ({ ...f, page: 0, ...patch }));
   const t = summary.data?.tenders;
@@ -86,6 +88,9 @@ export function TendersPage() {
               <Button variant="outline" onClick={onExport}>
                 <Download /> Export
               </Button>
+            )}
+            {can.create && (
+              <Button variant="outline" onClick={() => setAnalysisOpen(true)}><Sparkles /> Analyse tender PDF</Button>
             )}
             {can.create && (
               <Button variant="outline" onClick={() => setAiOpen(true)}>
@@ -247,6 +252,7 @@ export function TendersPage() {
 
       <TenderFormDialog open={formOpen} onOpenChange={setFormOpen} tender={null} onSaved={(id) => navigate(`/crm/tenders/${id}`)} />
       <TenderAiDialog open={aiOpen} onOpenChange={setAiOpen} onCreated={(id) => navigate(`/crm/tenders/${id}`)} />
+      <TenderAnalysisDialog open={analysisOpen} onOpenChange={setAnalysisOpen} onCreated={(id) => navigate(`/crm/tenders/${id}`)} />
     </>
   );
 }

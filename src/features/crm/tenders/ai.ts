@@ -17,6 +17,7 @@ export interface AiLink {
 }
 
 export interface AiPdf {
+  storage_path?: string;
   name: string;
   data: string; // base64
   url?: string;
@@ -37,7 +38,7 @@ export interface LookupResult {
   notes: string;
 }
 
-async function callTenderAi<T>(body: Record<string, unknown>): Promise<T> {
+export async function callTenderAi<T>(body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke('tender-ai', { body });
   if (error) {
     if (error instanceof FunctionsHttpError) {

@@ -1721,5 +1721,16 @@ console.log('\nStorage (avatars)');
 await expectOk('user uploads own avatar', RAHUL, `insert into storage.objects (bucket_id, name) values ('avatars', $1 || '/photo.png')`, [RAHUL]);
 await expectError('user cannot upload into another user folder', RAHUL, `insert into storage.objects (bucket_id, name) values ('avatars', $1 || '/photo.png')`, 'row-level security', [ADMIN]);
 
+console.log('\nTender analysis privacy');
+await asSystem(`insert into public.tender_analysis_jobs(created_by, files) values ($1, '[]')`, [OWNER]);
+await expectRows('creator can read saved analysis jobs', OWNER, `select id from public.tender_analysis_jobs`, 1);
+await expectRows('another admin cannot read private analysis jobs', ADMIN, `select id from public.tender_analysis_jobs`, 0);
+await expectError('client cannot forge a completed analysis job', OWNER, `insert into public.tender_analysis_jobs(created_by, files, status) values (auth.uid(), '[]', 'completed')`, 'permission denied');
+await expectError('client cannot overwrite an analysis result', OWNER, `update public.tender_analysis_jobs set result = '{}'`, 'permission denied');
+await expectOk('tender user uploads to own analysis folder', OWNER, `insert into storage.objects(bucket_id, name) values ('tender-analysis', $1 || '/source.pdf')`, [OWNER]);
+await expectError('tender user cannot upload to another folder', OWNER, `insert into storage.objects(bucket_id, name) values ('tender-analysis', $1 || '/source.pdf')`, 'row-level security', [ADMIN]);
+await expectRows('another user cannot read the analysis source', ADMIN, `select id from storage.objects where bucket_id = 'tender-analysis'`, 0);
+await expectError('inactive user cannot upload analysis PDFs', TECH, `insert into storage.objects(bucket_id, name) values ('tender-analysis', $1 || '/source.pdf')`, 'row-level security', [TECH]);
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

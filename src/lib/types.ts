@@ -273,6 +273,13 @@ export interface Tender {
 
 /** What the tender-ai function writes about a tender notice. */
 export interface TenderAiSummary {
+  processing?: string[];
+  boq_highlights?: string[];
+  submission_requirements?: string[];
+  risk_analysis?: { category: string; severity: string; finding: string; evidence: string; action: string }[];
+  go_no_go?: { decision: string; reasons: string[]; checks: { criterion: string; status: string; evidence: string }[] };
+  contradictions?: { finding: string; evidence: string; action: string }[];
+  missing_information?: string[];
   overview: string;
   scope: string[];
   eligibility: string[];
