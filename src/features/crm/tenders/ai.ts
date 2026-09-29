@@ -27,7 +27,7 @@ export interface LookupResult {
   found: boolean;
   fields: AiFields;
   summary: TenderAiSummary | null;
-  summary_source: 'pdf' | 'web';
+  summary_source: 'pdf' | 'web' | 'input';
   sources: AiLink[];
   documents: AiLink[];
   pdf: AiPdf | null;

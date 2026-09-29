@@ -315,7 +315,8 @@ async function lookup(body: { images?: unknown; text?: unknown }) {
 
   let fields = found.fields ?? {};
   let summary: unknown = found.summary ?? null;
-  let summarySource: 'pdf' | 'web' = 'web';
+  // 'input' = read from the screenshot / text only, nothing checked online.
+  let summarySource: 'pdf' | 'web' | 'input' = searched ? 'web' : 'input';
   let notes = found.notes ?? '';
   if (pdf) {
     // The PDF is the valuable part; if reading it fails, keep it anyway and

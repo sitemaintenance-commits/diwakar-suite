@@ -200,7 +200,9 @@ export function TenderAiDialog({ open, onOpenChange, onCreated }: { open: boolea
       const file = base64ToFile(result.pdf.data, result.pdf.name);
       await uploadDocument({ moduleKey: 'crm.tenders', entityType: 'tender', entityId: id, file, category: 'NIT / tender document' });
     }
-    if (result.summary) {
+    // A summary of the screenshot alone adds nothing the tender fields don't
+    // already hold; only keep ones backed by the PDF or the portal pages.
+    if (result.summary && result.summary_source !== 'input') {
       await saveTenderSummary(id, result.summary, result.summary_source, [...result.documents, ...result.sources]);
     }
     await qc.invalidateQueries({ queryKey: ['documents', 'tender', id] });
@@ -303,7 +305,7 @@ export function TenderAiDialog({ open, onOpenChange, onCreated }: { open: boolea
                   {f.submission_due_at && <div>Bid due: <b className="text-slate-800">{fmtDateTime(String(f.submission_due_at))}</b></div>}
                   {f.estimated_value != null && <div>Estimated value: <b className="text-slate-800">{fmtINR(f.estimated_value)}</b></div>}
                   {f.emd_amount != null && <div>EMD: <b className="text-slate-800">{fmtINR(f.emd_amount)}</b></div>}
-                  {(f.district || f.state) && <div>Location: <b className="text-slate-800">{[f.location, f.district, f.state].filter(Boolean).join(', ')}</b></div>}
+                  {(f.district || f.state) && <div>Location: <b className="text-slate-800">{[f.location, f.district, f.state].filter((v, i, all) => v && !all.slice(0, i).some((p) => p && String(p).includes(String(v)))).join(', ')}</b></div>}
                 </div>
               </div>
 
@@ -338,7 +340,7 @@ export function TenderAiDialog({ open, onOpenChange, onCreated }: { open: boolea
                 <div className="rounded-xl border p-4">
                   <h4 className="mb-3 flex items-center gap-2 font-semibold text-slate-900">
                     <Sparkles className="h-4 w-4 text-violet-500" /> Summary
-                    <Badge variant="secondary">{result.summary_source === 'pdf' ? 'from the PDF' : 'from portal pages'}</Badge>
+                    <Badge variant="secondary">{result.summary_source === 'pdf' ? 'from the PDF' : result.summary_source === 'web' ? 'from portal pages' : 'from your screenshot only'}</Badge>
                   </h4>
                   <AiSummaryView summary={result.summary} />
                 </div>
