@@ -21,7 +21,7 @@ Results cover document/OCR coverage, synopsis, risk clauses, company go/no-go an
 
 The server returns a job ID and continues with `EdgeRuntime.waitUntil`. Closing the dialog or browser does not cancel work. Reopen the dialog to see saved analyses. Existing tender analyses are also saved to the tender using the caller's permissions. Source attachment is a separate button.
 
-The analysis has a 115-second budget, including Files API processing. This is a bounded background job, not an unlimited durable queue. If the platform terminates the worker, the UI identifies a job older than three minutes as timed out and offers retry. There is no automatic retry or scheduled recovery. Split very large/slow packages if needed, noting that separate runs cannot check cross-package contradictions. On local Supabase, use the documented per-worker runtime policy to allow background execution.
+The analysis has a 135-second budget, including Files API processing. The synopsis and the risk, go/no-go and contradiction steps run as two parallel Gemini calls over the same uploaded files, so each answer is half as long. This is a bounded background job, not an unlimited durable queue. If the platform terminates the worker, the UI identifies a job older than three minutes as timed out and offers retry. There is no automatic retry or scheduled recovery. Split very large/slow packages if needed, noting that separate runs cannot check cross-package contradictions. On local Supabase, use the documented per-worker runtime policy to allow background execution.
 
 ## Verification
 

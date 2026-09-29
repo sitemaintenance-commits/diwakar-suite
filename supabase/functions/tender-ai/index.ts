@@ -134,6 +134,24 @@ const EXTRACT_SCHEMA = {
   required: ['fields', 'summary'],
 };
 
+/** Part of the summary schema, for an analysis split across two answers. */
+function summaryPart(keys: string[]) {
+  const props = SUMMARY_SCHEMA.properties as Record<string, unknown>;
+  return { type: 'object', additionalProperties: false,
+    properties: Object.fromEntries(keys.map((k) => [k, props[k]])), required: keys };
+}
+const SYNOPSIS_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  properties: { fields: FIELDS_SCHEMA, summary: summaryPart(['overview', 'processing', 'scope', 'eligibility', 'key_dates',
+    'financials', 'documents_required', 'boq_highlights', 'submission_requirements']) },
+  required: ['fields', 'summary'],
+};
+const JUDGEMENT_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  properties: { summary: summaryPart(['risk_analysis', 'risks', 'go_no_go', 'contradictions', 'missing_information', 'recommendation']) },
+  required: ['summary'],
+};
+
 // ------------------------------------------------------------------ Gemini
 /** Google's own explanation from an ApiError, which wraps a JSON body. */
 function googleReason(e: ApiError): string {
@@ -166,7 +184,7 @@ function toHttpError(e: unknown, model: string): unknown {
     return new HttpError(502, `AI service error (${e.status}): ${googleReason(e)}`);
   }
   if (e instanceof DOMException && (e.name === 'TimeoutError' || e.name === 'AbortError')) {
-    return new HttpError(504, 'The AI took too long. Try again with the tender number.');
+    return new HttpError(504, 'The AI took too long. Please try again; for a large package, upload fewer PDFs at once.');
   }
   return e;
 }
@@ -181,7 +199,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function callGemini(params: { system: string; parts: Part[]; schema?: unknown; deadline: number }): Promise<GenerateContentResponse> {
   if (!Deno.env.get('GEMINI_API_KEY')) throw new HttpError(500, 'The AI service is not set up. Ask the administrator to set GEMINI_API_KEY.');
   let res: GenerateContentResponse | undefined;
-  let lastError: unknown = new HttpError(504, 'The AI took too long. Try again with the tender number.');
+  let lastError: unknown = new HttpError(504, 'The AI took too long. Please try again; for a large package, upload fewer PDFs at once.');
   let lastModel = MODEL;
   models: for (const model of MODELS) {
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -621,9 +639,20 @@ async function analyseFiles(caller: SupabaseClient, files: PdfInput[], deadline:
   const { data, error } = await caller.from('app_settings').select('value').eq('key', 'tender_company_profile').maybeSingle();
   const profile = error ? '' : String(data?.value ?? '').slice(0, 20000);
   return withPdfParts(files, deadline, async (parts) => {
-    const res = await callGemini({ deadline, system: ANALYSIS_SYSTEM, schema: EXTRACT_SCHEMA,
-      parts: [...parts, { text: `Current date: ${new Date().toISOString()}. Company profile (unverified user-provided evidence): ${profile || 'NOT PROVIDED. Decision must be REVIEW REQUIRED.'}` }] });
-    const result = parseJson<{ fields: Record<string, unknown>; summary: Record<string, unknown> }>(res.text ?? '');
+    // Two halves at once over the same uploaded files: one long answer took
+    // longer than the function may run, two half-length ones do not.
+    const context = { text: `Current date: ${new Date().toISOString()}. Company profile (unverified user-provided evidence): ${profile || 'NOT PROVIDED. Decision must be REVIEW REQUIRED.'}` };
+    const [synopsis, judgement] = await Promise.all([
+      callGemini({ deadline, schema: SYNOPSIS_SCHEMA, parts: [...parts, context],
+        system: `${ANALYSIS_SYSTEM}
+In this answer complete only steps 1 and 2 (document reading and synopsis) and the tender fields; another answer covers steps 3-5.` }),
+      callGemini({ deadline, schema: JUDGEMENT_SCHEMA, parts: [...parts, context],
+        system: `${ANALYSIS_SYSTEM}
+In this answer complete only steps 3, 4 and 5 (risks, go/no-go, contradictions) and the recommendation; another answer covers the synopsis.` }),
+    ]);
+    const a = parseJson<{ fields: Record<string, unknown>; summary: Record<string, unknown> }>(synopsis.text ?? '');
+    const b = parseJson<{ summary: Record<string, unknown> }>(judgement.text ?? '');
+    const result = { fields: a.fields, summary: { ...(a.summary ?? {}), ...(b.summary ?? {}) } };
     if (!result.fields || !result.summary || !Array.isArray(result.summary.risk_analysis) || !result.summary.go_no_go) throw new Error('AI returned incomplete analysis. Please retry.');
     if (!profile) {
       const decision = result.summary.go_no_go as Record<string, unknown>;
@@ -647,7 +676,7 @@ async function startAnalysis(caller: SupabaseClient, userId: string, body: { fil
   if (error) throw error;
   const work = async () => {
     try {
-      const deadline = Date.now() + 115_000;
+      const deadline = Date.now() + REQUEST_BUDGET_MS;
       const inputs: PdfInput[] = [];
       let total = 0;
       for (const file of files) {
@@ -690,13 +719,13 @@ async function summarize(caller: SupabaseClient, body: { pdf?: { data?: string }
     if ((doc.size_bytes ?? 0) > MAX_FILE_BYTES) throw new HttpError(400, 'The document is larger than 50 MB.');
     const file = await caller.storage.from('documents').download(doc.storage_path);
     if (file.error) throw new HttpError(403, file.error.message);
-    return await analyseFiles(caller, [{ blob: file.data, name: doc.storage_path.split('/').pop() ?? 'tender.pdf' }], Date.now() + 115_000);
+    return await analyseFiles(caller, [{ blob: file.data, name: doc.storage_path.split('/').pop() ?? 'tender.pdf' }], Date.now() + REQUEST_BUDGET_MS);
   }
   if (!data) throw new HttpError(400, 'Attach the tender PDF to summarise.');
   if (data.length > (MAX_PDF_BYTES * 4) / 3 + 16) throw new HttpError(400, 'The PDF is larger than 14 MB.');
   let bytes: Uint8Array;
   try { bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0)); } catch { throw new HttpError(400, 'Invalid PDF encoding.'); }
-  return await analyseFiles(caller, [{ blob: new Blob([bytes as BlobPart], { type: 'application/pdf' }), name: 'uploaded-tender.pdf' }], Date.now() + 115_000);
+  return await analyseFiles(caller, [{ blob: new Blob([bytes as BlobPart], { type: 'application/pdf' }), name: 'uploaded-tender.pdf' }], Date.now() + REQUEST_BUDGET_MS);
 }
 
 // ------------------------------------------------------------------ server
