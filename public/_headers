@@ -1,6 +1,5 @@
-# Cloudflare Pages response headers (the same ones netlify.toml sets).
-# Routing needs no rule: with no 404.html in the build, Pages serves
-# index.html for every unknown path, which is what a single-page app wants.
+# Cloudflare response headers (the same ones netlify.toml sets). Routing
+# needs no rule here: wrangler.toml serves index.html for every unknown path.
 /*
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff

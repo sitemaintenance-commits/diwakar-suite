@@ -1,6 +1,11 @@
-# Cloudflare Pages project. The dashboard's Git integration builds `main`
-# with `npm run build`; this file also lets `npm run deploy:cloudflare`
-# upload a local build.
+# Cloudflare Workers (static assets). The dashboard's Git integration runs
+# `npm run build`, then `npx wrangler deploy`, which uploads dist/.
+# `name` must match the Worker's name in the Cloudflare dashboard.
 name = "diwakar-suite"
-pages_build_output_dir = "dist"
 compatibility_date = "2026-09-30"
+
+[assets]
+directory = "./dist"
+# A single-page app: every path the build does not contain is served
+# index.html, and the app's router takes it from there.
+not_found_handling = "single-page-application"

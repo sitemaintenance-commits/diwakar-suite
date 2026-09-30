@@ -3,7 +3,7 @@
 One website, one login, one database, one permission system for Diwakar Renewable & Infra Pvt. Ltd. It replaces the HR/PMS, Daily Review CRM, Project CRM and O&M CRM applications with native modules.
 
 - **Architecture and roadmap:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- **Stack:** React 19 · Vite · TypeScript · Tailwind CSS v4 · shadcn/ui · React Router · TanStack Query · Supabase (Auth, Postgres + RLS, Storage, Edge Functions) · Cloudflare Pages
+- **Stack:** React 19 · Vite · TypeScript · Tailwind CSS v4 · shadcn/ui · React Router · TanStack Query · Supabase (Auth, Postgres + RLS, Storage, Edge Functions) · Cloudflare Workers (static assets)
 
 ## What is built
 
@@ -47,7 +47,7 @@ The browser only holds the public anon key and the user's JWT. Every table has R
    npx supabase db push
    ```
 3. **Authentication → Providers → Email:** turn **off** "Allow new users to sign up".
-4. **Authentication → URL Configuration:** set Site URL to your Cloudflare Pages URL. Add `https://<your-site>/reset-password` to the Redirect URLs.
+4. **Authentication → URL Configuration:** set Site URL to your Cloudflare URL. Add `https://<your-site>/reset-password` to the Redirect URLs.
 5. **Authentication → SMTP:** configure a company SMTP sender. The built-in sender is heavily rate-limited and not meant for production invitations.
 6. Deploy the Edge Function and restrict CORS/redirects to your domain:
    ```bash
@@ -63,12 +63,12 @@ The browser only holds the public anon key and the user's JWT. Every table has R
    ```
 3. Sign in. From then on, all users are managed in **Administration → User Management**.
 
-### 3. Cloudflare Pages
-1. Cloudflare dashboard → **Workers & Pages → Create → Pages → Connect to Git**, pick this repository, production branch `main`.
-2. Build settings: framework preset **None** (or Vite), build command `npm run build`, build output directory `dist`, root directory left blank. Node 22 comes from `.node-version`.
-3. Environment variables (Production **and** Preview): `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (Supabase → Settings → API). They are read at build time, so redeploy after changing them. **Never** add the service-role key to Cloudflare.
-4. Headers come from `public/_headers`. No redirect rule is needed: without a `404.html`, Pages serves `index.html` for every route.
-5. Allow the new address in Supabase: add `https://<project>.pages.dev/reset-password` and `/accept-invite` to the Redirect URLs, and add `https://<project>.pages.dev,https://*.<project>.pages.dev` to the `ALLOWED_ORIGINS` secret.
+### 3. Cloudflare (Workers, static assets)
+1. Cloudflare dashboard → **Workers & Pages → Create → Import a repository**, pick this repository, production branch `main`. The Worker's name must match `name` in `wrangler.toml` (`diwakar-suite`).
+2. Build command `npm run build`, deploy command `npx wrangler deploy`, root directory left blank. Node 22 comes from `.node-version`; `wrangler.toml` uploads `dist/` and serves `index.html` for every app route.
+3. **Build** variables (Settings → Build → Variables and secrets): `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (Supabase → Settings → API). Vite reads them while building, so they must be build variables, not runtime ones, and a redeploy is needed after changing them. **Never** add the service-role key to Cloudflare.
+4. Headers come from `public/_headers`.
+5. Allow the new address in Supabase: add `https://<worker-url>/reset-password` and `/accept-invite` to the Redirect URLs, and add the address to the `ALLOWED_ORIGINS` secret.
 6. A local build can also be uploaded with `npm run deploy:cloudflare` (after `npx wrangler login`).
 
 `netlify.toml` is kept only until the Netlify site is switched off.
