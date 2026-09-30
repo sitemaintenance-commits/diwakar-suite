@@ -4,30 +4,16 @@ import { Loader2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
-import type { TenderAiSummary } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { uploadDocument } from '@/features/crm/api';
 import { AiSummaryView } from './TenderAi';
-import { callTenderAi, fieldsToForm, saveTenderSummary, type AiFields } from './ai';
+import { callTenderAi, fieldsToForm, jobExpired, jobProgressText, saveTenderSummary, type AnalysisJob, type StoredFile } from './ai';
 import { TenderFormDialog } from './TenderFormDialog';
 
-type StoredFile = { path: string; name: string };
-type Job = {
-  id: string; tender_id: string | null; files: StoredFile[]; status: 'processing' | 'completed' | 'failed';
-  created_at: string; updated_at: string; error: string | null; step: 'preparing' | 'analysing' | null;
-  parts: Record<string, unknown> | null; result: { fields: AiFields; summary: TenderAiSummary } | null;
-};
-// Each step of a job runs for at most ~2.5 minutes and records its progress,
-// so a job silent for longer than that plus slack has lost its worker.
-const expired = (job: Job) => job.status === 'processing' && Date.now() - Date.parse(job.updated_at ?? job.created_at) > 300_000;
-const STEP_LABELS: Record<string, string> = { synopsis: 'Synopsis', risks: 'Risk clauses', decision: 'Go/no-go & contradictions' };
-function progressText(job: Job) {
-  if (job.step !== 'analysing') return 'Uploading the PDFs to the AI and waiting for Google to read every page…';
-  const done = Object.keys(job.parts ?? {});
-  const left = Object.keys(STEP_LABELS).filter((k) => !done.includes(k)).map((k) => STEP_LABELS[k]);
-  return `Analysing: ${done.length} of 3 steps done${left.length ? ` — still working on ${left.join(', ')}` : ''}…`;
-}
+type Job = AnalysisJob;
+const expired = jobExpired;
+const progressText = jobProgressText;
 
 export function TenderAnalysisDialog({ open, onOpenChange, tenderId, onCreated }: {
   open: boolean; onOpenChange: (open: boolean) => void; tenderId?: string; onCreated?: (id: string) => void;

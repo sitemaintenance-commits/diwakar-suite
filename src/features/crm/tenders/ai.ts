@@ -35,7 +35,55 @@ export interface LookupResult {
   download_failures: string[];
   /** The web searches that were run, for the user to see. */
   searched_for?: string[];
+  /** Background five-step analysis of the downloaded RfS, when one was found. */
+  analysis_job_id?: string | null;
   notes: string;
+}
+
+// ---------------------------------------------------------------- analysis jobs
+export type StoredFile = { path: string; name: string };
+export type AnalysisJob = {
+  id: string; tender_id: string | null; files: StoredFile[]; status: 'processing' | 'completed' | 'failed';
+  created_at: string; updated_at: string; error: string | null; step: 'preparing' | 'analysing' | null;
+  parts: Record<string, unknown> | null; result: { fields: AiFields; summary: TenderAiSummary } | null;
+};
+
+// Each step of a job runs for at most ~2.5 minutes and records its progress,
+// so a job silent for longer than that plus slack has lost its worker.
+export const jobExpired = (job: AnalysisJob) => job.status === 'processing' && Date.now() - Date.parse(job.updated_at ?? job.created_at) > 300_000;
+
+const STEP_LABELS: Record<string, string> = { synopsis: 'Synopsis', risks: 'Risk clauses', decision: 'Go/no-go & contradictions' };
+export function jobProgressText(job: AnalysisJob) {
+  if (job.step !== 'analysing') return 'Uploading the PDFs to the AI and waiting for Google to read every page…';
+  const done = Object.keys(job.parts ?? {});
+  const left = Object.keys(STEP_LABELS).filter((k) => !done.includes(k)).map((k) => STEP_LABELS[k]);
+  return `Analysing: ${done.length} of 3 steps done${left.length ? ` — still working on ${left.join(', ')}` : ''}…`;
+}
+
+export async function fetchAnalysisJob(id: string): Promise<AnalysisJob | null> {
+  const { data, error } = await supabase.from('tender_analysis_jobs').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data as AnalysisJob | null;
+}
+
+/** Puts a PDF in the private analysis bucket, under the user's own folder. */
+export async function uploadAnalysisPdf(file: File): Promise<StoredFile> {
+  const { data: auth, error: authError } = await supabase.auth.getUser();
+  if (authError || !auth.user) throw new Error('Please sign in again.');
+  if (!/\.pdf$/i.test(file.name) || new TextDecoder().decode(await file.slice(0, 5).arrayBuffer()) !== '%PDF-') throw new Error(`${file.name} is not a PDF.`);
+  const path = `${auth.user.id}/${crypto.randomUUID()}/${file.name.replace(/[^\w.\-() ]/g, '_').slice(-120)}`;
+  const up = await supabase.storage.from('tender-analysis').upload(path, file, { contentType: 'application/pdf' });
+  if (up.error) throw up.error;
+  return { path, name: file.name };
+}
+
+export function startAnalysisJob(files: StoredFile[], tenderId?: string) {
+  return callTenderAi<{ id: string }>({ action: 'analyse', files, tender_id: tenderId });
+}
+
+/** Links an analysis to the tender created from it; its summary is saved there when done. */
+export function linkAnalysis(jobId: string, tenderId: string) {
+  return callTenderAi<{ id: string; status: string }>({ action: 'link_analysis', job_id: jobId, tender_id: tenderId });
 }
 
 export async function callTenderAi<T>(body: Record<string, unknown>): Promise<T> {

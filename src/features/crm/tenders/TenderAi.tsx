@@ -2,7 +2,7 @@
 // (PDF) and a summary, then a pre-filled tender. Also the AI summary card on
 // the tender page.
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AlertTriangle, CheckCircle2, ExternalLink, FileText, ImagePlus, Loader2, RotateCcw, Sparkles, Upload, X } from 'lucide-react';
 import { errorMessage } from '@/lib/errors';
@@ -23,19 +23,22 @@ import { TENDER_TYPE_LABEL } from '@/features/crm/shared';
 import { TenderFormDialog } from '@/features/crm/tenders/TenderFormDialog';
 import {
   base64ToFile,
+  fetchAnalysisJob,
   fieldsToForm,
-  fileToBase64,
+  jobExpired,
+  jobProgressText,
+  linkAnalysis,
   lookupTender,
   prepareImage,
   saveTenderSummary,
   summarizeDocument,
-  summarizePdf,
-  type AiPdf,
+  startAnalysisJob,
+  uploadAnalysisPdf,
   type LookupResult,
 } from '@/features/crm/tenders/ai';
 
 const MAX_IMAGES = 4;
-const MAX_PDF = 14 * 1024 * 1024;
+const MAX_PDF = 50_000_000;
 
 // ---------------------------------------------------------------- summary view
 function List({ title, items }: { title: string; items: string[] }) {
@@ -128,6 +131,16 @@ export function TenderAiDialog({ open, onOpenChange, onCreated }: { open: boolea
   const [busy, setBusy] = useState<null | 'lookup' | 'pdf'>(null);
   const [result, setResult] = useState<LookupResult | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  // The five-step analysis of the RfS runs as a background job; follow it here.
+  const jobId = result?.analysis_job_id ?? null;
+  const jobQuery = useQuery({
+    queryKey: ['tender-analysis-job', jobId],
+    enabled: open && Boolean(jobId),
+    queryFn: () => fetchAnalysisJob(jobId!),
+    refetchInterval: (q) => (q.state.data?.status === 'processing' ? 4000 : false),
+  });
+  const job = jobQuery.data ?? null;
+  const jobRunning = job?.status === 'processing' && !jobExpired(job);
   const imageInput = useRef<HTMLInputElement>(null);
   const pdfInput = useRef<HTMLInputElement>(null);
 
@@ -141,6 +154,17 @@ export function TenderAiDialog({ open, onOpenChange, onCreated }: { open: boolea
     }
   }, [open]);
   useEffect(() => () => shots.forEach((s) => URL.revokeObjectURL(s.url)), [shots]);
+  // When the analysis finishes, its fields and summary replace the web ones.
+  useEffect(() => {
+    if (job?.status !== 'completed' || !job.result) return;
+    const done = job.result;
+    setResult((cur) => {
+      if (!cur || cur.analysis_job_id !== job.id || cur.summary_source === 'pdf') return cur;
+      const fields = { ...cur.fields };
+      for (const [k, v] of Object.entries(done.fields ?? {})) if (v !== null && v !== '') (fields as Record<string, unknown>)[k] = v;
+      return { ...cur, fields, summary: done.summary, summary_source: 'pdf' };
+    });
+  }, [job]);
 
   function addImages(files: FileList | File[]) {
     const images = [...files].filter((f) => f.type.startsWith('image/'));
@@ -177,15 +201,13 @@ export function TenderAiDialog({ open, onOpenChange, onCreated }: { open: boolea
   async function onOwnPdf(file: File | undefined) {
     if (!file || !result) return;
     if (file.type !== 'application/pdf') return toast.error('Choose a PDF file.');
-    if (file.size > MAX_PDF) return toast.error('The PDF is larger than 14 MB.');
+    if (file.size > MAX_PDF) return toast.error('The PDF is larger than 50 MB.');
     setBusy('pdf');
     try {
-      const pdf: AiPdf = { name: file.name, data: await fileToBase64(file), size: file.size };
-      const read = await summarizePdf(pdf, text.trim());
-      const fields = { ...result.fields };
-      for (const [k, v] of Object.entries(read.fields)) if (v !== null && v !== '') (fields as Record<string, unknown>)[k] = v;
-      setResult({ ...result, fields, summary: read.summary, summary_source: 'pdf', pdf });
-      toast.success('PDF summarised');
+      const stored = await uploadAnalysisPdf(file);
+      const started = await startAnalysisJob([stored]);
+      setResult({ ...result, pdf: { name: file.name, data: '', storage_path: stored.path, size: file.size }, analysis_job_id: started.id });
+      toast.success('Analysis started — a 300-page RfS usually takes 2–5 minutes.');
     } catch (e) {
       toast.error(errorMessage(e));
     } finally {
@@ -216,6 +238,8 @@ export function TenderAiDialog({ open, onOpenChange, onCreated }: { open: boolea
     if (result.summary && result.summary_source !== 'input') {
       await saveTenderSummary(id, result.summary, result.summary_source, [...result.documents, ...result.sources]);
     }
+    // Analysis still running: link it, and its summary lands on the tender when done.
+    if (result.analysis_job_id && result.summary_source !== 'pdf') await linkAnalysis(result.analysis_job_id, id);
     await qc.invalidateQueries({ queryKey: ['documents', 'tender', id] });
   }
 
@@ -331,10 +355,23 @@ export function TenderAiDialog({ open, onOpenChange, onCreated }: { open: boolea
                   <input ref={pdfInput} type="file" accept="application/pdf" hidden onChange={(e) => { void onOwnPdf(e.target.files?.[0]); e.target.value = ''; }} />
                 </div>
                 {result.pdf ? (
-                  <p className="text-sm text-emerald-700">
-                    <CheckCircle2 className="mr-1 inline h-4 w-4" />
-                    {result.pdf.name} ({(result.pdf.size / 1024 / 1024).toFixed(1)} MB) — will be attached to the tender.
-                  </p>
+                  <div className="space-y-2">
+                    <p className="text-sm text-emerald-700">
+                      <CheckCircle2 className="mr-1 inline h-4 w-4" />
+                      {result.pdf.name} ({(result.pdf.size / 1024 / 1024).toFixed(1)} MB) — will be attached to the tender.
+                    </p>
+                    {job && jobRunning && (
+                      <p role="status" className="rounded-lg bg-violet-50 px-3 py-2 text-sm text-violet-800">
+                        <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+                        {jobProgressText(job)} You can create the tender now; the full analysis is added to it when done.
+                      </p>
+                    )}
+                    {job && (job.status === 'failed' || jobExpired(job)) && (
+                      <p role="alert" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                        The full analysis did not finish ({jobExpired(job) ? 'it stopped making progress' : job.error}). Create the tender, then use Analyse tender PDF on it to retry.
+                      </p>
+                    )}
+                  </div>
                 ) : (
                   <p className="text-sm text-amber-700">
                     A full matching tender PDF could not be confirmed or downloaded. Open the official portal, download the RfS / RFP, then use Analyse tender PDF for packages up to 50 MB.

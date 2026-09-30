@@ -27,6 +27,8 @@ A job runs as a chain of Supabase function calls, each with its own ~135-second 
 
 Every step runs with the user's own token, so permissions apply throughout. Closing the dialog or browser does not stop the job; reopen the dialog to see progress ("2 of 3 steps done") and saved results. A job that records no progress for five minutes is shown as stopped and can be retried. There is no automatic retry. If one PDF upload alone takes longer than a function run, upload the main RfS on its own. On local Supabase, use the documented per-worker runtime policy to allow background execution.
 
+**Find with AI** checks a downloaded PDF from its first 20 pages (so a 300-page RfS is identified in seconds), stores it, and starts the same background job for the full analysis. The dialog shows its progress. **Upload the PDF myself** in that dialog starts the same job (up to 50 MB). Creating the tender before the analysis finishes links the job to the tender (`link_analysis`), and the summary is saved on the tender when the job completes.
+
 "Summarise PDF" on the tender page still runs in a single call, so it suits one PDF of moderate size; use **Analyse tender PDF** for full packages.
 
 ## Verification
