@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Semantic design tokens. Components use these (bg-surface, text-ink, …)
+   so light/dark themes switch by redefining the variables only. */
+@theme inline {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-subtle: var(--subtle);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-ink: var(--brand-ink);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.06);
+  --shadow-pop: 0 12px 32px -8px rgb(16 24 40 / 0.18), 0 4px 8px -4px rgb(16 24 40 / 0.08);
+}
+
+:root {
+  --canvas: #f6f7f9;
+  --surface: #ffffff;
+  --subtle: #f2f4f7;
+  --line: #e7eaf0;
+  --line-strong: #d4d9e2;
+  --ink: #111827;
+  --muted: #5b6477;
+  --faint: #8a93a6;
+  --brand: #f97316;
+  --brand-strong: #ea580c;
+  --brand-soft: #fff4ec;
+  --brand-ink: #c2410c;
+  --danger: #dc2626;
+  --danger-soft: #fef2f2;
+  --success: #16a34a;
+  --success-soft: #f0fdf4;
+  color-scheme: light;
+}
+
+.dark {
+  --canvas: #0d1017;
+  --surface: #151923;
+  --subtle: #1c2130;
+  --line: #262c3b;
+  --line-strong: #343c4f;
+  --ink: #eef1f6;
+  --muted: #a3acbf;
+  --faint: #737d92;
+  --brand: #fb8a3c;
+  --brand-strong: #f97316;
+  --brand-soft: #2a1b10;
+  --brand-ink: #fdba74;
+  --danger: #f87171;
+  --danger-soft: #2a1414;
+  --success: #4ade80;
+  --success-soft: #0f2418;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Let the browser skip layout/paint for off-screen cards in huge grids. */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 260px;
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--subtle);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.45), transparent);
+  animation: shimmer 1.4s infinite;
+}
+.dark .skeleton::after {
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.05), transparent);
+}
+
+/* Rendered DOCX preview */
+.doc-preview {
+  line-height: 1.65;
+  font-size: 15px;
+}
+.doc-preview h1 { font-size: 1.6em; font-weight: 700; margin: 0.8em 0 0.4em; }
+.doc-preview h2 { font-size: 1.3em; font-weight: 700; margin: 0.8em 0 0.4em; }
+.doc-preview h3 { font-size: 1.1em; font-weight: 600; margin: 0.8em 0 0.4em; }
+.doc-preview p { margin: 0.5em 0; }
+.doc-preview ul { list-style: disc; padding-left: 1.5em; }
+.doc-preview ol { list-style: decimal; padding-left: 1.5em; }
+.doc-preview table { border-collapse: collapse; margin: 0.8em 0; }
+.doc-preview td, .doc-preview th { border: 1px solid var(--line-strong); padding: 4px 8px; }
+.doc-preview img { max-width: 100%; height: auto; }
+.doc-preview a { color: var(--brand-ink); text-decoration: underline; }
