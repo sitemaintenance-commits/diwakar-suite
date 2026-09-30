@@ -138,7 +138,7 @@ export function SetupRequiredPage() {
         <h1 className="mt-6 text-xl font-bold">Configuration required</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           This deployment is not connected to its Supabase project. Set <code>VITE_SUPABASE_URL</code> and{' '}
-          <code>VITE_SUPABASE_ANON_KEY</code> in the Netlify environment (or a local <code>.env</code> file) and redeploy.
+          <code>VITE_SUPABASE_ANON_KEY</code> in the hosting environment (Cloudflare Pages settings, or a local <code>.env</code> file) and redeploy.
         </p>
       </Card>
     </div>

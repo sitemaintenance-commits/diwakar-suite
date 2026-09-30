@@ -12,6 +12,7 @@
     "db:push": "npx supabase db push",
     "db:backup": "node scripts/backup.mjs",
     "functions:deploy": "npx supabase functions deploy admin-users && npx supabase functions deploy tender-ai",
+    "deploy:cloudflare": "npm run build && npx wrangler pages deploy dist --project-name diwakar-suite --branch main",
     "demo:api": "node scripts/demo-backend.mjs",
     "om:history": "node scripts/om-history.mjs",
     "dev:demo": "vite --mode demo"

@@ -3,7 +3,7 @@
 One website, one login, one database, one permission system for Diwakar Renewable & Infra Pvt. Ltd. It replaces the HR/PMS, Daily Review CRM, Project CRM and O&M CRM applications with native modules.
 
 - **Architecture and roadmap:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- **Stack:** React 19 · Vite · TypeScript · Tailwind CSS v4 · shadcn/ui · React Router · TanStack Query · Supabase (Auth, Postgres + RLS, Storage, Edge Functions) · Netlify
+- **Stack:** React 19 · Vite · TypeScript · Tailwind CSS v4 · shadcn/ui · React Router · TanStack Query · Supabase (Auth, Postgres + RLS, Storage, Edge Functions) · Cloudflare Pages
 
 ## What is built
 
@@ -47,7 +47,7 @@ The browser only holds the public anon key and the user's JWT. Every table has R
    npx supabase db push
    ```
 3. **Authentication → Providers → Email:** turn **off** "Allow new users to sign up".
-4. **Authentication → URL Configuration:** set Site URL to your Netlify URL. Add `https://<your-site>/reset-password` to the Redirect URLs.
+4. **Authentication → URL Configuration:** set Site URL to your Cloudflare Pages URL. Add `https://<your-site>/reset-password` to the Redirect URLs.
 5. **Authentication → SMTP:** configure a company SMTP sender. The built-in sender is heavily rate-limited and not meant for production invitations.
 6. Deploy the Edge Function and restrict CORS/redirects to your domain:
    ```bash
@@ -63,9 +63,15 @@ The browser only holds the public anon key and the user's JWT. Every table has R
    ```
 3. Sign in. From then on, all users are managed in **Administration → User Management**.
 
-### 3. Netlify
-1. New site from this repository. Build settings come from `netlify.toml` (`npm run build` → `dist`).
-2. Environment variables: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (Supabase → Settings → API). **Never** add the service-role key to Netlify.
+### 3. Cloudflare Pages
+1. Cloudflare dashboard → **Workers & Pages → Create → Pages → Connect to Git**, pick this repository, production branch `main`.
+2. Build settings: framework preset **None** (or Vite), build command `npm run build`, build output directory `dist`, root directory left blank. Node 22 comes from `.node-version`.
+3. Environment variables (Production **and** Preview): `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (Supabase → Settings → API). They are read at build time, so redeploy after changing them. **Never** add the service-role key to Cloudflare.
+4. Headers come from `public/_headers`. No redirect rule is needed: without a `404.html`, Pages serves `index.html` for every route.
+5. Allow the new address in Supabase: add `https://<project>.pages.dev/reset-password` and `/accept-invite` to the Redirect URLs, and add `https://<project>.pages.dev,https://*.<project>.pages.dev` to the `ALLOWED_ORIGINS` secret.
+6. A local build can also be uploaded with `npm run deploy:cloudflare` (after `npx wrangler login`).
+
+`netlify.toml` is kept only until the Netlify site is switched off.
 
 ### 4. After go-live
 - The 13 real sites are seeded with their DC/AC capacity and tilt from the existing dashboards. Confirm Jerthi (the O&M CRM shows 3,496 kWp DC, the Project CRM shows 3,361) and fill in commissioning dates, DISCOM, consumer numbers and tariffs in **Solar Sites**.

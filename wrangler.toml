@@ -1,0 +1,6 @@
+# Cloudflare Pages project. The dashboard's Git integration builds `main`
+# with `npm run build`; this file also lets `npm run deploy:cloudflare`
+# upload a local build.
+name = "diwakar-suite"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-09-30"
