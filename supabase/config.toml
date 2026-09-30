@@ -10,12 +10,11 @@ project_id = "diwakar-suite"
 [auth]
 # One login system, invitation only.
 enable_signup = false
-site_url = "https://diwakar-suitee.netlify.app"
+# The site moved from Netlify to Cloudflare; e-mail links default to site_url.
+site_url = "https://diwakar-suite.diwakar-mediagroup.workers.dev"
 additional_redirect_urls = [
   "https://diwakar-suite.diwakar-mediagroup.workers.dev/reset-password",
   "https://diwakar-suite.diwakar-mediagroup.workers.dev/accept-invite",
-  "https://diwakar-suitee.netlify.app/reset-password",
-  "https://diwakar-suitee.netlify.app/accept-invite",
   "http://localhost:5173/reset-password",
   "http://localhost:5173/accept-invite",
 ]
