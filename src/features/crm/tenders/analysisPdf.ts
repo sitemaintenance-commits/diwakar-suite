@@ -191,5 +191,9 @@ export async function downloadAnalysisPdf(summary: TenderAiSummary, fields: AiFi
   const pdfMake = ((pdfModule as unknown as { default?: typeof pdfModule }).default ?? pdfModule) as typeof pdfModule;
   const vfs = ((vfsModule as unknown as { default?: unknown }).default ?? vfsModule) as Parameters<typeof pdfModule.addVirtualFileSystem>[0];
   pdfMake.addVirtualFileSystem(vfs);
-  await pdfMake.createPdf(buildAnalysisPdf(summary, fields, title)).download(fileName(title));
+  // pdfmake lays out the document by rewriting it in place: a list's strings
+  // become layout objects. Hand it copies, or the analysis on screen (the
+  // same arrays, held in the query cache) turns into objects React cannot draw.
+  const doc = buildAnalysisPdf(structuredClone(summary), fields ? structuredClone(fields) : fields, title);
+  await pdfMake.createPdf(doc).download(fileName(title));
 }
