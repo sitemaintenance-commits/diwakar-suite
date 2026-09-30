@@ -13,6 +13,8 @@ enable_signup = false
 # The site moved from Netlify to Cloudflare; e-mail links default to site_url.
 site_url = "https://diwakar-suite.diwakar-mediagroup.workers.dev"
 additional_redirect_urls = [
+  "https://suite.diwakarsolar.com/reset-password",
+  "https://suite.diwakarsolar.com/accept-invite",
   "https://diwakar-suite.diwakar-mediagroup.workers.dev/reset-password",
   "https://diwakar-suite.diwakar-mediagroup.workers.dev/accept-invite",
   "http://localhost:5173/reset-password",
