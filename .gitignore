@@ -19,3 +19,6 @@ om-history-differences.csv
 
 # Cloudflare wrangler local state
 .wrangler/
+
+# cPanel upload package
+release/
