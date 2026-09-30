@@ -8,18 +8,10 @@ import { FileThumb } from '@/components/files/FileThumb';
 import { FileActionsMenu } from '@/components/files/FileActionsMenu';
 import { PreviewModal } from '@/components/preview/PreviewModal';
 import { useLargestFiles, useStats } from '@/hooks/useFiles';
-import { CATEGORIES, CATEGORY_ORDER } from '@/lib/categories';
+import { CATEGORIES, CATEGORY_ORDER, CATEGORY_STAT_KEY } from '@/lib/categories';
 import { getErrorMessage } from '@/lib/errors';
-import type { Category, VaultStats } from '@/types';
+import type { VaultStats } from '@/types';
 import { formatBytes, formatDate } from '@/utils/format';
-
-const COUNT_KEY: Record<Category, keyof VaultStats> = {
-  image: 'images',
-  screenshot: 'screenshots',
-  pdf: 'pdfs',
-  document: 'documents',
-  other: 'other',
-};
 
 export function StorageBreakdown({ stats }: { stats: VaultStats }) {
   return (
@@ -42,7 +34,7 @@ export function StorageBreakdown({ stats }: { stats: VaultStats }) {
                     <Icon className="size-4 text-muted" /> {CATEGORIES[c].plural}
                   </Link>
                 </td>
-                <td className="px-4 py-2.5 text-right text-muted tabular-nums">{Number(stats[COUNT_KEY[c]] ?? 0).toLocaleString()}</td>
+                <td className="px-4 py-2.5 text-right text-muted tabular-nums">{Number(stats[CATEGORY_STAT_KEY[c]] ?? 0).toLocaleString()}</td>
                 <td className="px-4 py-2.5 text-right text-ink tabular-nums">{formatBytes(stats.bytes_by_category[c] ?? 0)}</td>
               </tr>
             );

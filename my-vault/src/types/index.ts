@@ -1,4 +1,4 @@
-export type Category = 'image' | 'screenshot' | 'pdf' | 'document' | 'other';
+export type Category = 'image' | 'screenshot' | 'pdf' | 'document' | 'video' | 'other';
 
 /** Row of public.files */
 export interface VaultFileRow {
@@ -15,6 +15,8 @@ export interface VaultFileRow {
   width: number | null;
   height: number | null;
   page_count: number | null;
+  /** Video/audio length in whole seconds, when the browser could read it at upload. */
+  duration_seconds: number | null;
   is_favorite: boolean;
   tags: string[];
   description: string;
@@ -69,6 +71,7 @@ export interface VaultStats {
   screenshots: number;
   pdfs: number;
   documents: number;
+  videos: number;
   other: number;
   favorites: number;
   trash: number;
@@ -106,5 +109,9 @@ export interface UploadItem {
   category: Category;
   status: UploadStatus;
   progress: number;
+  /** Bytes confirmed by the server so far (for the progress label). */
+  bytesSent?: number;
+  /** True when the file goes through the resumable (TUS) endpoint. */
+  resumable?: boolean;
   error?: string;
 }

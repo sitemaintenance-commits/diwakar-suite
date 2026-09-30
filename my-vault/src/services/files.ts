@@ -4,7 +4,7 @@ import type { Category, FilePage, FileQuery, VaultFile, VaultFileRow, VaultStats
 import { safeFileName } from '@/utils/format';
 
 const COLUMNS =
-  'id,user_id,original_name,display_name,storage_path,thumbnail_path,mime_type,extension,category,size_bytes,width,height,page_count,is_favorite,tags,description,created_at,updated_at,last_accessed_at,deleted_at';
+  'id,user_id,original_name,display_name,storage_path,thumbnail_path,mime_type,extension,category,size_bytes,width,height,page_count,duration_seconds,is_favorite,tags,description,created_at,updated_at,last_accessed_at,deleted_at';
 
 /** Thumbnail URLs are short-lived; the query cache refreshes well before expiry. */
 export const THUMB_URL_TTL = 60 * 60 * 2;

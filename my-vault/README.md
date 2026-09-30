@@ -1,8 +1,12 @@
 # My Vault — Private Digital Library
 
-A private, single-owner file vault for images, screenshots, PDFs and documents.
-React + Vite + TypeScript + Tailwind on the frontend; Supabase Auth, Postgres and
-Storage on the backend. Built for libraries of thousands of files.
+A private, single-owner file vault for photos, screenshots, PDFs, documents and
+videos. Upload from your phone or laptop, sign in on either, and see the same
+library. React + Vite + TypeScript + Tailwind on the frontend; Supabase Auth,
+Postgres and Storage on the backend. Built for libraries of thousands of files.
+
+> **Upgrading from the first version?** Re-run `supabase/schema.sql` **before**
+> deploying the new frontend. See [Upgrading an existing vault](#upgrading-an-existing-vault).
 
 ---
 
@@ -29,7 +33,7 @@ bug in the UI can't leak another user's files.
 
 | Action | What happens |
 | --- | --- |
-| Upload | Client validates type/size → XHR `POST /storage/v1/object/vault-files/<uid>/<folder>/<uuid>.<ext>` (real progress + cancel) → a 480px WebP thumbnail is generated in the browser (images: canvas; PDFs: page 1 via pdf.js) and uploaded to `<uid>/thumbs/<uuid>.webp` → a metadata row is inserted. If the insert fails, the uploaded objects are removed. |
+| Upload | Client validates type/size → the object goes to `vault-files/<uid>/<folder>/<uuid>.<ext>`: files up to 6 MB as one XHR `POST /storage/v1/object/…` (real progress + cancel), larger files through Supabase's **resumable (TUS) endpoint** `/storage/v1/upload/resumable` in 6 MB chunks → a 480px WebP thumbnail is generated in the browser (images: canvas; PDFs: page 1 via pdf.js; videos: one frame via a `<video>` element) and uploaded to `<uid>/thumbs/<uuid>.webp` → a metadata row is inserted. If the insert fails, the uploaded objects are removed. |
 | Browse | Paginated `select` (24/48/96 per page, infinite scroll), with filtering, sorting and search done **server-side**. One batch `createSignedUrls` call signs all thumbnails on the page (2h expiry). |
 | Preview / download | A short-lived signed URL is created on demand (1h preview, 60s download). There are no public URLs. |
 | Delete | Move to trash (`deleted_at`). Permanent delete removes the storage objects first, then the row. |
@@ -41,8 +45,8 @@ bug in the UI can't leak another user's files.
 
 **`public.files`**: `id uuid pk`, `user_id`, `original_name`, `display_name`,
 `storage_path` (unique), `thumbnail_path`, `mime_type`, `extension`, `category`
-(`image|screenshot|pdf|document|other`), `size_bytes`, `width`, `height`,
-`page_count`, `is_favorite`, `tags text[]`, `description`, `search_text`,
+(`image|screenshot|pdf|document|video|other`), `size_bytes`, `width`, `height`,
+`page_count`, `duration_seconds`, `is_favorite`, `tags text[]`, `description`, `search_text`,
 `created_at`, `updated_at`, `last_accessed_at`, `deleted_at`.
 
 **`public.profiles`**: `full_name`, `avatar_path`, `preferences jsonb` (view, page size, theme — synced across devices), `storage_quota_bytes`.
@@ -56,18 +60,23 @@ GIN index on `tags`.
 - `files_before_write` normalises names and tags, rebuilds `search_text`, and
   blocks changes to immutable columns (owner, path, size, type). It only allows
   moving files between Images and Screenshots.
+
+**Constraints** `files_category_check` and `files_storage_path_format` are
+dropped and re-created each time the file runs, so an upgrade picks up new
+categories without touching existing rows.
 - `files_enforce_quota` rejects inserts over the per-user quota.
 - `handle_new_user` creates a profile for each new auth user.
 
 ## 3. Storage layout
 
 ```
-vault-files/                (private bucket, 50 MB per-file limit)
+vault-files/                (private bucket, 50 MB per-file limit by default)
   <user-id>/
     images/<uuid>.<ext>
     screenshots/<uuid>.<ext>
     pdfs/<uuid>.<ext>
     documents/<uuid>.<ext>
+    videos/<uuid>.<ext>
     other/<uuid>.<ext>
     thumbs/<uuid>.webp
     avatar/<uuid>.webp
@@ -96,17 +105,26 @@ original name is kept in the database.
 | `files` select/update/delete | `user_id = auth.uid()` |
 | `files` insert | `user_id = auth.uid()`, and `storage_path` and `thumbnail_path` start with `auth.uid()/` |
 | `profiles` | Read and update own row only. The only updatable columns are `full_name`, `avatar_path` (must be in own folder) and `preferences`. **Users can't raise their own quota.** |
-| `storage.objects` | Bucket `vault-files` only. The first folder must equal `auth.uid()`. Uploads are only allowed into known subfolders. Executable extensions are blocked. |
+| `storage.objects` | Bucket `vault-files` only. The first folder must equal `auth.uid()`. Uploads **and renames/overwrites** are only allowed into known subfolders. Executable extensions are blocked. Resumable (TUS) uploads go through the same policies. |
 | `anon` role | No table or function access at all |
 | `vault_stats()` | `security invoker`, runs under the caller's RLS |
 
 The client never supplies the user ID used for authorization. It comes from the
 verified JWT (`auth.uid()`).
 
-`npm run test:db` runs **39 security tests** against the real schema using PGlite
+Preview and download links are **signed URLs** (1 hour for previews and video
+playback, 60 seconds for downloads, 2 hours for thumbnails). Storage only signs
+a path when the caller's `select` policy allows it, so another account or an
+anonymous visitor can't get a link to your files, even if they guess an
+object path.
+
+`npm run test:db` runs **68 security tests** against the real schema using PGlite
 (Postgres compiled to WASM) with stand-ins for Supabase's `auth`/`storage`
-schemas. The tests cover cross-user reads, writes and deletes, path spoofing,
-quota tampering, immutable columns, blocked file types and anonymous access.
+schemas. The tests cover cross-user reads, writes, overwrites and deletes, path
+spoofing, quota tampering, immutable columns, blocked file types, anonymous
+access, the Videos category, and **upgrading a vault created with the first
+schema** (`supabase/tests/fixtures/schema-v1.sql`) without losing rows or the
+bucket size limit.
 
 ---
 
@@ -119,7 +137,11 @@ quota tampering, immutable columns, blocked file types and anonymous access.
    policies, triggers and the private `vault-files` bucket.
 3. **Lock down sign-ups** (this is a personal vault): go to *Authentication →
    Sign In / Providers*, keep **Email** enabled, and turn **off** "Allow new users
-   to sign up".
+   to sign up". The app has no sign-up screen, but while that switch is on,
+   anyone holding the public anon key could create an account through the API.
+   RLS would still keep them out of your files, but they could use your storage.
+   To give a second person their own separate vault later, add them under
+   *Authentication → Users*. Every account only ever sees its own files.
 4. **Create your account**: go to *Authentication → Users → Add user → Create new
    user*, enter your email and a strong password, and tick **Auto Confirm User**.
 5. **URL configuration** (*Authentication → URL Configuration*):
@@ -134,13 +156,51 @@ quota tampering, immutable columns, blocked file types and anonymous access.
    ```sql
    update public.profiles set storage_quota_bytes = 100::bigint * 1024 * 1024 * 1024; -- 100 GB
    ```
-8. **Per-file size limit**: the bucket allows 50 MB (the Free-plan maximum). To
-   raise it on a paid plan, increase the global limit (*Project Settings →
-   Storage*), then *Storage → vault-files → Edit bucket*, then set
-   `VITE_MAX_UPLOAD_MB` to match.
+8. **Per-file size limit (important for videos)**: the bucket allows 50 MB,
+   the Free-plan maximum. That's about 30 seconds of 4K or 1–2 minutes of 1080p
+   phone video. To store longer videos, upgrade to a paid plan, then:
+   1. raise the global limit (*Project Settings → Storage → Upload file size
+      limit*, up to 500 GB on Pro),
+   2. raise the bucket's limit (*Storage → vault-files → Edit bucket → Restrict
+      file upload size*), or run
+      `update storage.buckets set file_size_limit = 5368709120 where id = 'vault-files';` (5 GB),
+   3. set `VITE_MAX_UPLOAD_MB` to the same value (e.g. `5120`) and redeploy the
+      frontend,
+   4. raise your storage quota (step 7) so it has room.
+
+   Re-running `schema.sql` keeps a limit you raised.
+   Files over 6 MB always use resumable uploads, which need no extra setup.
 9. Recommended hardening: set a minimum password length of at least 12
    (*Authentication → Policies*), and enable leaked-password protection
    (Pro plan).
+
+## Upgrading an existing vault
+
+Schema changes aren't applied automatically. For a vault created with an
+earlier version of this project (before Videos):
+
+1. **Back up first** (optional but recommended): *Database → Backups* on paid
+   plans, or export `public.files` from the Table Editor.
+2. Open *SQL Editor → New query*, paste all of the current
+   `supabase/schema.sql`, and click **Run**. It is idempotent and only adds
+   things:
+   - adds the nullable `files.duration_seconds` column,
+   - re-creates `files_category_check` and `files_storage_path_format` to allow
+     `video` / `videos/`,
+   - replaces `vault_stats()` (adds `videos`),
+   - replaces the storage insert/update policies (allow `videos/`; renames can
+     no longer produce a blocked extension or unknown folder),
+   - keeps the bucket private **without** resetting a size limit you raised.
+   Existing rows, objects, profiles and quotas are untouched.
+3. Deploy the new frontend **after** step 2. The new build reads
+   `duration_seconds`, so running it against the old schema fails to list
+   files.
+4. Videos uploaded before the upgrade are stored under **Other**. They stay
+   there, because an object's category and path are immutable. To move one,
+   download it, delete it, and upload it again.
+
+`npm run test:db` checks this exact upgrade against a snapshot of the original
+schema.
 
 ## 7. Local development
 
@@ -185,8 +245,9 @@ custom domain, add it to `connect-src`, `img-src` and `media-src` in
 
 ```
 supabase/
-  schema.sql              all tables, indexes, triggers, RLS and storage policies
-  tests/rls.test.mjs      security tests (npm run test:db)
+  schema.sql              all tables, indexes, triggers, RLS and storage policies (also the upgrade script)
+  tests/rls.test.mjs      security + upgrade tests (npm run test:db)
+  tests/fixtures/         schema-v1.sql: the original schema, used by the upgrade test
 src/
   main.tsx, App.tsx       bootstrap and routes
   layouts/                AppLayout (protected shell), AuthLayout (login split screen)
@@ -197,7 +258,7 @@ src/
     dashboard/            DashboardCard, StorageWidget, RecentFiles
     files/                FileCard, ImageCard, FileGrid, FileList, FileThumb, FilterPanel,
                           BulkActionBar, FileActionsMenu, EditFileDialog, LoadingSkeleton
-    upload/               UploadModal, UploadProgress, DropOverlay
+    upload/               UploadModal (files / photos & videos / optional folder), UploadProgress, DropOverlay
     preview/              PreviewModal, ImageViewer, PdfViewer, Docx/Text/Media viewers,
                           FileInfoPanel, fallbacks
     ui/                   Button, Input, Modal, Menu, ConfirmDialog, EmptyState, Skeleton…
@@ -209,9 +270,11 @@ src/
   types/, utils/
 ```
 
-**Adding a file category:** add it to `src/lib/categories.ts`, extend the
-`category` check and path regex in `schema.sql`, and add a view in
-`src/lib/views.ts`.
+**Adding a file category:** add it to `src/lib/categories.ts` (including
+`CATEGORY_STAT_KEY`), extend `files_category_check`,
+`files_storage_path_format`, the two storage folder lists and `vault_stats()`
+in `schema.sql`, add the count to `VaultStats` in `src/types`, and add a view in
+`src/lib/views.ts`. Then add tests to `rls.test.mjs`.
 
 ## 10. Performance notes
 
@@ -223,17 +286,63 @@ src/
   Previous results stay visible while a new query loads.
 - pdf.js, mammoth (DOCX) and the ZIP library load only when first needed.
 - Uploads run three at a time in the background, and the UI stays usable.
-  Closing the tab mid-upload triggers a browser warning.
+  Closing the tab mid-upload triggers a browser warning. Progress re-renders
+  only when a percentage changes.
+- Videos are **never read into memory**. The thumbnail comes from one frame
+  decoded by a `<video>` element through a `blob:` URL, with a 12 s timeout.
+  Resumable uploads send 6 MB slices. Images over 60 MB and PDFs over 80 MB
+  skip thumbnail generation.
+
+### Uploading from phones and laptops
+
+Browsers can't scan or sync a device's folders on their own. You always choose
+files yourself:
+
+- **Choose files** opens the OS picker. On iPhone that means Photo Library,
+  Take Photo or Video, or Choose File (Files / iCloud Drive). On Android it's
+  the system file picker (Photos, Files, Drive).
+- **Photos & videos** opens the photo/video gallery directly on most phones.
+- **Drag & drop** works anywhere in the app on desktop.
+- **Choose folder** appears only on desktop browsers that support folder
+  selection (`webkitdirectory`). It uploads every file in the chosen folder and
+  skips hidden files, `Thumbs.db` and `desktop.ini`. Everywhere else, use
+  multi-select instead.
+
+Uploads never sync automatically. New photos on your phone appear in the vault
+only after you upload them.
+
+### Large uploads (resumable)
+
+Files over 6 MB use Supabase Storage's TUS resumable endpoint
+(`<VITE_SUPABASE_URL>/storage/v1/upload/resumable`). No dashboard setup is
+needed, and the same RLS policies apply.
+- Dropped connections retry automatically: 0, 2, 5, 10, 20 and 30 seconds.
+- If it still fails, **Resume** in the upload panel continues from the last
+  confirmed 6 MB chunk.
+- If the tab was closed, select the **same file** again within about 23 hours
+  and the upload continues where it stopped. Supabase discards unfinished
+  uploads after 24 hours.
+- A fresh access token is attached to every chunk, so uploads longer than the
+  1-hour JWT lifetime still work.
+- **Cancel** discards the partial upload on the server.
+- The per-file limit is still the bucket's size limit (setup step 8).
 
 ## 11. Review results and known limitations
 
 Verified: TypeScript strict build passes, the production build passes, and
-39/39 database security tests pass. Login, dashboard, galleries, lightbox, PDF
-viewer, search, list view, trash with undo, bulk selection, delete confirmation,
-upload pipeline, settings, dark mode and mobile drawer were all exercised in a
-browser against a mock API. The production CSP was checked with the PDF worker
-and lazy chunks. **It has not yet been run against a live Supabase project.**
-Do a first end-to-end check after setup.
+68/68 database security tests pass. The first release was also exercised in a
+browser against a mock API (login, dashboard, galleries, lightbox, PDF viewer,
+search, list view, trash with undo, bulk selection, delete confirmation,
+upload pipeline, settings, dark mode, mobile drawer, and the production CSP with
+the PDF worker and lazy chunks). The Videos category, resumable uploads,
+video thumbnails/player and the upload picker changes have been checked by
+typecheck, build and the database tests only.
+
+**Neither release has been run against a live Supabase project or on real
+phones yet.** After setup, do one end-to-end check: from a phone, upload a
+photo, a PDF, a DOCX/TXT and an MP4/MOV (one larger than 6 MB). Then sign in on
+a laptop and confirm each one is in the right category and previews or
+downloads.
 
 Limitations to be aware of:
 - **Not end-to-end encrypted.** Files are private to your account and encrypted
@@ -243,16 +352,30 @@ Limitations to be aware of:
   download). DOCX previews are a simplified rendering. DOC, RTF, ODT and
   spreadsheets have no in-browser preview; the app says so and offers
   Download / Open instead.
+- **Video playback depends on the browser's codecs.** MP4/M4V (H.264) plays
+  everywhere. MOV plays in Safari, and in Chrome/Edge/Firefox when it is H.264.
+  iPhone HEVC (H.265) videos may not play outside Safari or on older Windows.
+  In those cases the player says so and offers **Download**. AVI, WMV, FLV,
+  MPEG, MTS/M2TS and 3G2 always go straight to Download. Thumbnails depend on
+  the same codecs, so an undecodable video shows a video icon (its duration is
+  still recorded when readable).
+- **iPhone picker conversions:** when you pick from the Photo Library, iOS
+  may convert HEIC photos to JPEG and re-encode videos. To keep the exact
+  originals, use *Choose File* and pick them from the Files app.
+- **Uploads need the tab open.** Browsers pause or kill background tabs,
+  especially on phones. Resumable uploads can be continued afterwards (see
+  above), but nothing uploads while the app is closed.
 - **Bulk download** builds the ZIP in browser memory and is capped at 1 GB per
   download.
 - The **quota check** runs per insert, so a large parallel batch can overshoot by
-  a few files.
+  a few files. It counts metadata rows, so objects uploaded without a row (see
+  orphans below) are not counted. Storage policies can't see the quota.
 - If the browser closes after a file is uploaded but before its row is saved, an
   orphan object can remain. To find orphans:
   ```sql
   select o.name, o.created_at from storage.objects o
   where o.bucket_id = 'vault-files'
-    and split_part(o.name, '/', 2) in ('images','screenshots','pdfs','documents','other')
+    and split_part(o.name, '/', 2) in ('images','screenshots','pdfs','documents','videos','other')
     and not exists (select 1 from public.files f where f.storage_path = o.name);
   ```
   Delete them from *Storage* in the dashboard, not with SQL.

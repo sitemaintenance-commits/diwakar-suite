@@ -1,9 +1,10 @@
+-- Snapshot of supabase/schema.sql as first released (before Videos).
+-- Used only by rls.test.mjs to prove the current schema upgrades it safely.
+-- Do not edit.
 -- =====================================================================
 -- My Vault — complete Supabase schema
 -- Run this whole file once in: Supabase Dashboard -> SQL Editor -> New query
--- It is idempotent: safe to re-run after edits, and re-running it is also
--- how an existing vault is upgraded (see "Upgrading" in README.md). Existing
--- rows, objects, quotas and the bucket's size limit are preserved.
+-- It is idempotent: safe to re-run after edits.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
@@ -103,13 +104,12 @@ create table if not exists public.files (
   thumbnail_path   text,
   mime_type        text not null default 'application/octet-stream',
   extension        text not null default '',
-  -- Allowed values are set by files_category_check below.
-  category         text not null,
+  -- To add a category later: extend this check + src/lib/categories.ts
+  category         text not null check (category in ('image', 'screenshot', 'pdf', 'document', 'other')),
   size_bytes       bigint not null check (size_bytes >= 0),
   width            integer,
   height           integer,
   page_count       integer,
-  duration_seconds integer check (duration_seconds >= 0),
   is_favorite      boolean not null default false,
   tags             text[] not null default '{}',
   description      text not null default '' check (char_length(description) <= 2000),
@@ -118,29 +118,14 @@ create table if not exists public.files (
   updated_at       timestamptz not null default now(),
   last_accessed_at timestamptz,
   deleted_at       timestamptz,
+  -- Object key layout: <user-id>/<category-folder>/<file-uuid>.<ext>
+  constraint files_storage_path_format check (
+    storage_path ~ '^[0-9a-f-]{36}/(images|screenshots|pdfs|documents|other)/[^/]+$'
+  ),
   -- Executables are never accepted (mirrored in the storage policy below).
   constraint files_extension_not_blocked check (
     extension not in ('exe', 'msi', 'bat', 'cmd', 'com', 'scr', 'ps1', 'vbs', 'jar', 'app', 'dll', 'sh')
   )
-);
-
--- Upgrades for vaults created by an earlier version of this file.
--- `create table if not exists` leaves an existing table alone, so new
--- columns and changed checks are applied here instead.
-alter table public.files add column if not exists duration_seconds integer check (duration_seconds >= 0);
-
--- Categories and their storage folders. Dropped and re-created on every run
--- so adding a category only needs this block edited (plus
--- src/lib/categories.ts). Existing rows are re-validated and always pass,
--- because categories are only ever added.
-alter table public.files drop constraint if exists files_category_check;
-alter table public.files add constraint files_category_check
-  check (category in ('image', 'screenshot', 'pdf', 'document', 'video', 'other'));
-
--- Object key layout: <user-id>/<category-folder>/<file-uuid>.<ext>
-alter table public.files drop constraint if exists files_storage_path_format;
-alter table public.files add constraint files_storage_path_format check (
-  storage_path ~ '^[0-9a-f-]{36}/(images|screenshots|pdfs|documents|videos|other)/[^/]+$'
 );
 
 -- Indexes tuned for the app's queries (always scoped to user_id).
@@ -292,7 +277,6 @@ as $$
     'screenshots', count(*) filter (where f.deleted_at is null and f.category = 'screenshot'),
     'pdfs',        count(*) filter (where f.deleted_at is null and f.category = 'pdf'),
     'documents',   count(*) filter (where f.deleted_at is null and f.category = 'document'),
-    'videos',      count(*) filter (where f.deleted_at is null and f.category = 'video'),
     'other',       count(*) filter (where f.deleted_at is null and f.category = 'other'),
     'favorites',   count(*) filter (where f.deleted_at is null and f.is_favorite),
     'trash',       count(*) filter (where f.deleted_at is not null),
@@ -320,14 +304,13 @@ grant execute on function public.vault_stats() to authenticated;
 -- ---------------------------------------------------------------------
 -- 3. Storage: private bucket + per-user folder policies
 -- ---------------------------------------------------------------------
--- file_size_limit: 50 MB (Free plan maximum) when the bucket is first
--- created. Raise it on paid plans (Storage -> vault-files -> Edit bucket) and
--- set VITE_MAX_UPLOAD_MB to match. Re-running this file keeps a limit you
--- raised; it only forces the bucket back to private.
+-- file_size_limit: 50 MB (Free plan maximum). Raise on paid plans and set
+-- VITE_MAX_UPLOAD_MB to match.
 insert into storage.buckets (id, name, public, file_size_limit)
 values ('vault-files', 'vault-files', false, 52428800)
 on conflict (id) do update
-  set public = false;
+  set public = false,
+      file_size_limit = excluded.file_size_limit;
 
 -- Objects live at <auth.uid()>/<folder>/<uuid>.<ext>. The first folder
 -- segment must equal the caller's verified JWT user id; the client never
@@ -346,12 +329,10 @@ create policy "vault: insert own objects" on storage.objects
   with check (
     bucket_id = 'vault-files'
     and (storage.foldername(name))[1] = (select auth.uid())::text
-    and (storage.foldername(name))[2] in ('images', 'screenshots', 'pdfs', 'documents', 'videos', 'other', 'thumbs', 'avatar')
+    and (storage.foldername(name))[2] in ('images', 'screenshots', 'pdfs', 'documents', 'other', 'thumbs', 'avatar')
     and lower(storage.extension(name)) not in ('exe', 'msi', 'bat', 'cmd', 'com', 'scr', 'ps1', 'vbs', 'jar', 'app', 'dll', 'sh')
   );
 
--- Updates (overwrite / move) must land somewhere an insert could, so a
--- rename can't be used to sneak in a blocked extension or unknown folder.
 drop policy if exists "vault: update own objects" on storage.objects;
 create policy "vault: update own objects" on storage.objects
   for update to authenticated
@@ -362,8 +343,6 @@ create policy "vault: update own objects" on storage.objects
   with check (
     bucket_id = 'vault-files'
     and (storage.foldername(name))[1] = (select auth.uid())::text
-    and (storage.foldername(name))[2] in ('images', 'screenshots', 'pdfs', 'documents', 'videos', 'other', 'thumbs', 'avatar')
-    and lower(storage.extension(name)) not in ('exe', 'msi', 'bat', 'cmd', 'com', 'scr', 'ps1', 'vbs', 'jar', 'app', 'dll', 'sh')
   );
 
 drop policy if exists "vault: delete own objects" on storage.objects;

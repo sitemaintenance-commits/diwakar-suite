@@ -42,7 +42,7 @@ export const LIBRARY_VIEWS: LibraryView[] = [
     uploadCategory: 'auto',
     showTypeFilter: true,
     squareSkeleton: false,
-    empty: { title: 'Your vault is empty', description: 'Upload images, PDFs and documents to start building your private library.' },
+    empty: { title: 'Your vault is empty', description: 'Upload photos, PDFs, documents and videos to start building your private library.' },
   },
   cat('image', 'Photos and pictures in your library.', {
     title: 'No images yet',
@@ -60,9 +60,13 @@ export const LIBRARY_VIEWS: LibraryView[] = [
     title: 'No documents yet',
     description: 'Upload DOC, DOCX, TXT, RTF, ODT and more.',
   }),
+  cat('video', 'Videos from your phone, camera or computer.', {
+    title: 'No videos yet',
+    description: 'Upload MP4, MOV, M4V, WebM and other video files.',
+  }),
   cat('other', 'Files that don’t fit another category.', {
     title: 'No other files',
-    description: 'Archives, audio, video and other formats appear here.',
+    description: 'Archives, audio and other formats appear here.',
   }),
   {
     key: 'favorites',

@@ -9,6 +9,7 @@ const SEGMENTS = [
   { key: 'screenshot', label: 'Screenshots', color: 'bg-violet-500' },
   { key: 'pdf', label: 'PDFs', color: 'bg-red-500' },
   { key: 'document', label: 'Documents', color: 'bg-blue-600' },
+  { key: 'video', label: 'Videos', color: 'bg-fuchsia-500' },
   { key: 'other', label: 'Other', color: 'bg-slate-400' },
 ] as const;
 

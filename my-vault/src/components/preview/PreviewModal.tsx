@@ -67,7 +67,8 @@ export function PreviewModal({ files, index, onIndexChange, onNeedMore, total }:
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.closest?.('input, textarea, [role="dialog"][data-nested]')) return;
+      // Keys inside a video/audio player control playback, not the gallery.
+      if ((e.target as HTMLElement)?.closest?.('input, textarea, video, audio, [role="dialog"][data-nested]')) return;
       if (document.querySelector('[role="dialog"]:not([data-preview])')) return; // an edit/confirm dialog is on top
       if (e.key === 'Escape') close();
       if (kind === 'pdf') return; // arrows page through the PDF instead
@@ -106,7 +107,17 @@ export function PreviewModal({ files, index, onIndexChange, onNeedMore, total }:
   else if (kind === 'pdf') body = <PdfViewer key={file.id} url={signed.data} onDownload={download} />;
   else if (kind === 'text') body = <TextViewer key={file.id} url={signed.data} onDownload={download} />;
   else if (kind === 'docx') body = <DocxViewer key={file.id} url={signed.data} onDownload={download} />;
-  else body = <MediaViewer key={file.id} url={signed.data} kind={kind} />;
+  else
+    body = (
+      <MediaViewer
+        key={file.id}
+        url={signed.data}
+        kind={kind}
+        poster={file.thumbUrl}
+        onDownload={download}
+        onReload={() => void signed.refetch()}
+      />
+    );
 
   const hbtn = 'inline-flex size-9 items-center justify-center rounded-lg text-white/80 transition-colors hover:bg-white/10 hover:text-white';
 

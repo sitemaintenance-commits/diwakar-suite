@@ -1,7 +1,7 @@
 import { PencilLine } from 'lucide-react';
 import { CATEGORIES } from '@/lib/categories';
 import type { VaultFile } from '@/types';
-import { formatBytes, formatDateTime } from '@/utils/format';
+import { formatBytes, formatDateTime, formatDuration } from '@/utils/format';
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -37,6 +37,7 @@ export function FileInfoPanel({ file, onEdit }: { file: VaultFile; onEdit?: () =
           </Row>
         ) : null}
         {file.page_count ? <Row label="Pages">{file.page_count}</Row> : null}
+        {file.duration_seconds ? <Row label="Duration">{formatDuration(file.duration_seconds)}</Row> : null}
         <Row label="Uploaded">{formatDateTime(file.created_at)}</Row>
         <Row label="Modified">{formatDateTime(file.updated_at)}</Row>
         {file.last_accessed_at && <Row label="Last opened">{formatDateTime(file.last_accessed_at)}</Row>}

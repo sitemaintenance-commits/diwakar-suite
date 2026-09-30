@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { AlertTriangle, Download, RotateCw } from 'lucide-react';
 import { getErrorMessage } from '@/lib/errors';
+import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/misc';
 import { PreviewError } from './PreviewFallback';
 
@@ -68,13 +70,68 @@ export function DocxViewer({ url, onDownload }: { url: string; onDownload: () =>
   );
 }
 
-export function MediaViewer({ url, kind }: { url: string; kind: 'video' | 'audio' }) {
+export function MediaViewer({
+  url,
+  kind,
+  poster,
+  onDownload,
+  onReload,
+}: {
+  url: string;
+  kind: 'video' | 'audio';
+  poster?: string | null;
+  onDownload: () => void;
+  /** Fetch a fresh signed URL (e.g. after it expired during a long session). */
+  onReload?: () => void;
+}) {
+  const [failure, setFailure] = useState<{ url: string; code: number } | null>(null);
+
+  if (failure?.url === url) {
+    // MEDIA_ERR_SRC_NOT_SUPPORTED (4) / MEDIA_ERR_DECODE (3): the browser can't
+    // play this format or codec. Anything else is most likely the network.
+    const unsupported = failure.code === 3 || failure.code === 4;
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-white">
+        <AlertTriangle className="size-10 text-orange-400" />
+        <p className="font-medium">{unsupported ? `This ${kind} can’t be played in this browser` : `The ${kind} could not be loaded`}</p>
+        <p className="max-w-sm text-sm text-white/70">
+          {unsupported
+            ? kind === 'video'
+              ? 'Its format or codec isn’t supported here (for example, HEVC/H.265 videos from iPhones outside Safari). Download it to watch it with your device’s player.'
+              : 'Its format isn’t supported here. Download it to play it with your device’s player.'
+            : 'Check your connection and try again, or download the file.'}
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button onClick={onDownload} icon={<Download className="size-4" />}>
+            Download
+          </Button>
+          {!unsupported && onReload && (
+            <Button variant="secondary" onClick={onReload} icon={<RotateCw className="size-4" />}>
+              Try again
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const onError = (e: React.SyntheticEvent<HTMLMediaElement>) => setFailure({ url, code: e.currentTarget.error?.code ?? 0 });
+
   return (
     <div className="flex h-full items-center justify-center p-4">
       {kind === 'video' ? (
-        <video src={url} controls playsInline className="max-h-full max-w-full rounded-lg bg-black" />
+        <video
+          key={url}
+          src={url}
+          poster={poster ?? undefined}
+          controls
+          playsInline
+          preload="metadata"
+          onError={onError}
+          className="max-h-full max-w-full rounded-lg bg-black"
+        />
       ) : (
-        <audio src={url} controls className="w-full max-w-md" />
+        <audio key={url} src={url} controls preload="metadata" onError={onError} className="w-full max-w-md" />
       )}
     </div>
   );

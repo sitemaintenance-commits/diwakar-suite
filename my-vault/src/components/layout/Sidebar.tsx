@@ -17,7 +17,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { useAvatarUrl, useDisplayName, useProfile } from '@/hooks/useProfile';
 import { useStats } from '@/hooks/useFiles';
-import { CATEGORIES, CATEGORY_ORDER } from '@/lib/categories';
+import { CATEGORIES, CATEGORY_ORDER, CATEGORY_STAT_KEY } from '@/lib/categories';
 import { getErrorMessage } from '@/lib/errors';
 import { Avatar, Logo, ProgressBar } from '@/components/ui/misc';
 import { IconButton } from '@/components/ui/Button';
@@ -32,14 +32,6 @@ interface NavItem {
   count?: (s: VaultStats) => number;
 }
 
-const countKey: Record<string, keyof VaultStats> = {
-  image: 'images',
-  screenshot: 'screenshots',
-  pdf: 'pdfs',
-  document: 'documents',
-  other: 'other',
-};
-
 const SECTIONS: { title?: string; items: NavItem[] }[] = [
   { items: [{ to: '/', label: 'Dashboard', icon: LayoutDashboard }] },
   {
@@ -50,7 +42,7 @@ const SECTIONS: { title?: string; items: NavItem[] }[] = [
         to: CATEGORIES[c].route,
         label: CATEGORIES[c].plural,
         icon: CATEGORIES[c].icon,
-        count: (s: VaultStats) => Number(s[countKey[c]] ?? 0),
+        count: (s: VaultStats) => Number(s[CATEGORY_STAT_KEY[c]] ?? 0),
       })),
     ],
   },

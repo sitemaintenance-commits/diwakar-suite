@@ -66,7 +66,7 @@ export function RecentFiles() {
         <EmptyState
           icon={<Inbox className="size-6" />}
           title="No files yet"
-          description="Upload your first images, PDFs or documents."
+          description="Upload your first photos, PDFs, documents or videos."
           action={
             <Button onClick={() => openUpload()} icon={<Upload className="size-4" />}>
               Upload files

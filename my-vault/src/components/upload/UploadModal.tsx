@@ -1,5 +1,5 @@
 import { useRef, useState, type DragEvent } from 'react';
-import { CloudUpload, FolderOpen, MonitorSmartphone, Sparkles } from 'lucide-react';
+import { CloudUpload, FolderOpen, FolderUp, Images, MonitorSmartphone, Sparkles } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { useUploads } from '@/context/UploadContext';
@@ -8,11 +8,26 @@ import type { Category } from '@/types';
 import { cn } from '@/utils/cn';
 import { formatBytes } from '@/utils/format';
 
+/**
+ * Folder picking is an optional desktop extra. Phones don't support it in a
+ * useful way, so it's offered only with a mouse/trackpad and when the browser
+ * has the (non-standard but widely supported) webkitdirectory attribute.
+ */
+const canPickFolder =
+  typeof window !== 'undefined' &&
+  'webkitdirectory' in document.createElement('input') &&
+  (window.matchMedia?.('(pointer: fine)').matches ?? false);
+
+/** OS clutter that comes along when a whole folder is picked. */
+const isJunkFile = (f: File) => f.name.startsWith('.') || /^(thumbs\.db|desktop\.ini)$/i.test(f.name);
+
 export function UploadModal() {
   const { modal, closeUpload, addFiles } = useUploads();
   const [target, setTarget] = useState<'auto' | 'screenshot'>('auto');
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const mediaRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement>(null);
   const [lastModal, setLastModal] = useState(modal);
 
   // Sync target with where the modal was opened from (e.g. Screenshots page).
@@ -25,6 +40,12 @@ export function UploadModal() {
     if (!files || !files.length) return;
     addFiles(files, target as Category | 'auto');
     closeUpload();
+  };
+
+  const onPicked = (e: React.ChangeEvent<HTMLInputElement>, fromFolder = false) => {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    e.target.value = '';
+    submit(fromFolder ? files.filter((f) => !isJunkFile(f)) : files);
   };
 
   const onDrop = (e: DragEvent) => {
@@ -40,7 +61,7 @@ export function UploadModal() {
         <div role="radiogroup" aria-label="Upload destination" className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {(
             [
-              { v: 'auto', icon: Sparkles, title: 'Auto-detect', desc: 'Sort into Images, PDFs, Documents or Other' },
+              { v: 'auto', icon: Sparkles, title: 'Auto-detect', desc: 'Sort into Images, PDFs, Documents, Videos or Other' },
               { v: 'screenshot', icon: MonitorSmartphone, title: 'Screenshots', desc: 'Keep images separate from your photos' },
             ] as const
           ).map((o) => (
@@ -72,42 +93,69 @@ export function UploadModal() {
           }}
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
-          onClick={() => inputRef.current?.click()}
-          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && inputRef.current?.click()}
-          role="button"
-          tabIndex={0}
+          onClick={(e) => e.target === e.currentTarget && inputRef.current?.click()}
           className={cn(
-            'flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center transition-colors sm:py-14',
-            dragging ? 'border-brand bg-brand-soft' : 'border-line-strong hover:border-brand/60 hover:bg-subtle/60',
+            'flex flex-col items-center justify-center rounded-2xl border-2 border-dashed px-4 py-8 text-center transition-colors sm:cursor-pointer sm:px-6 sm:py-12',
+            dragging ? 'border-brand bg-brand-soft' : 'border-line-strong sm:hover:border-brand/60 sm:hover:bg-subtle/60',
           )}
         >
-          <div className="mb-3 flex size-14 items-center justify-center rounded-2xl bg-brand-soft text-brand">
+          <div className="pointer-events-none mb-3 flex size-14 items-center justify-center rounded-2xl bg-brand-soft text-brand">
             <CloudUpload className="size-7" />
           </div>
-          <p className="text-sm font-semibold text-ink">
-            <span className="hidden sm:inline">Drag & drop files here, or </span>
-            <span className="text-brand-ink">browse your device</span>
+          <p className="pointer-events-none text-sm font-semibold text-ink">
+            <span className="hidden sm:inline">Drag & drop files here, or choose them below</span>
+            <span className="sm:hidden">Choose files from your phone</span>
           </p>
-          <p className="mt-1 text-xs text-muted">
-            Select as many files as you like · up to {formatBytes(env.maxUploadBytes, 0)} each
+          <p className="pointer-events-none mt-1 text-xs text-muted">
+            Photos, videos, PDFs and documents · as many as you like · up to {formatBytes(env.maxUploadBytes, 0)} each
           </p>
-          <Button variant="secondary" size="sm" className="mt-4" icon={<FolderOpen className="size-4" />} tabIndex={-1}>
-            Choose files
-          </Button>
+          <div className="mt-4 flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-center">
+            <Button icon={<FolderOpen className="size-4" />} onClick={() => inputRef.current?.click()}>
+              Choose files
+            </Button>
+            <Button variant="secondary" icon={<Images className="size-4" />} onClick={() => mediaRef.current?.click()}>
+              {target === 'screenshot' ? 'From photo library' : 'Photos & videos'}
+            </Button>
+            {canPickFolder && (
+              <Button variant="secondary" icon={<FolderUp className="size-4" />} onClick={() => folderRef.current?.click()}>
+                Choose folder
+              </Button>
+            )}
+          </div>
         </div>
+        {/* All files: on phones this opens the OS picker (Photos, Camera, Files / Drive). */}
         <input
           ref={inputRef}
           type="file"
           multiple
           hidden
           accept={target === 'screenshot' ? 'image/*' : undefined}
-          onChange={(e) => {
-            submit(e.target.files);
-            e.target.value = '';
-          }}
+          onChange={(e) => onPicked(e)}
         />
+        {/* Media only: jumps straight to the photo/video gallery on most phones. */}
+        <input
+          ref={mediaRef}
+          type="file"
+          multiple
+          hidden
+          accept={target === 'screenshot' ? 'image/*' : 'image/*,video/*'}
+          onChange={(e) => onPicked(e)}
+        />
+        {canPickFolder && (
+          <input
+            ref={(el) => {
+              folderRef.current = el;
+              el?.setAttribute('webkitdirectory', '');
+            }}
+            type="file"
+            multiple
+            hidden
+            onChange={(e) => onPicked(e, true)}
+          />
+        )}
         <p className="text-xs text-faint">
-          Uploads continue in the background — you can keep browsing while they finish. Executable files (.exe, .bat, …) are blocked.
+          Uploads continue in the background — you can keep browsing while they finish. Large videos upload in resumable chunks, so a
+          dropped connection can be resumed. Keep this tab open until they finish. Executable files (.exe, .bat, …) are blocked.
         </p>
       </div>
     </Modal>

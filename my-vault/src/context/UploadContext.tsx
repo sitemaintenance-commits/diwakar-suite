@@ -4,7 +4,7 @@ import { useUser } from './AuthContext';
 import { detectCategory } from '@/lib/categories';
 import { getErrorMessage } from '@/lib/errors';
 import { invalidateLibrary, qk, queryClient } from '@/lib/queryClient';
-import { uploadVaultFile, validateFile } from '@/services/upload';
+import { RESUMABLE_THRESHOLD, uploadVaultFile, validateFile } from '@/services/upload';
 import type { Category, UploadItem, VaultStats } from '@/types';
 
 /** Parallel uploads. Higher values rarely help and can starve the UI thread. */
@@ -55,13 +55,21 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     async (item: UploadItem) => {
       const controller = new AbortController();
       controllers.current.set(item.id, controller);
-      update(item.id, { status: 'uploading', progress: 0, error: undefined });
+      update(item.id, { status: 'uploading', progress: 0, bytesSent: 0, error: undefined });
+      // Resumable uploads report progress very often; re-render only when the
+      // visible percentage or phase changes so big batches stay smooth.
+      let last = '';
       try {
         await uploadVaultFile(
           item.file,
           item.category,
           user.id,
-          (progress, phase) => update(item.id, { progress, status: phase }),
+          (progress, phase, bytesSent) => {
+            const key = `${phase}:${progress}`;
+            if (key === last) return;
+            last = key;
+            update(item.id, { progress, status: phase, bytesSent });
+          },
           controller.signal,
         );
         update(item.id, { status: 'done', progress: 100 });
@@ -138,7 +146,15 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       let error = invalid ?? undefined;
       if (!error && file.size > remaining) error = 'Storage limit reached. Free up space or raise your quota.';
       if (!error) remaining -= file.size;
-      return { id: crypto.randomUUID(), file, category, status: error ? 'error' : 'queued', progress: 0, error };
+      return {
+        id: crypto.randomUUID(),
+        file,
+        category,
+        status: error ? 'error' : 'queued',
+        progress: 0,
+        resumable: file.size > RESUMABLE_THRESHOLD,
+        error,
+      };
     });
     const rejected = next.filter((i) => i.status === 'error');
     if (rejected.length) {

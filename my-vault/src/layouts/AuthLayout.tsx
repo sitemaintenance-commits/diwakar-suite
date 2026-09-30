@@ -44,7 +44,7 @@ export function AuthLayout({ children, redirectIfSignedIn = true }: { children: 
             One secure place.
           </h1>
           <p className="mt-4 max-w-md text-base text-white/85 lg:text-lg">
-            Store your images, screenshots, PDFs and documents in a private library accessible only to you.
+            Store your photos, screenshots, PDFs, documents and videos in a private library accessible only to you.
           </p>
           <div className="mt-8 hidden grid-cols-3 gap-3 lg:grid">
             {FEATURES.map((f) => (

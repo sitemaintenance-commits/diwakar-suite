@@ -61,10 +61,13 @@ export function UploadProgress() {
       : `${done} upload${done === 1 ? '' : 's'} complete`;
 
   return (
-    <div className="fixed right-3 bottom-3 left-3 z-40 overflow-hidden rounded-2xl border border-line bg-surface shadow-pop sm:left-auto sm:w-[380px]" role="status" aria-live="polite">
+    <div className="fixed right-3 bottom-3 left-3 z-40 overflow-hidden rounded-2xl border border-line bg-surface shadow-pop sm:left-auto sm:w-[380px]">
       <div className="flex items-center gap-2 px-4 py-3">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-ink">{title}</p>
+          {/* Only the summary is announced; per-file percentages would flood screen readers. */}
+          <p className="truncate text-sm font-semibold text-ink" role="status" aria-live="polite">
+            {title}
+          </p>
           <p className="text-xs text-muted">
             {done} of {items.length} done{isUploading ? ` · ${overall}%` : ''}
           </p>
@@ -102,7 +105,14 @@ export function UploadProgress() {
                   <span className={cn('shrink-0 text-xs tabular-nums', item.status === 'error' ? 'text-danger' : 'text-muted')}>{statusText(item)}</span>
                 </div>
                 {item.status === 'uploading' || item.status === 'processing' ? (
-                  <ProgressBar value={item.progress} className="mt-1.5" />
+                  <>
+                    <ProgressBar value={item.progress} className="mt-1.5" />
+                    {item.resumable && item.status === 'uploading' && (
+                      <p className="mt-1 text-[11px] text-faint tabular-nums">
+                        {formatBytes(item.bytesSent ?? 0)} of {formatBytes(item.file.size)}
+                      </p>
+                    )}
+                  </>
                 ) : (
                   <p className={cn('truncate text-xs', item.status === 'error' ? 'text-danger' : 'text-faint')} title={item.error}>
                     {item.error ?? `${formatBytes(item.file.size)} · ${CATEGORIES[item.category].plural}`}
@@ -110,7 +120,11 @@ export function UploadProgress() {
                 )}
               </div>
               {(item.status === 'error' || item.status === 'canceled') && (
-                <IconButton label={`Retry ${item.file.name}`} size="sm" onClick={() => retry(item.id)}>
+                <IconButton
+                  label={item.resumable && item.status === 'error' ? `Resume ${item.file.name}` : `Retry ${item.file.name}`}
+                  size="sm"
+                  onClick={() => retry(item.id)}
+                >
                   <RotateCw className="size-4" />
                 </IconButton>
               )}

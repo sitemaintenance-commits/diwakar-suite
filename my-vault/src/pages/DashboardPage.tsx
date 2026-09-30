@@ -1,4 +1,4 @@
-import { Clock, FileImage, FileText, FileType2, Files, HardDrive, MonitorSmartphone, RefreshCw, Star } from 'lucide-react';
+import { Clock, FileImage, FileText, FileType2, FileVideo, Files, Folder, HardDrive, MonitorSmartphone, RefreshCw, Star } from 'lucide-react';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
 import { StorageWidget } from '@/components/dashboard/StorageWidget';
 import { RecentFiles } from '@/components/dashboard/RecentFiles';
@@ -19,6 +19,8 @@ export function DashboardPage() {
     { label: 'Screenshots', value: n(stats?.screenshots), icon: MonitorSmartphone, tone: 'bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400', to: '/screenshots' },
     { label: 'PDFs', value: n(stats?.pdfs), icon: FileType2, tone: 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400', to: '/pdfs' },
     { label: 'Documents', value: n(stats?.documents), icon: FileText, tone: 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400', to: '/documents' },
+    { label: 'Videos', value: n(stats?.videos), icon: FileVideo, tone: 'bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-500/10 dark:text-fuchsia-400', to: '/videos' },
+    { label: 'Other Files', value: n(stats?.other), icon: Folder, tone: 'bg-slate-100 text-slate-600 dark:bg-slate-500/10 dark:text-slate-300', to: '/other' },
     { label: 'Favorites', value: n(stats?.favorites), icon: Star, tone: 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400', to: '/favorites' },
     {
       label: 'Storage Used',
@@ -49,7 +51,7 @@ export function DashboardPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-5">
         {cards.map((c) => (
           <DashboardCard key={c.label} {...c} loading={isLoading} />
         ))}
