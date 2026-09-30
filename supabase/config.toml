@@ -12,8 +12,8 @@ project_id = "diwakar-suite"
 enable_signup = false
 site_url = "https://diwakar-suitee.netlify.app"
 additional_redirect_urls = [
-  "https://diwakar-suite.pages.dev/reset-password",
-  "https://diwakar-suite.pages.dev/accept-invite",
+  "https://diwakar-suite.diwakar-mediagroup.workers.dev/reset-password",
+  "https://diwakar-suite.diwakar-mediagroup.workers.dev/accept-invite",
   "https://diwakar-suitee.netlify.app/reset-password",
   "https://diwakar-suitee.netlify.app/accept-invite",
   "http://localhost:5173/reset-password",

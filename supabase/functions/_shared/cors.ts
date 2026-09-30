@@ -1,8 +1,8 @@
 // CORS for browser calls from the web app. Restrict ALLOWED_ORIGINS in
 // production (comma-separated), e.g.
-//   "https://diwakar-suite.pages.dev,https://*.diwakar-suite.pages.dev"
-// An entry "https://*.example.com" allows that site's subdomains (Cloudflare
-// Pages gives every preview build its own), never the bare domain's siblings.
+//   "https://diwakar-suite.diwakar-mediagroup.workers.dev"
+// An entry "https://*.example.com" allows that site's subdomains (preview
+// builds on their own subdomains), never the bare domain's siblings.
 const allowed = (Deno.env.get('ALLOWED_ORIGINS') ?? '*').split(',').map((s) => s.trim()).filter(Boolean);
 
 function isAllowed(origin: string): boolean {
