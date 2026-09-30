@@ -19,6 +19,8 @@ Results cover document/OCR coverage, synopsis, risk clauses, company go/no-go an
 
 **Summarise** appears at the top of every finished analysis (Analyse tender PDF, Find with AI and the tender page). It condenses the analysis, not the PDF, into a one-page brief (headline, key numbers, key points, top risks, decision, next steps) with the lookup model, so it is quick and cheap, and adds no facts the analysis does not hold. **Copy** gives it as plain text for WhatsApp or e-mail. On a tender the brief is kept in `ai_summary.brief` and shown next time; **Redo** writes it again.
 
+**Download PDF**, next to Summarise, saves the whole analysis as an A4 report: tender details, the summary if one was written, overview, and all five sections with tables for risks (coloured by severity), go/no-go checks and contradictions, with page numbers and a verification note on every page. It is built in the browser with pdfmake, loaded only on click (its bundled Roboto font has the ₹ sign), so it costs no AI usage and works under the site's Content-Security-Policy.
+
 ## Background execution and limits
 
 A job runs as a chain of Supabase function calls, each with its own ~135-second budget, because a 100–300 page RfS cannot be uploaded to Gemini and analysed inside one call (Supabase stops a function at 150 s):

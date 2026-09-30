@@ -76,6 +76,17 @@ function Pairs({ title, items }: { title: string; items: { label: string; value:
   );
 }
 
+/** A saved tender's details in the shape the analysis uses, for the report. */
+function tenderFields(t: Tender): AiFields {
+  return {
+    reference_no: t.reference_no, title: t.title, authority: t.authority, portal: t.portal, tender_type: t.tender_type,
+    work_type: t.work_type, state: t.state, district: t.district, location: t.location,
+    capacity_kwp: t.capacity_kwp as number | null, estimated_value: t.estimated_value as number, tender_fee: t.tender_fee as number,
+    emd_amount: t.emd_amount as number, emd_mode: t.emd_mode, published_on: t.published_on, prebid_at: t.prebid_at,
+    submission_due_at: t.submission_due_at, technical_opening_at: t.technical_opening_at, completion_days: t.completion_days,
+  };
+}
+
 // ---------------------------------------------------------------- one-page brief
 function BriefPanel({ summary, fields, tenderId, onBrief }: {
   summary: TenderAiSummary; fields?: AiFields | null; tenderId?: string; onBrief?: (brief: TenderBrief) => void;
@@ -154,12 +165,40 @@ function BriefPanel({ summary, fields, tenderId, onBrief }: {
   );
 }
 
-export function AiSummaryView({ summary, fields, tenderId, onBrief }: {
+function DownloadReportButton({ summary, fields, title }: { summary: TenderAiSummary; fields?: AiFields | null; title: string }) {
+  const [busy, setBusy] = useState(false);
+  async function run() {
+    setBusy(true);
+    try {
+      // Loaded on click: the PDF library is large and most visits never need it.
+      const { downloadAnalysisPdf } = await import('@/features/crm/tenders/analysisPdf');
+      await downloadAnalysisPdf(summary, fields, title);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void run()}>
+      {busy ? <Loader2 className="animate-spin" /> : <Download />} Download PDF
+    </Button>
+  );
+}
+
+export function AiSummaryView({ summary, fields, tenderId, onBrief, title }: {
   summary: TenderAiSummary; fields?: AiFields | null; tenderId?: string; onBrief?: (brief: TenderBrief) => void;
+  /** Shown on the downloaded report; defaults to the tender title in the fields. */
+  title?: string;
 }) {
   return (
     <div className="space-y-4">
-      {/* The short version is offered once the full five-step analysis exists. */}
+      {/* The short version and the report are offered once the full five-step analysis exists. */}
+      {summary.go_no_go && (
+        <div className="flex justify-end">
+          <DownloadReportButton summary={summary} fields={fields} title={title || String(fields?.title ?? '') || 'Tender'} />
+        </div>
+      )}
       {summary.go_no_go && <BriefPanel summary={summary} fields={fields} tenderId={tenderId} onBrief={onBrief} />}
       <p className="text-sm leading-relaxed text-slate-700">{summary.overview}</p>
       <List title="1. Document reading / OCR coverage" items={summary.processing ?? []} />
@@ -622,7 +661,7 @@ export function TenderAiSummaryCard({ tender }: { tender: Tender }) {
         {busy && <p className="text-sm text-violet-700">Reading the attached PDF and running all five checks. Keep this page open until it finishes.</p>}
         {tender.ai_summary ? (
           <>
-            <AiSummaryView summary={tender.ai_summary} tenderId={can.edit ? tender.id : undefined} />
+            <AiSummaryView summary={tender.ai_summary} tenderId={can.edit ? tender.id : undefined} title={tender.title} fields={tenderFields(tender)} />
             <Links title="Sources" links={tender.ai_sources ?? []} />
             {tender.ai_summary_at && <p className="text-xs text-slate-400">Generated {fmtDateTime(tender.ai_summary_at)}. AI can make mistakes — check against the document.</p>}
           </>
