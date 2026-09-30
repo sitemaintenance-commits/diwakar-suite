@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, CheckCircle2, ExternalLink, FileText, ImagePlus, Loader2, RotateCcw, Sparkles, Upload, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Download, ExternalLink, FileText, ImagePlus, Loader2, RotateCcw, Sparkles, Upload, X } from 'lucide-react';
 import { errorMessage } from '@/lib/errors';
 import { supabase } from '@/lib/supabase';
 import { TenderAnalysisDialog } from './TenderAnalysisDialog';
@@ -128,7 +128,7 @@ export function TenderAiDialog({ open, onOpenChange, onCreated }: { open: boolea
   const qc = useQueryClient();
   const [shots, setShots] = useState<Shot[]>([]);
   const [text, setText] = useState('');
-  const [busy, setBusy] = useState<null | 'lookup' | 'pdf'>(null);
+  const [busy, setBusy] = useState<null | 'lookup' | 'pdf' | 'analyse'>(null);
   const [result, setResult] = useState<LookupResult | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   // The five-step analysis of the RfS runs as a background job; follow it here.
@@ -205,14 +205,37 @@ export function TenderAiDialog({ open, onOpenChange, onCreated }: { open: boolea
     setBusy('pdf');
     try {
       const stored = await uploadAnalysisPdf(file);
-      const started = await startAnalysisJob([stored]);
-      setResult({ ...result, pdf: { name: file.name, data: '', storage_path: stored.path, size: file.size }, analysis_job_id: started.id });
+      setResult({ ...result, pdf: { name: file.name, data: '', storage_path: stored.path, size: file.size }, analysis_job_id: null });
+      toast.success('PDF added. Run the full analysis if you want it.');
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // Offered until an analysis is running or done; again after one fails.
+  const canRunAnalysis = !job || job.status === 'failed' || jobExpired(job);
+
+  async function onRunAnalysis() {
+    if (!result?.pdf?.storage_path) return;
+    setBusy('analyse');
+    try {
+      const started = await startAnalysisJob([{ path: result.pdf.storage_path, name: result.pdf.name }]);
+      setResult({ ...result, analysis_job_id: started.id });
       toast.success('Analysis started — a 300-page RfS usually takes 2–5 minutes.');
     } catch (e) {
       toast.error(errorMessage(e));
     } finally {
       setBusy(null);
     }
+  }
+
+  async function onDownloadPdf() {
+    if (!result?.pdf?.storage_path) return;
+    const { data, error } = await supabase.storage.from('tender-analysis').createSignedUrl(result.pdf.storage_path, 120, { download: result.pdf.name });
+    if (error) return toast.error(errorMessage(error));
+    window.open(data.signedUrl, '_blank', 'noopener');
   }
 
   const prefill = useMemo(() => {
@@ -360,6 +383,23 @@ export function TenderAiDialog({ open, onOpenChange, onCreated }: { open: boolea
                       <CheckCircle2 className="mr-1 inline h-4 w-4" />
                       {result.pdf.name} ({(result.pdf.size / 1024 / 1024).toFixed(1)} MB) — will be attached to the tender.
                     </p>
+                    <div className="flex flex-wrap gap-2">
+                      {result.pdf.storage_path && (
+                        <Button type="button" variant="outline" size="sm" onClick={() => void onDownloadPdf()}>
+                          <Download /> Download PDF
+                        </Button>
+                      )}
+                      {result.pdf.storage_path && canRunAnalysis && (
+                        <Button type="button" size="sm" disabled={busy !== null} onClick={() => void onRunAnalysis()}>
+                          {busy === 'analyse' ? <Loader2 className="animate-spin" /> : <Sparkles />} {job ? 'Run the analysis again' : 'Run full analysis'}
+                        </Button>
+                      )}
+                    </div>
+                    {result.pdf.storage_path && canRunAnalysis && (
+                      <p className="text-xs text-slate-500">
+                        Full analysis: synopsis, risk clauses, go/no-go against your company profile and contradiction check — about 2–5 minutes for a 300-page RfS.
+                      </p>
+                    )}
                     {job && jobRunning && (
                       <p role="status" className="rounded-lg bg-violet-50 px-3 py-2 text-sm text-violet-800">
                         <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
@@ -368,7 +408,7 @@ export function TenderAiDialog({ open, onOpenChange, onCreated }: { open: boolea
                     )}
                     {job && (job.status === 'failed' || jobExpired(job)) && (
                       <p role="alert" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                        The full analysis did not finish ({jobExpired(job) ? 'it stopped making progress' : job.error}). Create the tender, then use Analyse tender PDF on it to retry.
+                        The full analysis did not finish ({jobExpired(job) ? 'it stopped making progress' : job.error}). Try again with Run full analysis, or create the tender and use Analyse tender PDF on it.
                       </p>
                     )}
                   </div>

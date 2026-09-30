@@ -1,13 +1,14 @@
 // tender-ai — finds a government tender from a screenshot or a few words,
-// fetches its official notice (PDF) and summarises it with Google Gemini.
+// fetches its official RfS (PDF) and, when asked, analyses it with Google Gemini.
 //
 // Actions:
 //   lookup    { images?: [{ media_type, data }], text? }
 //             -> { found, fields, sources, documents, pdf, summary, searched_for, notes }
 //             Gemini reads the input and writes search queries, Tavily
 //             searches the web (official sites first), Gemini matches the
-//             results to the tender, the function downloads the official PDF
-//             when a result links to one, and Gemini summarises it.
+//             results to the tender, and the function downloads the official
+//             RfS when a result links to one (checked from its first pages).
+//             It stops there; the user may then run the analysis on it.
 //   summarize { pdf: { name, data } }              (a PDF the user uploads)
 //   summarize { document_id }                      (a PDF already attached)
 //             -> { fields, summary }
@@ -454,7 +455,7 @@ async function checkTenderPdf(bytes: Uint8Array, name: string, expected: Record<
   return parseJson<{ accept: boolean; reason: string }>(res.text ?? '');
 }
 
-async function lookup(body: { images?: unknown; text?: unknown }, caller: SupabaseClient, authHeader: string, userId: string) {
+async function lookup(body: { images?: unknown; text?: unknown }, caller: SupabaseClient, userId: string) {
   const text = typeof body.text === 'string' ? body.text.trim().slice(0, 4000) : '';
   const images = Array.isArray(body.images) ? body.images.slice(0, MAX_IMAGES) : [];
   if (!text && images.length === 0) throw new HttpError(400, 'Add a screenshot or type something about the tender.');
@@ -534,26 +535,16 @@ async function lookup(body: { images?: unknown; text?: unknown }, caller: Supaba
 
   const fields = found.fields ?? {};
   const summary: unknown = found.summary ?? null;
-  let notes = found.notes ?? '';
-  // Reading a 100-300 page RfS takes longer than this call may run, so the
-  // five-step analysis runs as a background job; the dialog follows it.
-  let analysisJobId: string | null = null;
-  if (pdf?.storage_path) {
-    try {
-      analysisJobId = (await createAnalysisJob(caller, authHeader, userId, [{ path: pdf.storage_path, name: pdf.name }], null)).id;
-    } catch (e) {
-      console.error('Could not start the analysis job during lookup', e);
-      notes = `The PDF was downloaded but its analysis could not be started — use "Analyse tender PDF" after creating the tender. ${notes}`.trim();
-    }
-  }
-  console.log(`lookup: queries=${JSON.stringify(queries)} hits=${hits.length} found=${found.found} pdf=${pdf ? pdf.url : 'none'} job=${analysisJobId ?? 'none'}`);
+  const notes = found.notes ?? '';
+  // The lookup stops at the document. The user decides whether to run the
+  // five-step analysis on it (the dialog starts it as a background job).
+  console.log(`lookup: queries=${JSON.stringify(queries)} hits=${hits.length} found=${found.found} pdf=${pdf ? pdf.url : 'none'}`);
 
   return {
     found: Boolean(found.found),
     fields,
     summary,
     summary_source: summarySource,
-    analysis_job_id: analysisJobId,
     sources: found.sources,
     documents: documentUrls,
     pdf,
@@ -944,7 +935,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     switch (String(body.action ?? '')) {
       case 'lookup': {
-        const result = await lookup(body, caller, authHeader, userData.user.id);
+        const result = await lookup(body, caller, userData.user.id);
         await caller.rpc('log_event', { p_action: 'tender.ai_lookup', p_module: 'crm.tenders', p_summary: `AI tender lookup: ${String(result.fields?.reference_no ?? result.fields?.title ?? 'not found')}` });
         return json(req, result);
       }
