@@ -16,3 +16,6 @@ __pycache__/
 om-generation-import.json
 om-history-import.json
 om-history-differences.csv
+
+# Cloudflare wrangler local state
+.wrangler/
