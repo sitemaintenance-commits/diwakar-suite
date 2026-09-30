@@ -47,8 +47,9 @@ function detailRows(f: AiFields): [string, string][] {
   return rows.filter((r): r is [string, string] => Boolean(r[1]));
 }
 
-const h1 = (text: string): Content => ({ text, style: 'h1', margin: [0, 16, 0, 6] });
-const h2 = (text: string): Content => ({ text, style: 'h2', margin: [0, 8, 0, 4] });
+// headlineLevel marks headings so pageBreakBefore can keep them with their text.
+const h1 = (text: string): Content => ({ text, style: 'h1', margin: [0, 16, 0, 6], headlineLevel: 1 });
+const h2 = (text: string): Content => ({ text, style: 'h2', margin: [0, 8, 0, 4], headlineLevel: 2 });
 
 function bullets(title: string, items: string[] | undefined): Content[] {
   if (!items?.length) return [];
@@ -168,6 +169,10 @@ export function buildAnalysisPdf(summary: TenderAiSummary, fields: AiFields | nu
       h2: { fontSize: 10, bold: true, color: '#334155' },
     },
     content,
+    // A heading with nothing below it on its page moves to the next page. The
+    // footer counts as "following" but is laid out apart, above this point.
+    pageBreakBefore: (node, q) =>
+      Boolean(node.headlineLevel) && !q.getFollowingNodesOnPage().some((n) => n.startPosition.top > node.startPosition.top),
     footer: (page: number, pages: number) => ({
       columns: [
         { text: 'AI-generated analysis — verify cited clauses and page numbers against the tender documents before bidding.', fontSize: 7, color: MUTED },

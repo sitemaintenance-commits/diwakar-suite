@@ -193,12 +193,11 @@ export function AiSummaryView({ summary, fields, tenderId, onBrief, title }: {
 }) {
   return (
     <div className="space-y-4">
-      {/* The short version and the report are offered once the full five-step analysis exists. */}
-      {summary.go_no_go && (
-        <div className="flex justify-end">
-          <DownloadReportButton summary={summary} fields={fields} title={title || String(fields?.title ?? '') || 'Tender'} />
-        </div>
-      )}
+      {/* The report works for any analysis (sections it lacks are left out);
+          the short version needs the full five-step analysis. */}
+      <div className="flex justify-end">
+        <DownloadReportButton summary={summary} fields={fields} title={title || String(fields?.title ?? '') || 'Tender'} />
+      </div>
       {summary.go_no_go && <BriefPanel summary={summary} fields={fields} tenderId={tenderId} onBrief={onBrief} />}
       <p className="text-sm leading-relaxed text-slate-700">{summary.overview}</p>
       <List title="1. Document reading / OCR coverage" items={summary.processing ?? []} />
