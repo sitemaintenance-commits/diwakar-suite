@@ -4,7 +4,7 @@
 
 1. Apply migrations, including `20260929000006_tender_analysis.sql` and `20260929000007_tender_analysis_steps.sql`.
 2. Deploy the `tender-ai` Supabase function, then deploy the frontend.
-3. Keep `GEMINI_API_KEY` and `TAVILY_API_KEY` configured. `GEMINI_MODEL` and `GEMINI_FALLBACK_MODELS` select models; no browser API keys are needed. The function uses Supabase's standard service-role environment variable only to persist job results.
+3. Keep `GEMINI_API_KEY` and `TAVILY_API_KEY` configured. Models: `GEMINI_MODEL` (analysis, default `gemini-flash-latest`) and `GEMINI_LOOKUP_MODEL` (Find with AI, default `gemini-flash-lite-latest`); the lookup only reads a screenshot, search snippets and 20 pages, so the cheaper model is enough there. Tavily: every lookup runs 2 searches (2 credits); only when the tender is found without its RfS PDF does it open up to `TAVILY_EXTRACT_PAGES` (default 5, 1 credit per 5 pages) official pages to collect their document links and run up to `TAVILY_EXTRA_SEARCHES` (default 2) more searches, one for the document on official sites and one on the authority's own site. Links are ranked to prefer the main RfS/RFP over corrigenda, pre-bid replies and BOQs. `GEMINI_MODEL` and `GEMINI_FALLBACK_MODELS` select models; no browser API keys are needed. The function uses Supabase's standard service-role environment variable only to persist job results.
 4. Fill in **System Settings → Company profile for tender eligibility**.
 
 ## Usage

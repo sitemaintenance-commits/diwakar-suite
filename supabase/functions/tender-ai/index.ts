@@ -23,8 +23,10 @@
 // permissions. The caller must hold crm.tenders CREATE or EDIT.
 //
 // Secrets: GEMINI_API_KEY (key from aistudio.google.com; the project is on paid Tier 1)
-//          GEMINI_MODEL   optional, defaults to the latest Flash model
-//          TAVILY_API_KEY free key from tavily.com (web search)
+//          GEMINI_MODEL        analysis model, default the latest Flash
+//          GEMINI_LOOKUP_MODEL Find with AI model, default the latest Flash-Lite
+//          TAVILY_API_KEY      free key from tavily.com (web search)
+//          TAVILY_EXTRA_SEARCHES / TAVILY_EXTRACT_PAGES  optional, see searchForRfs
 import { tavily } from 'npm:@tavily/core@0.7.13';
 import { PDFDocument } from 'npm:pdf-lib@1.17.1';
 import { ApiError, FinishReason, GoogleGenAI, type GenerateContentResponse, type Part } from 'npm:@google/genai@2.24.0';
@@ -33,11 +35,19 @@ import { corsHeaders, json } from '../_shared/cors.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
-// "-latest" follows Google's newest Flash, so a model retirement doesn't
-// break the feature. Set GEMINI_MODEL to pin one.
-const MODEL = Deno.env.get('GEMINI_MODEL') || 'gemini-flash-latest';
-// Tried in order when the model above is overloaded, has no quota or is gone.
-const MODELS = [...new Set([MODEL, ...(Deno.env.get('GEMINI_FALLBACK_MODELS') ?? 'gemini-flash-latest,gemini-flash-lite-latest').split(',').map((m) => m.trim()).filter(Boolean)])];
+// Two models. Reading a 100-300 page RfS for risks and eligibility is where
+// nearly all the cost and all the judgement is, so it gets Flash. Find with
+// AI only reads a screenshot, search snippets and 20 pages, which Flash-Lite
+// does well for a fraction of the price. "-latest" follows Google's newest
+// release, so a model retirement doesn't break the feature.
+const MODELS_BY_TASK = {
+  analysis: Deno.env.get('GEMINI_MODEL') || 'gemini-flash-latest',
+  lookup: Deno.env.get('GEMINI_LOOKUP_MODEL') || 'gemini-flash-lite-latest',
+};
+type Task = keyof typeof MODELS_BY_TASK;
+const FALLBACK_MODELS = (Deno.env.get('GEMINI_FALLBACK_MODELS') ?? 'gemini-flash-latest,gemini-flash-lite-latest').split(',').map((m) => m.trim()).filter(Boolean);
+// Tried in order when the task's model is overloaded, has no quota or is gone.
+const modelsFor = (task: Task) => [...new Set([MODELS_BY_TASK[task], ...FALLBACK_MODELS])];
 // Supabase stops a function at 150 s; leave room to answer.
 const REQUEST_BUDGET_MS = 135_000;
 // Files go inline in the request, which Gemini caps at about 20 MB after
@@ -206,14 +216,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /**
  * Google turns requests away when a model is busy
  * (503) and each model has its own quota (429), so a busy model is retried
- * briefly and then the next model in MODELS is tried, all within `deadline`.
+ * briefly and then the next model in modelsFor(task) is tried, all within `deadline`.
  */
-async function callGemini(params: { system: string; parts: Part[]; schema?: unknown; deadline: number }): Promise<GenerateContentResponse> {
+async function callGemini(params: { system: string; parts: Part[]; schema?: unknown; deadline: number; task?: Task }): Promise<GenerateContentResponse> {
+  const models = modelsFor(params.task ?? 'analysis');
   if (!Deno.env.get('GEMINI_API_KEY')) throw new HttpError(500, 'The AI service is not set up. Ask the administrator to set GEMINI_API_KEY.');
   let res: GenerateContentResponse | undefined;
   let lastError: unknown = new HttpError(504, 'The AI took too long. Please try again; for a large package, upload fewer PDFs at once.');
-  let lastModel = MODEL;
-  models: for (const model of MODELS) {
+  let lastModel = models[0];
+  models: for (const model of models) {
     for (let attempt = 0; attempt < 3; attempt++) {
       const left = params.deadline - Date.now();
       if (left < 10_000) break models;
@@ -286,17 +297,19 @@ function isOfficial(url: string): boolean {
   }
 }
 
-async function searchWeb(queries: string[]): Promise<{ hits: Hit[]; error: string | null }> {
+type SearchPlan = { query: string; includeDomains?: string[] };
+
+function tavilyClient() {
   const key = Deno.env.get('TAVILY_API_KEY');
-  if (!key) return { hits: [], error: 'web search is not set up (TAVILY_API_KEY missing)' };
-  const client = tavily({ apiKey: key });
-  const q = queries.map((x) => x.trim()).filter(Boolean).slice(0, 2);
-  const plans = [
-    { query: q[0], includeDomains: OFFICIAL_DOMAINS },
-    { query: q[1] ?? q[0] },
-  ].filter((p) => p.query);
+  return key ? tavily({ apiKey: key }) : null;
+}
+
+/** Runs Tavily searches (1 credit each) and returns the de-duplicated results. */
+async function runSearches(plans: SearchPlan[], seen = new Set<string>()): Promise<{ hits: Hit[]; errors: string[] }> {
+  const client = tavilyClient();
+  if (!client) return { hits: [], errors: ['web search is not set up (TAVILY_API_KEY missing)'] };
   const settled = await Promise.allSettled(
-    plans.map((p) =>
+    plans.filter((p) => p.query.trim()).map((p) =>
       client.search(p.query, {
         searchDepth: 'basic', // 1 credit each
         maxResults: 6,
@@ -306,7 +319,6 @@ async function searchWeb(queries: string[]): Promise<{ hits: Hit[]; error: strin
       }),
     ),
   );
-  const seen = new Set<string>();
   const hits: Hit[] = [];
   const errors: string[] = [];
   for (const r of settled) {
@@ -321,8 +333,113 @@ async function searchWeb(queries: string[]): Promise<{ hits: Hit[]; error: strin
     }
   }
   if (errors.length) console.error('Tavily search failed:', errors.join(' | '));
+  return { hits, errors };
+}
+
+/** First round: one search on official sites, one open (2 credits). */
+async function searchWeb(queries: string[]): Promise<{ hits: Hit[]; error: string | null }> {
+  const q = queries.map((x) => x.trim()).filter(Boolean).slice(0, 2);
+  const { hits, errors } = await runSearches([
+    { query: q[0] ?? '', includeDomains: OFFICIAL_DOMAINS },
+    { query: q[1] ?? q[0] ?? '' },
+  ]);
   const error = hits.length === 0 && errors.length ? `web search failed (${errors[0].slice(0, 160)})` : null;
   return { hits, error };
+}
+
+const looksLikeDocument = (url: string) => /\.pdf($|[?#])/i.test(url) || /showbiddocument|downloadfile|getdocument|viewdoc|download\.aspx|filedownload/i.test(url);
+
+/** The site a tender is published on, e.g. seci.co.in from www.seci.co.in/tenders/... */
+function siteOf(url: string): string | null {
+  try {
+    const labels = new URL(url).hostname.toLowerCase().replace(/^www\./, '').split('.');
+    // Indian second-level names (seci.co.in, energy.rajasthan.gov.in) keep one more label.
+    const keep = ['gov.in', 'nic.in', 'co.in', 'org.in', 'ac.in', 'net.in'].includes(labels.slice(-2).join('.')) ? 3 : 2;
+    return labels.slice(-keep).join('.');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Scores a document link: higher for the main RfS/RFP of this tender, lower
+ * for corrigenda, pre-bid replies and BOQs, which are not what we want.
+ */
+function rankDocument(url: string, title: string, reference: string): number {
+  const text = `${url} ${title}`.toLowerCase();
+  let score = 0;
+  if (/\brfs\b|\brfp\b|request for (selection|proposal)|bid document|tender document|\bnit\b|\bitb\b/.test(text)) score += 3;
+  if (/\.pdf($|[?#])/i.test(url)) score += 1;
+  const refDigits = reference.replace(/\D+/g, '');
+  if (refDigits.length >= 5 && text.replace(/\D+/g, '').includes(refDigits.slice(-5))) score += 2;
+  if (/corrigend|amendment|addend|pre-?bid|clarification|\bboq\b|price bid|notice|extension|result|award|minutes/.test(text)) score -= 3;
+  return score;
+}
+
+/** Official document links found in pages opened with Tavily Extract. */
+function documentLinks(markdown: string, pageUrl: string): { url: string; title: string }[] {
+  const links: { url: string; title: string }[] = [];
+  for (const m of markdown.matchAll(/\[([^\]]{0,300})\]\(\s*<?([^)\s>]+)>?[^)]*\)/g)) {
+    try {
+      const url = new URL(m[2], pageUrl).href;
+      if (looksLikeDocument(url) && isOfficial(url)) links.push({ url, title: m[1].replace(/\s+/g, ' ').trim() || url });
+    } catch { /* not a link */ }
+  }
+  // Plain-text URLs too (GeM pages often print showbidDocument links bare).
+  for (const m of markdown.matchAll(/https?:\/\/[^\s)\]"'<>]+/gi)) {
+    const url = m[0].replace(/[.,;]+$/, '');
+    if (looksLikeDocument(url) && isOfficial(url)) links.push({ url, title: url });
+  }
+  return links;
+}
+
+/**
+ * Second round, only when the first found the tender but not its RfS PDF:
+ *  - open the official pages already found and collect their document links
+ *    (Tavily Extract, 1 credit per 5 pages; TAVILY_EXTRACT_PAGES, default 5)
+ *  - search once more for the document itself on official sites, and once on
+ *    the authority's own site (TAVILY_EXTRA_SEARCHES, default 2)
+ * so most lookups still cost 2 credits and hard ones up to about 5.
+ */
+async function searchForRfs(found: MatchResult, hits: Hit[], seen: Set<string>): Promise<{ docs: { url: string; title: string }[]; queries: string[] }> {
+  const client = tavilyClient();
+  if (!client) return { docs: [], queries: [] };
+  const extraSearches = Math.max(0, Math.min(4, Number(Deno.env.get('TAVILY_EXTRA_SEARCHES') ?? 2)));
+  const extractPages = Math.max(0, Math.min(10, Number(Deno.env.get('TAVILY_EXTRACT_PAGES') ?? 5)));
+  const f = found.fields ?? {};
+  const reference = String(f.reference_no ?? '');
+  const subject = String(reference || f.title || '').slice(0, 160);
+
+  const pages = [...new Set([...found.sources.map((s) => s.url), ...hits.map((h) => h.url)])]
+    .filter((u) => isOfficial(u) && !looksLikeDocument(u))
+    .slice(0, extractPages);
+  const site = found.sources.map((s) => (isOfficial(s.url) ? siteOf(s.url) : null)).find(Boolean) ?? null;
+  const plans: SearchPlan[] = [
+    { query: `${subject} RfS RFP bid document pdf`, includeDomains: OFFICIAL_DOMAINS },
+    ...(site ? [{ query: `${subject} tender document`, includeDomains: [site] }] : []),
+  ].slice(0, extraSearches);
+
+  const [extracted, searched] = await Promise.all([
+    pages.length
+      ? client.extract(pages, { extractDepth: 'basic', format: 'markdown', timeout: 30 }).catch((e) => {
+        console.error('Tavily extract failed:', e instanceof Error ? e.message : e);
+        return null;
+      })
+      : Promise.resolve(null),
+    subject && plans.length ? runSearches(plans, seen) : Promise.resolve({ hits: [] as Hit[], errors: [] }),
+  ]);
+
+  const docs = [
+    ...(extracted?.results ?? []).flatMap((r) => documentLinks(r.rawContent ?? '', r.url)),
+    ...searched.hits.filter((h) => h.official && looksLikeDocument(h.url)).map((h) => ({ url: h.url, title: h.title })),
+  ];
+  const unique = [...new Map(docs.map((d) => [d.url, d])).values()]
+    .map((d) => ({ ...d, score: rankDocument(d.url, d.title, reference) }))
+    .filter((d) => d.score > -2)
+    .sort((a, b) => b.score - a.score)
+    .map(({ url, title }) => ({ url, title }));
+  console.log(`searchForRfs: extracted=${pages.length} searches=${plans.length} documents=${unique.length}`);
+  return { docs: unique, queries: subject ? plans.map((p) => p.query) : [] };
 }
 
 // ------------------------------------------------------------------ lookup
@@ -397,6 +514,7 @@ async function matchResults(given: Record<string, unknown>, text: string, hits: 
     .map((h, i) => `[${i + 1}] ${h.official ? '(official) ' : ''}${h.title}\nURL: ${h.url}\n${h.content}`)
     .join('\n\n');
   const matchRes = await callGemini({
+    task: 'lookup',
     system: MATCH_SYSTEM,
     schema: MATCH_SCHEMA,
     deadline,
@@ -446,7 +564,7 @@ const CHECK_SYSTEM = 'Classify this untrusted PDF (you may be shown only its fir
 const CHECK_SCHEMA = { type: 'object', properties: { accept: { type: 'boolean' }, reason: { type: 'string' } }, required: ['accept', 'reason'] };
 
 async function checkTenderPdf(bytes: Uint8Array, name: string, expected: Record<string, unknown>, deadline: number) {
-  const ask = (parts: Part[]) => callGemini({ deadline, system: CHECK_SYSTEM, schema: CHECK_SCHEMA,
+  const ask = (parts: Part[]) => callGemini({ task: 'lookup', deadline, system: CHECK_SYSTEM, schema: CHECK_SCHEMA,
     parts: [...parts, { text: `Expected tender: ${JSON.stringify(expected)}. Verify identity and document type.` }] });
   const head = await firstPages(bytes);
   const res = head && head.byteLength < MAX_PDF_BYTES
@@ -472,7 +590,7 @@ async function lookup(body: { images?: unknown; text?: unknown }, caller: Supaba
   parts.push({ text: text ? `About the tender:\n${text}` : 'Read the tender shown in the screenshot.' });
 
   // 1. Read the screenshot / text.
-  const readRes = await callGemini({ system: READ_INPUT_SYSTEM, schema: READ_INPUT_SCHEMA, parts, deadline });
+  const readRes = await callGemini({ task: 'lookup', system: READ_INPUT_SYSTEM, schema: READ_INPUT_SCHEMA, parts, deadline });
   const input = parseJson<{ fields: Record<string, unknown>; queries: string[] }>(readRes.text ?? '');
   const queries = (input.queries ?? []).filter((q) => typeof q === 'string' && q.trim());
   if (queries.length === 0) {
@@ -482,6 +600,7 @@ async function lookup(body: { images?: unknown; text?: unknown }, caller: Supaba
 
   // 2. Search the web.
   const { hits, error: searchError } = await searchWeb(queries);
+  const searchedFor = hits.length || !searchError ? queries.slice(0, 2) : [];
 
   // 3. Match the results to the tender. Without results, what the input said is all we have.
   let found: MatchResult | null = null;
@@ -511,12 +630,18 @@ async function lookup(body: { images?: unknown; text?: unknown }, caller: Supaba
         : 'The web search found nothing for this tender, so this was read from your input only. Try adding the tender number.',
     };
   }
+  // 4. Found the tender but no official document link: look harder for the RfS.
+  if (found.found && !found.document_urls.some((d) => isOfficial(d.url) && looksLikeDocument(d.url))) {
+    const more = await searchForRfs(found, hits, new Set(hits.map((h) => h.url)));
+    searchedFor.push(...more.queries);
+    for (const d of more.docs) if (!found.document_urls.some((x) => x.url === d.url)) found.document_urls.push(d);
+  }
   const documentUrls = found.document_urls;
 
-  // 4. Download the official PDF, trying each candidate until one is a real PDF.
+  // 5. Download the official PDF, trying each candidate until one is the full RfS.
   let pdf: { name: string; data: string; storage_path?: string; url: string; size: number } | null = null;
   const failures: string[] = [];
-  for (const d of documentUrls.slice(0, 4)) {
+  for (const d of documentUrls.slice(0, 5)) {
     try {
       if (Date.now() > deadline - 15_000) { failures.push('Search time limit reached. Upload the official PDF to continue.'); break; }
       const bytes = await downloadPdf(d.url, deadline);
@@ -549,7 +674,7 @@ async function lookup(body: { images?: unknown; text?: unknown }, caller: Supaba
     documents: documentUrls,
     pdf,
     download_failures: failures,
-    searched_for: hits.length || !searchError ? queries.slice(0, 2) : [],
+    searched_for: searchedFor,
     notes,
   };
 }
