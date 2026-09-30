@@ -4,6 +4,7 @@ import { Loader2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
+import type { TenderBrief } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { uploadDocument } from '@/features/crm/api';
@@ -23,6 +24,9 @@ export function TenderAnalysisDialog({ open, onOpenChange, tenderId, onCreated }
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState('');
   const [formOpen, setFormOpen] = useState(false);
+  // A brief written here, kept for this job until the dialog closes (saved on the tender when there is one).
+  const [brief, setBrief] = useState<TenderBrief | null>(null);
+  const [briefFor, setBriefFor] = useState<string | null>(null);
   const jobs = useQuery({
     queryKey: ['tender-analysis', tenderId ?? 'new'], enabled: open,
     queryFn: async () => {
@@ -71,7 +75,8 @@ export function TenderAnalysisDialog({ open, onOpenChange, tenderId, onCreated }
       await uploadDocument({ moduleKey: 'crm.tenders', entityType: 'tender', entityId: id,
         file: new File([downloaded.data], file.name, { type: 'application/pdf' }), category: 'Tender analysis source' });
     }
-    await saveTenderSummary(id, job.result.summary, 'pdf', []);
+    // Keep a brief written in this dialog with the analysis.
+    await saveTenderSummary(id, briefFor === job.id && brief ? { ...job.result.summary, brief } : job.result.summary, 'pdf', []);
     await qc.invalidateQueries({ queryKey: ['tender', id] });
     await qc.invalidateQueries({ queryKey: ['documents', 'tender', id] });
   }
@@ -92,7 +97,7 @@ export function TenderAnalysisDialog({ open, onOpenChange, tenderId, onCreated }
           {!!jobs.data?.length && <label className="block text-sm">Saved analyses<select className="mt-1 block w-full rounded-md border p-2" value={job?.id ?? ''} onChange={(e) => setSelected(e.target.value)}>{jobs.data.map((j) => <option key={j.id} value={j.id}>{new Date(j.created_at).toLocaleString()} · {j.files.map((f) => f.name).join(', ')} · {expired(j) ? 'timed out' : j.status}</option>)}</select></label>}
           {running && <div role="status" className="rounded-lg bg-violet-50 p-4 text-sm text-violet-800"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />{progressText(job)} A 300-page RfS usually takes 2–5 minutes. You can close this window; return here for saved results.</div>}
           {job && (job.status === 'failed' || expired(job)) && <div role="alert" className="space-y-2 rounded-lg bg-amber-50 p-4 text-sm"><p>{expired(job) ? 'The analysis stopped making progress. Retry; if it happens again, upload the main RfS on its own.' : job.error}</p><Button variant="outline" disabled={busy} onClick={() => void start(job.files)}>Retry analysis</Button></div>}
-          {job?.status === 'completed' && job.result && <div className="space-y-4"><AiSummaryView summary={job.result.summary} /><p className="text-xs text-slate-500">Verify cited clauses and page numbers in the originals before committing to a bid.</p>{tenderId ? <Button disabled={busy} onClick={async () => { setBusy(true); try { await attachToTender(tenderId); toast.success('Source PDFs attached and analysis saved'); } catch (e) { toast.error(errorMessage(e)); } finally { setBusy(false); } }}>Attach source PDFs to tender</Button> : <Button onClick={() => setFormOpen(true)}>Create tender from analysis</Button>}</div>}
+          {job?.status === 'completed' && job.result && <div className="space-y-4"><AiSummaryView summary={briefFor === job.id && brief ? { ...job.result.summary, brief } : job.result.summary} fields={job.result.fields} tenderId={job.tender_id ?? undefined} onBrief={(b) => { setBrief(b); setBriefFor(job.id); }} /><p className="text-xs text-slate-500">Verify cited clauses and page numbers in the originals before committing to a bid.</p>{tenderId ? <Button disabled={busy} onClick={async () => { setBusy(true); try { await attachToTender(tenderId); toast.success('Source PDFs attached and analysis saved'); } catch (e) { toast.error(errorMessage(e)); } finally { setBusy(false); } }}>Attach source PDFs to tender</Button> : <Button onClick={() => setFormOpen(true)}>Create tender from analysis</Button>}</div>}
         </div>
       </DialogContent>
     </Dialog>

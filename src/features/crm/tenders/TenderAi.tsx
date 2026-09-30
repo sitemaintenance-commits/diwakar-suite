@@ -4,12 +4,12 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, CheckCircle2, Download, ExternalLink, FileText, ImagePlus, Loader2, RotateCcw, Sparkles, Upload, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Copy, Download, ExternalLink, FileText, ImagePlus, Loader2, RotateCcw, Sparkles, Upload, X } from 'lucide-react';
 import { errorMessage } from '@/lib/errors';
 import { supabase } from '@/lib/supabase';
 import { TenderAnalysisDialog } from './TenderAnalysisDialog';
 import { fmtDateTime, fmtINR } from '@/lib/format';
-import type { Tender, TenderAiSummary } from '@/lib/types';
+import type { Tender, TenderAiSummary, TenderBrief } from '@/lib/types';
 import { useCan } from '@/auth/AccessProvider';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,7 @@ import { TENDER_TYPE_LABEL } from '@/features/crm/shared';
 import { TenderFormDialog } from '@/features/crm/tenders/TenderFormDialog';
 import {
   base64ToFile,
+  briefToText,
   fetchAnalysisJob,
   fieldsToForm,
   jobExpired,
@@ -30,10 +31,13 @@ import {
   linkAnalysis,
   lookupTender,
   prepareImage,
+  saveTenderBrief,
   saveTenderSummary,
   summarizeDocument,
   startAnalysisJob,
   uploadAnalysisPdf,
+  writeBrief,
+  type AiFields,
   type LookupResult,
 } from '@/features/crm/tenders/ai';
 
@@ -72,9 +76,91 @@ function Pairs({ title, items }: { title: string; items: { label: string; value:
   );
 }
 
-export function AiSummaryView({ summary }: { summary: TenderAiSummary }) {
+// ---------------------------------------------------------------- one-page brief
+function BriefPanel({ summary, fields, tenderId, onBrief }: {
+  summary: TenderAiSummary; fields?: AiFields | null; tenderId?: string; onBrief?: (brief: TenderBrief) => void;
+}) {
+  const qc = useQueryClient();
+  const [brief, setBrief] = useState<TenderBrief | undefined>(summary.brief);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => setBrief(summary.brief), [summary.brief]);
+
+  async function run() {
+    setBusy(true);
+    try {
+      const b = await writeBrief(summary, fields);
+      setBrief(b);
+      onBrief?.(b);
+      if (tenderId) {
+        await saveTenderBrief(tenderId, summary, b);
+        await qc.invalidateQueries({ queryKey: ['tender', tenderId] });
+      }
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copy() {
+    if (!brief) return;
+    try {
+      await navigator.clipboard.writeText(briefToText(brief));
+      toast.success('Summary copied — paste it into WhatsApp or an e-mail');
+    } catch {
+      toast.error('Could not copy. Select the text and copy it instead.');
+    }
+  }
+
+  if (!brief) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-violet-200 bg-violet-50/60 p-4">
+        <div className="text-sm text-violet-900">
+          <div className="font-semibold">Need the short version?</div>
+          <div className="text-violet-800/80">A one-page summary of this analysis: key numbers, top risks, the decision and next steps.</div>
+        </div>
+        <Button type="button" disabled={busy} onClick={() => void run()}>
+          {busy ? <Loader2 className="animate-spin" /> : <Sparkles />} {busy ? 'Summarising…' : 'Summarise'}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <section className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/60 p-4" aria-label="Summary">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <h3 className="flex items-center gap-2 font-semibold text-violet-950"><Sparkles className="h-4 w-4 text-violet-500" /> Summary</h3>
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={() => void copy()}><Copy /> Copy</Button>
+          <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void run()}>
+            {busy ? <Loader2 className="animate-spin" /> : <RotateCcw />} Redo
+          </Button>
+        </div>
+      </div>
+      <p className="font-medium leading-relaxed text-slate-900">{brief.headline}</p>
+      {brief.at_a_glance.length > 0 && (
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-1 rounded-lg bg-white/70 p-3 text-sm sm:grid-cols-2">
+          {brief.at_a_glance.map((x, i) => (
+            <div key={i} className="flex gap-2"><dt className="text-slate-500">{x.label}:</dt><dd className="font-semibold text-slate-800">{x.value}</dd></div>
+          ))}
+        </dl>
+      )}
+      <List title="Key points" items={brief.key_points} />
+      {brief.top_risks.length > 0 && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3"><List title="Top risks" items={brief.top_risks} /></div>}
+      <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900"><span className="font-semibold">Decision: </span>{brief.decision}</div>
+      <List title="Next steps" items={brief.next_steps} />
+      <p className="text-xs text-slate-500">Written from the analysis below. Verify against the tender document before bidding.</p>
+    </section>
+  );
+}
+
+export function AiSummaryView({ summary, fields, tenderId, onBrief }: {
+  summary: TenderAiSummary; fields?: AiFields | null; tenderId?: string; onBrief?: (brief: TenderBrief) => void;
+}) {
   return (
     <div className="space-y-4">
+      {/* The short version is offered once the full five-step analysis exists. */}
+      {summary.go_no_go && <BriefPanel summary={summary} fields={fields} tenderId={tenderId} onBrief={onBrief} />}
       <p className="text-sm leading-relaxed text-slate-700">{summary.overview}</p>
       <List title="1. Document reading / OCR coverage" items={summary.processing ?? []} />
       <h3 className="font-semibold">{summary.processing ? '2. Tender synopsis' : 'Tender synopsis'}</h3>
@@ -436,7 +522,8 @@ export function TenderAiDialog({ open, onOpenChange, onCreated }: { open: boolea
                     <Sparkles className="h-4 w-4 text-violet-500" /> Summary
                     <Badge variant="secondary">{result.summary_source === 'pdf' ? 'from the PDF' : result.summary_source === 'web' ? 'from web search results' : 'from your screenshot only'}</Badge>
                   </h4>
-                  <AiSummaryView summary={result.summary} />
+                  <AiSummaryView summary={result.summary} fields={result.fields}
+                    onBrief={(brief) => setResult((cur) => (cur?.summary ? { ...cur, summary: { ...cur.summary, brief } } : cur))} />
                 </div>
               )}
               <p className="text-xs text-slate-400">AI can make mistakes. Check dates, EMD and eligibility against the official document before bidding.</p>
@@ -535,7 +622,7 @@ export function TenderAiSummaryCard({ tender }: { tender: Tender }) {
         {busy && <p className="text-sm text-violet-700">Reading the attached PDF and running all five checks. Keep this page open until it finishes.</p>}
         {tender.ai_summary ? (
           <>
-            <AiSummaryView summary={tender.ai_summary} />
+            <AiSummaryView summary={tender.ai_summary} tenderId={can.edit ? tender.id : undefined} />
             <Links title="Sources" links={tender.ai_sources ?? []} />
             {tender.ai_summary_at && <p className="text-xs text-slate-400">Generated {fmtDateTime(tender.ai_summary_at)}. AI can make mistakes — check against the document.</p>}
           </>

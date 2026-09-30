@@ -291,6 +291,18 @@ export interface TenderAiSummary {
   documents_required: string[];
   risks: string[];
   recommendation: string;
+  /** One-page summary written from the finished analysis ("Summarise"). */
+  brief?: TenderBrief;
+}
+
+export interface TenderBrief {
+  headline: string;
+  at_a_glance: { label: string; value: string }[];
+  key_points: string[];
+  top_risks: string[];
+  decision: string;
+  next_steps: string[];
+  created_at: string;
 }
 
 export interface QuotationItem {

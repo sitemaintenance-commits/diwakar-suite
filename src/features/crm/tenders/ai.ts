@@ -2,7 +2,7 @@
 // screenshot or text, fetch its official PDF and summarise it.
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
-import type { TenderAiSummary } from '@/lib/types';
+import type { TenderAiSummary, TenderBrief } from '@/lib/types';
 
 export type AiFields = Partial<Record<
   | 'reference_no' | 'title' | 'authority' | 'portal' | 'portal_url' | 'tender_type' | 'work_type' | 'state'
@@ -162,6 +162,32 @@ export function fieldsToForm(fields: AiFields): Record<string, string> {
 }
 
 /** Saves the summary on the tender (as the signed-in user; RLS applies). */
+/** A one-page summary of a finished analysis (quick: it reads the analysis, not the PDF). */
+export async function writeBrief(summary: TenderAiSummary, fields?: AiFields | null) {
+  const { brief } = await callTenderAi<{ brief: TenderBrief }>({ action: 'brief', summary, fields: fields ?? null });
+  return brief;
+}
+
+/** Keeps the brief with the tender's analysis so it shows next time. */
+export async function saveTenderBrief(tenderId: string, summary: TenderAiSummary, brief: TenderBrief) {
+  const { error } = await supabase.from('tenders').update({ ai_summary: { ...summary, brief } }).eq('id', tenderId);
+  if (error) throw error;
+}
+
+/** The brief as plain text, for pasting into WhatsApp or an e-mail. */
+export function briefToText(b: TenderBrief) {
+  const list = (title: string, items: string[]) => (items.length ? `\n*${title}*\n${items.map((x) => `• ${x}`).join('\n')}` : '');
+  return [
+    b.headline,
+    b.at_a_glance.length ? `\n${b.at_a_glance.map((x) => `${x.label}: ${x.value}`).join('\n')}` : '',
+    list('Key points', b.key_points),
+    list('Top risks', b.top_risks),
+    `\n*Decision:* ${b.decision}`,
+    list('Next steps', b.next_steps),
+    '\n(AI summary — verify against the tender document.)',
+  ].join('\n').trim();
+}
+
 export async function saveTenderSummary(tenderId: string, summary: TenderAiSummary, from: 'pdf' | 'web', sources: AiLink[] | null) {
   const patch: Record<string, unknown> = { ai_summary: summary, ai_summary_from: from, ai_summary_at: new Date().toISOString() };
   if (sources) patch.ai_sources = sources;
