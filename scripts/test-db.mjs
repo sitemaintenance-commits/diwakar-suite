@@ -1851,6 +1851,12 @@ console.log('\nPMS replacement: employee logins and the work history calendar');
     `select public.get_work_history($1, current_date - 6, current_date)`, 'may not see', [banwariId]);
   await expectValue('HR opens anyone\'s', OWNER,
     `select jsonb_array_length(public.get_work_history($1, current_date - 6, current_date)->'days')`, 7, [banwariId]);
+  await expectValue('"All time" starts at his first sheet or joining date, not in the year 2000', EMPL,
+    `select (h->>'from')::date = (select least(e.joining_date, min(l.log_date)) from public.employees e
+                                  left join public.work_logs l on l.employee_id = e.id and l.deleted_at is null
+                                  where e.id = $1 group by e.joining_date)
+            and jsonb_array_length(h->'days') = current_date - (h->>'from')::date + 1
+     from (select public.get_work_history(null, '2000-01-01', current_date) h) x`, true, [ketanId]);
 }
 
 console.log('\nNo duplicate employees, and technicians on their own plant');

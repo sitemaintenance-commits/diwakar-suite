@@ -56,7 +56,9 @@ const addMonths = (s: string, n: number) => { const d = toDate(monthStart(s)); d
 const weekday = (s: string) => (toDate(s).getUTCDay() + 6) % 7; // Monday = 0
 const monthLabel = (s: string) => toDate(s).toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 
-type Preset = 'today' | 'yesterday' | 'week' | 'month' | 'last_month' | 'custom';
+type Preset = 'today' | 'yesterday' | 'week' | 'month' | 'last_month' | 'all' | 'custom';
+/** Asking from this far back means "from the start": the server begins at their first sheet. */
+const ALL_TIME_FROM = '2000-01-01';
 
 function rangeFor(preset: Preset, month: string): { from: string; to: string; label: string } {
   const today = todayIST();
@@ -66,6 +68,7 @@ function rangeFor(preset: Preset, month: string): { from: string; to: string; la
     case 'week': return { from: addDays(today, -weekday(today)), to: today, label: 'This week' };
     case 'month': return { from: monthStart(today), to: today, label: 'This month' };
     case 'last_month': { const m = addMonths(today, -1); return { from: m, to: monthEnd(m), label: monthLabel(m) }; }
+    case 'all': return { from: ALL_TIME_FROM, to: today, label: 'All time' };
     default: return { from: monthStart(month), to: monthEnd(month) < today ? monthEnd(month) : today, label: monthLabel(month) };
   }
 }
@@ -101,7 +104,7 @@ export function WorkHistoryPage() {
     setSelected(null);
   }
   function stepMonth(n: number) {
-    const base = preset === 'custom' ? month : monthStart(range.from);
+    const base = preset === 'custom' ? month : preset === 'all' ? monthStart(todayIST()) : monthStart(range.from);
     const next = addMonths(base, n);
     if (next > todayIST()) return;
     setMonth(next);
@@ -152,7 +155,7 @@ export function WorkHistoryPage() {
     }
   }
 
-  const presets: [Preset, string][] = [['today', 'Today'], ['yesterday', 'Yesterday'], ['week', 'This week'], ['month', 'This month'], ['last_month', 'Last month']];
+  const presets: [Preset, string][] = [['today', 'Today'], ['yesterday', 'Yesterday'], ['week', 'This week'], ['month', 'This month'], ['last_month', 'Last month'], ['all', 'All time']];
 
   return (
     <>
@@ -206,6 +209,7 @@ export function WorkHistoryPage() {
       ) : history.data ? (
         <EmployeeHistory
           data={history.data} range={range} selected={selected} onSelect={setSelected}
+          onOpenMonth={(m) => { setMonth(m); setPreset('custom'); setSelected(null); }}
           canExport={can.export} onExport={exportHistory}
         />
       ) : null}
@@ -214,16 +218,21 @@ export function WorkHistoryPage() {
 }
 
 // ---------------------------------------------------- one employee
-function EmployeeHistory({ data, range, selected, onSelect, canExport, onExport }: {
+function EmployeeHistory({ data, range: asked, selected, onSelect, onOpenMonth, canExport, onExport }: {
   data: NonNullable<ReturnType<typeof useWorkHistory>['data']>;
   range: { from: string; to: string; label: string };
   selected: string | null;
   onSelect: (d: string) => void;
+  onOpenMonth: (month: string) => void;
   canExport: boolean;
   onExport: () => void;
 }) {
   const s = data.summary;
+  // The server may start later than asked ("All time" starts at the first sheet).
+  const range = { ...asked, from: data.from, to: data.to };
   const byDate = new Map(data.days.map((d) => [d.date, d]));
+  const long = data.days.length > 62;
+  const months = long ? monthRows(data.days) : [];
   const single = range.from === range.to;
   const focus = selected ?? (single ? range.from : [...data.days].reverse().find((d) => d.state !== 'none')?.date ?? null);
   const focusDay = focus ? byDate.get(focus) : undefined;
@@ -255,7 +264,42 @@ function EmployeeHistory({ data, range, selected, onSelect, canExport, onExport 
         <StatCard label="Score" value={s.score == null ? '—' : `${fmtNumber(s.score)}%`} hint="Completed + half of in progress" icon={CheckCircle2} tone="amber" />
       </div>
 
-      {!single && (
+      {long && (
+        <Card className="mb-4">
+          <CardHeader>
+            <CardTitle className="text-base">Month by month</CardTitle>
+            <CardDescription>Since {fmtDate(data.from)}. Click a month for its calendar.</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Month</TableHead>
+                  <TableHead className="text-right">Sheets filed</TableHead>
+                  <TableHead className="text-right">Not filed</TableHead>
+                  <TableHead className="hidden text-right sm:table-cell">Leave / off</TableHead>
+                  <TableHead className="hidden text-right sm:table-cell">Tasks</TableHead>
+                  <TableHead className="text-right">Score</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {months.map((m) => (
+                  <TableRow key={m.month} className="cursor-pointer" onClick={() => onOpenMonth(m.month)}>
+                    <TableCell className="font-medium text-primary">{monthLabel(m.month)}</TableCell>
+                    <TableCell className="text-right tabular">{fmtNumber(m.filed)} / {fmtNumber(m.working)}</TableCell>
+                    <TableCell className={cn('text-right tabular', m.missed > 0 && 'font-semibold text-red-600')}>{fmtNumber(m.missed)}</TableCell>
+                    <TableCell className="hidden text-right tabular sm:table-cell">{fmtNumber(m.leave)}</TableCell>
+                    <TableCell className="hidden text-right tabular sm:table-cell">{fmtNumber(m.completed)} / {fmtNumber(m.tasks)}</TableCell>
+                    <TableCell className="text-right tabular">{m.score == null ? '—' : `${fmtNumber(m.score)}%`}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {!single && !long && (
         <Card className="mb-4">
           <CardContent className="p-3 sm:p-4">
             <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:gap-2">
@@ -309,6 +353,28 @@ function EmployeeHistory({ data, range, selected, onSelect, canExport, onExport 
       <DayDetail day={focusDay} date={focus} />
     </>
   );
+}
+
+/** Days grouped by month, newest first, for the "All time" summary. */
+function monthRows(days: HistoryDay[]) {
+  const by = new Map<string, { month: string; working: number; filed: number; missed: number; leave: number; tasks: number; completed: number; done: number }>();
+  for (const d of days) {
+    const key = monthStart(d.date);
+    const m = by.get(key) ?? { month: key, working: 0, filed: 0, missed: 0, leave: 0, tasks: 0, completed: 0, done: 0 };
+    if (d.working) m.working += 1;
+    if (d.state === 'submitted') {
+      m.filed += 1;
+      m.tasks += d.task_count ?? 0;
+      m.completed += d.completed ?? 0;
+      m.done += (d.completed ?? 0) + 0.5 * (d.in_progress ?? 0);
+    }
+    if (d.state === 'missed' || d.state === 'absent') m.missed += 1;
+    if (d.state === 'leave' || d.state === 'holiday' || d.state === 'week_off') m.leave += 1;
+    by.set(key, m);
+  }
+  return [...by.values()]
+    .sort((a, b) => b.month.localeCompare(a.month))
+    .map((m) => ({ ...m, score: m.tasks ? Math.round((100 * m.done) / m.tasks) : null }));
 }
 
 function DayDetail({ day, date }: { day: HistoryDay | undefined; date: string | null }) {
@@ -373,7 +439,7 @@ function TeamOverview({ loading, error, onRetry, rows, notReporting, workingDays
         <div>
           <CardTitle className="flex items-center gap-2 text-base"><Users className="h-4 w-4" /> All employees · {range.label}</CardTitle>
           <CardDescription>
-            {fmtDate(range.from)}{range.from !== range.to ? ` to ${fmtDate(range.to)}` : ''} · {fmtNumber(workingDays)} working day(s).
+            {range.from === ALL_TIME_FROM ? `Up to ${fmtDate(range.to)}` : `${fmtDate(range.from)}${range.from !== range.to ? ` to ${fmtDate(range.to)}` : ''}`} · {fmtNumber(workingDays)} working day(s).
             Click a name for their calendar.
           </CardDescription>
         </div>
