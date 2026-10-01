@@ -231,7 +231,7 @@ export function DailyReportsPage() {
       <PageHeader
         icon={ClipboardList}
         title="Department Reports"
-        description="One report per department per day: what was done, what is stuck, and tomorrow's plan."
+        description="One report per department per day: the department's numbers and today's key remarks."
       />
 
       <Card className="mb-6">
@@ -338,11 +338,9 @@ function ReportEditor({
   onSaved: () => Promise<void>;
 }) {
   const can = useCan('daily.reports');
-  const [health, setHealth] = useState('on_track');
+  // The form asks only for the department's numbers and today's key remarks,
+  // as the legacy Daily Review sheet does.
   const [work, setWork] = useState('');
-  const [issues, setIssues] = useState('');
-  const [plan, setPlan] = useState('');
-  const [remarks, setRemarks] = useState('');
   const [metrics, setMetrics] = useState<Metric[]>([{ label: '', value: '' }]);
   const [busy, setBusy] = useState(false);
   // Remarks deleted while this dialog is open (its report is a snapshot).
@@ -350,11 +348,7 @@ function ReportEditor({
 
   useEffect(() => {
     const r = entry?.report;
-    setHealth(r?.health ?? 'on_track');
     setWork(r?.work_completed ?? '');
-    setIssues(r?.issues ?? '');
-    setPlan(r?.next_day_plan ?? '');
-    setRemarks(r?.remarks ?? '');
     setMetrics(r?.metrics?.length ? r.metrics.map((m) => ({ ...m })) : emptyMetricsFor(entry?.name ?? ''));
   }, [entry]);
 
@@ -363,15 +357,17 @@ function ReportEditor({
 
   async function save(status: 'draft' | 'submitted') {
     setBusy(true);
+    const r = entry!.report;
     const { error } = await supabase.rpc('save_daily_report', {
       p_report: {
         report_date: date,
         department_id: entry!.departmentId,
-        health,
+        // No longer asked in the form: a report filed earlier keeps what it had.
+        health: r?.health ?? 'on_track',
         work_completed: work.trim() || null,
-        issues: issues.trim() || null,
-        next_day_plan: plan.trim() || null,
-        remarks: remarks.trim() || null,
+        issues: r?.issues ?? null,
+        next_day_plan: r?.next_day_plan ?? null,
+        remarks: r?.remarks ?? null,
         status,
       },
       p_items: metrics.filter((m) => m.label.trim()),
@@ -397,10 +393,6 @@ function ReportEditor({
         </DialogHeader>
 
         <div className="grid gap-4">
-          <Field label="How is the department doing?">
-            <FilterSelect value={health} onChange={setHealth} options={Object.entries(HEALTH).map(([k, v]) => [k, v.label] as [string, string])} />
-          </Field>
-
           <div>
             <p className="mb-2 text-sm font-medium">Department updates</p>
             <div className="grid gap-2">
@@ -436,16 +428,7 @@ function ReportEditor({
           </div>
 
           <Field label="Today key remarks updates" htmlFor="d_work">
-            <Textarea id="d_work" rows={3} value={work} onChange={(e) => setWork(e.target.value)} disabled={locked} />
-          </Field>
-          <Field label="Issues / blockers" htmlFor="d_issues" hint="These are highlighted for management.">
-            <Textarea id="d_issues" rows={2} value={issues} onChange={(e) => setIssues(e.target.value)} disabled={locked} />
-          </Field>
-          <Field label="Plan for tomorrow" htmlFor="d_plan">
-            <Textarea id="d_plan" rows={2} value={plan} onChange={(e) => setPlan(e.target.value)} disabled={locked} />
-          </Field>
-          <Field label="Remarks" htmlFor="d_rem">
-            <Textarea id="d_rem" rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} disabled={locked} />
+            <Textarea id="d_work" rows={5} value={work} onChange={(e) => setWork(e.target.value)} disabled={locked} />
           </Field>
 
           {entry.report?.reviews?.length ? (
