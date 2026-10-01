@@ -1901,6 +1901,52 @@ console.log('\nDepartment Review Coordinator');
     `select public.has_permission('daily.review', 'approve')`, false);
 }
 
+console.log('\nDepartment Review: the legacy workbook');
+{
+  const COORD = (await asSystem("select id from auth.users where email = 'coordinator@diwakarsolar.test'")).rows[0].id;
+  const d = (n) => `(current_date - ${n})::text`;
+  const day = (await asSystem(`select ${d(40)} a, ${d(0)} t`)).rows[0];
+  const rows = JSON.stringify([
+    { date: day.a, department: 'Admin', reporter: 'Keshav Agarwal', status: 'On track',
+      metrics: [{ label: 'Office housekeeping', value: 'Completed' }, { label: 'Admin issues', value: 'None' }],
+      updates: 'Routine admin completed.', ccm: 'Keep the register current', founder: 'Good work' },
+    { date: day.a, department: 'HR', reporter: 'Banwari Verma', status: ' CCM Remarks', updates: 'Payroll done' },
+    { date: day.t, department: 'Admin', updates: 'Already filed today', founder: 'Founder note for today' },
+    { date: day.a, department: 'Sales & Marketing', updates: 'Not a department here' },
+    { date: 'not a date', department: 'Admin' },
+  ]);
+  const preview = (await as(COORD, `select public.import_review_excel($1::jsonb) r`, [rows])).rows[0].r;
+  preview.added.length === 2 && preview.filled.length === 1 && preview.unknown_departments[0] === 'Sales & Marketing' && preview.unreadable === 1
+    ? ok('the preview finds 2 new department-days, 1 to fill in, an unknown department and an unreadable row')
+    : bad('review import preview', JSON.stringify(preview).slice(0, 400));
+  await expectValue('and a preview writes nothing', OWNER,
+    `select count(*)::int from public.daily_reports where report_date = current_date - 40`, 0);
+  await expectOk('the coordinator imports the sheet', COORD, `select public.import_review_excel($1::jsonb, true)`, [rows]);
+  await expectValue('a new department-day becomes a submitted report with its updates as numbers', OWNER,
+    `select r.status::text || ' / ' || r.health::text || ' / ' || r.reporter_name || ' / ' ||
+            (select string_agg(i.label || '=' || i.value, ', ' order by i.sort_order) from public.daily_report_items i where i.report_id = r.id)
+     from public.daily_reports r join public.departments dd on dd.id = r.department_id
+     where dd.name = 'Admin' and r.report_date = current_date - 40`,
+    'submitted / on_track / Keshav Agarwal / Office housekeeping=Completed, Admin issues=None');
+  await expectValue('"CCM Remarks" as a status does not mark the department unwell', OWNER,
+    `select r.health::text from public.daily_reports r join public.departments dd on dd.id = r.department_id
+     where dd.name = 'HR' and r.report_date = current_date - 40`, 'on_track');
+  await expectValue('CCM remarks are signed CCM, Founder remarks by Sunil Bansal', OWNER,
+    `select string_agg(a.action || ':' || a.reviewer_name, ', ' order by a.action) from public.review_actions a
+     join public.daily_reports r on r.id = a.report_id join public.departments dd on dd.id = r.department_id
+     where dd.name = 'Admin' and r.report_date = current_date - 40`, 'ccm_remark:CCM, founder_remark:Sunil Bansal');
+  await expectValue('a report already filed keeps what was typed and only gains the new remark', OWNER,
+    `select r.work_completed || ' / ' || (select count(*) from public.review_actions a where a.report_id = r.id and a.action = 'founder_remark')
+     from public.daily_reports r join public.departments dd on dd.id = r.department_id
+     where dd.name = 'Admin' and r.report_date = current_date`, 'Filed by the coordinator / 1');
+  const again = (await as(COORD, `select public.import_review_excel($1::jsonb) r`, [rows])).rows[0].r;
+  again.added.length === 0 && again.filled.length === 0 && again.unchanged === 3
+    ? ok('importing the same sheet again changes nothing')
+    : bad('review re-import', JSON.stringify(again).slice(0, 300));
+  await expectError('someone who cannot file reports cannot import', TECH,
+    `select public.import_review_excel('[]'::jsonb)`, 'daily.reports');
+}
+
 console.log('\nDeactivation');
 await expectOk('Admin deactivates Technician', ADMIN, `select public.admin_set_user_status($1, 'inactive')`, [TECH]);
 await expectValue('deactivated user loses every permission immediately', TECH, `select public.has_permission('dashboard','view')`, false);

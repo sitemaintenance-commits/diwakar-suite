@@ -6,12 +6,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  CalendarDays, CheckCircle2, ClipboardCheck, ClipboardList, Download, Loader2, MessageSquareText, Megaphone, Plus, Printer, Save, Send, TriangleAlert, Trash2,
+  CalendarDays, CheckCircle2, ClipboardCheck, ClipboardList, Download, Loader2, MessageSquareText, Megaphone, Plus, Printer, Save, Send, TriangleAlert, Trash2, Upload,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
-import { exportXlsx } from '@/lib/export';
 import { printDayReview } from '@/features/daily/print';
+import { downloadReviewDay } from '@/features/daily/reviewExcel';
+import { ImportReviewDialog } from '@/features/daily/ImportReviewDialog';
 import { fmtDate, fmtDateTime, fmtNumber, safeNum, todayIST } from '@/lib/format';
 import type { BadgeTone } from '@/lib/types';
 import { useAccess, useCan } from '@/auth/AccessProvider';
@@ -71,6 +72,26 @@ export const DEFAULT_METRICS_BY_DEPARTMENT: Record<string, string[]> = {
   HR: ['Staff present', 'Absent', 'New joinees', 'Open positions'],
   Admin: ['Attendance register status', 'Office housekeeping', 'Facility & asset status', 'Site admin support'],
 };
+
+/** The names the legacy workbook puts on the review: the founder, and the coordinator who writes the day's key remarks. */
+function useReviewNames() {
+  const { setting } = useAccess();
+  return {
+    founder: setting('founder_name', 'Sunil Bansal'),
+    coordinator: setting('review_coordinator_name', 'Jitendra Sharma'),
+  };
+}
+
+/** Under a remark: when, and -- for a Founder remark -- the founder's name, whoever typed it in. */
+function RemarkMeta({ action, by, at }: { action: string; by: string | null; at: string }) {
+  const { founder } = useReviewNames();
+  const who = action === 'founder_remark' ? founder : action === 'ccm_remark' ? null : by ?? 'Management';
+  return (
+    <span className="block text-xs text-muted-foreground">
+      {who ? `${who} · ` : ''}{fmtDateTime(at)}
+    </span>
+  );
+}
 
 function emptyMetricsFor(departmentName: string): Metric[] {
   const labels = DEFAULT_METRICS_BY_DEPARTMENT[departmentName];
@@ -306,7 +327,7 @@ function ReportEditor({
           </Field>
 
           <div>
-            <p className="mb-2 text-sm font-medium">Key numbers</p>
+            <p className="mb-2 text-sm font-medium">Department updates</p>
             <div className="grid gap-2">
               {metrics.map((m, i) => (
                 <div key={i} className="flex gap-2">
@@ -339,7 +360,7 @@ function ReportEditor({
             </div>
           </div>
 
-          <Field label="Work completed today" htmlFor="d_work">
+          <Field label="Today key remarks updates" htmlFor="d_work">
             <Textarea id="d_work" rows={3} value={work} onChange={(e) => setWork(e.target.value)} disabled={locked} />
           </Field>
           <Field label="Issues / blockers" htmlFor="d_issues" hint="These are highlighted for management.">
@@ -362,9 +383,7 @@ function ReportEditor({
                       {r.action === 'founder_remark' ? 'Founder' : r.action === 'ccm_remark' ? 'CCM' : r.action}
                     </Badge>{' '}
                     {r.comment}
-                    <span className="block text-xs text-muted-foreground">
-                      {r.by ?? 'Management'} · {fmtDateTime(r.at)}
-                    </span>
+                    <RemarkMeta action={r.action} by={r.by} at={r.at} />
                   </li>
                 ))}
               </ul>
@@ -399,28 +418,12 @@ export function ReviewSummaryPage() {
   const monthData = useDailyMonth(month);
   const t = review.data?.totals;
 
-  const remarkLabel = (a: string) => (a === 'founder_remark' ? 'Founder' : a === 'ccm_remark' ? 'CCM' : a);
+  const names = useReviewNames();
 
   async function onExport() {
-    const data = review.data;
-    if (!data) return;
-    const headline = (data.headline?.metrics ?? []).map((m) => `${m.label}: ${m.value}`).join('   ·   ');
+    if (!review.data) return;
     try {
-      await exportXlsx('daily.summary', `department-review-${date}`, data.departments, [
-        { header: 'Department', value: (r) => r.name, width: 22 },
-        { header: 'Status', value: (r) => (r.today ? REPORT_STATUS[r.today.status]?.label ?? r.today.status : 'Not filed'), width: 12 },
-        { header: 'Health', value: (r) => (r.today ? HEALTH[r.today.health]?.label ?? r.today.health : ''), width: 14 },
-        { header: 'Reported by', value: (r) => r.today?.reporter ?? '', width: 18 },
-        { header: 'Key numbers', value: (r) => (r.today?.metrics ?? []).filter((m) => m.label).map((m) => `${m.label}: ${m.value}`).join('\n'), width: 40 },
-        { header: 'Work completed', value: (r) => r.today?.work_completed ?? '', width: 45 },
-        { header: 'Issues / stuck', value: (r) => r.today?.issues ?? '', width: 35 },
-        { header: 'Plan for tomorrow', value: (r) => r.today?.next_day_plan ?? '', width: 35 },
-        { header: 'Founder / CCM remarks', value: (r) => (r.today?.reviews ?? []).filter((x) => x.comment).map((x) => `${remarkLabel(x.action)}: ${x.comment}`).join('\n'), width: 40 },
-        { header: `Previous day (${fmtDate(data.compare_date)}) work`, value: (r) => r.previous?.work_completed ?? '', width: 40 },
-      ], {
-        sheet: 'Department Review',
-        title: ['DEPARTMENT REVIEW', `${fmtDate(date)} · compared with ${fmtDate(data.compare_date)}`, ...(headline ? [headline] : [])],
-      });
+      await downloadReviewDay('daily.summary', review.data, names);
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -429,7 +432,7 @@ export function ReviewSummaryPage() {
   function onPrint() {
     if (!review.data) return;
     try {
-      printDayReview(review.data, setting('company_name', 'Diwakar Renewable & Infra Pvt. Ltd.'));
+      printDayReview(review.data, setting('company_name', 'Diwakar Renewable & Infra Pvt. Ltd.'), names.founder);
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -507,7 +510,7 @@ export function ReviewSummaryPage() {
                     <TableRow>
                       <TableHead>Department</TableHead>
                       <TableHead>Health</TableHead>
-                      <TableHead>Key numbers</TableHead>
+                      <TableHead>Department updates</TableHead>
                       <TableHead>Today</TableHead>
                       <TableHead className="hidden lg:table-cell">Previous day</TableHead>
                       <TableHead>Management</TableHead>
@@ -617,6 +620,28 @@ export function ManagementReviewPage() {
   const [remarkFor, setRemarkFor] = useState<{ report: DeptReport; department: string } | null>(null);
   const [headlineOpen, setHeadlineOpen] = useState(false);
   const [broadcastOpen, setBroadcastOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const reports = useCan('daily.reports');
+  const summary = useCan('daily.summary');
+  const names = useReviewNames();
+  const { setting } = useAccess();
+
+  async function onDownload() {
+    if (!review.data) return;
+    try {
+      await downloadReviewDay(summary.export ? 'daily.summary' : 'daily.reports', review.data, names);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
+  function onPrint() {
+    if (!review.data) return;
+    try {
+      printDayReview(review.data, setting('company_name', 'Diwakar Renewable & Infra Pvt. Ltd.'), names.founder);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
 
   const refresh = async () => {
     await qc.invalidateQueries({ queryKey: ['daily-review'] });
@@ -646,14 +671,28 @@ export function ManagementReviewPage() {
                 <Megaphone /> Remark to all
               </Button>
             )}
-            {can.edit && (
+            {(can.edit || reports.create) && (
               <Button variant="outline" onClick={() => setHeadlineOpen(true)}>
                 <Plus /> Day headline
               </Button>
             )}
+            {reports.create && (
+              <Button variant="outline" onClick={() => setImportOpen(true)}>
+                <Upload /> Import Excel
+              </Button>
+            )}
+            {(summary.export || reports.export) && (
+              <Button variant="outline" onClick={() => void onDownload()} disabled={!review.data}>
+                <Download /> Download Excel
+              </Button>
+            )}
+            <Button variant="outline" onClick={onPrint} disabled={!review.data}>
+              <Printer /> Print / PDF
+            </Button>
           </>
         }
       />
+      <ImportReviewDialog open={importOpen} onOpenChange={setImportOpen} />
 
       <Card className="mb-6">
         <CardContent className="flex flex-wrap items-end gap-3 p-4">
@@ -713,7 +752,7 @@ export function ManagementReviewPage() {
                 )}
                 {d.today!.work_completed && (
                   <div>
-                    <div className="text-xs text-muted-foreground">Work completed</div>
+                    <div className="text-xs text-muted-foreground">Today key remarks updates</div>
                     <p className="whitespace-pre-wrap">{d.today!.work_completed}</p>
                   </div>
                 )}
@@ -737,9 +776,7 @@ export function ManagementReviewPage() {
                           {r.action === 'founder_remark' ? 'Founder' : 'CCM'}
                         </Badge>{' '}
                         {r.comment}
-                        <span className="block text-xs text-muted-foreground">
-                          {r.by ?? 'Management'} · {fmtDateTime(r.at)}
-                        </span>
+                        <RemarkMeta action={r.action} by={r.by} at={r.at} />
                       </li>
                     ))}
                   </ul>

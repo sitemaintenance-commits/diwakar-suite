@@ -33,7 +33,7 @@ const HEALTH: Record<string, [string, string]> = {
 };
 const REMARK: Record<string, string> = { founder_remark: 'Founder', ccm_remark: 'CCM' };
 
-export function printDayReview(review: PrintableReview, company: string) {
+export function printDayReview(review: PrintableReview, company: string, founder = 'Sunil Bansal') {
   // Open first: a tab opened after an await is often blocked.
   const w = window.open('', '_blank');
   if (!w) throw new Error('Allow pop-ups for this site to print the review.');
@@ -57,7 +57,8 @@ export function printDayReview(review: PrintableReview, company: string) {
       : '';
     const remarks = r.reviews?.filter((x) => REMARK[x.action] && x.comment)?.length
       ? `<div class="remarks">${r.reviews.filter((x) => REMARK[x.action] && x.comment)
-          .map((x) => `<p><b>${REMARK[x.action]}${x.by ? ` (${esc(x.by)})` : ''}:</b> ${para(x.comment)}</p>`).join('')}</div>`
+          // A Founder remark carries the founder's name, whoever typed it in; a CCM remark just "CCM".
+          .map((x) => `<p><b>${REMARK[x.action]}${x.action === 'founder_remark' ? ` (${esc(founder)})` : ''}:</b> ${para(x.comment)}</p>`).join('')}</div>`
       : '';
     return `<section class="dept">
       <h2>${esc(d.name)} <span class="pill" style="color:${color};border-color:${color}">${esc(label)}</span>
