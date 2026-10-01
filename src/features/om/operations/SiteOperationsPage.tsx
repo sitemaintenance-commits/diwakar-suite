@@ -171,7 +171,7 @@ export function SiteOperationsPage() {
   if (ops.isLoading) {
     return (
       <>
-        <PageHeader icon={ShieldCheck} title="Site Operations" description="Daily administration, patrol and security register." />
+        <PageHeader icon={ShieldCheck} title="Non-Tech Activities" description="Daily administration, patrol and security register." />
         <div className="grid gap-4">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-40 rounded-xl" />
@@ -184,7 +184,7 @@ export function SiteOperationsPage() {
   if (ops.error) {
     return (
       <>
-        <PageHeader icon={ShieldCheck} title="Site Operations" />
+        <PageHeader icon={ShieldCheck} title="Non-Tech Activities" />
         <Card>
           <ErrorState message={errorMessage(ops.error)} onRetry={() => ops.refetch()} />
         </Card>
@@ -196,7 +196,7 @@ export function SiteOperationsPage() {
     <>
       <PageHeader
         icon={ShieldCheck}
-        title="Site Operations"
+        title="Non-Tech Activities"
         description="The daily site register: administration work, the patrol rounds and the security check points."
         actions={
           <Badge variant={readiness === 100 ? 'success' : readiness > 0 ? 'warning' : 'secondary'}>
