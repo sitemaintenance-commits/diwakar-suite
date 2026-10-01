@@ -29,18 +29,9 @@ type Worksheet = import('exceljs').Worksheet;
 
 const BRAND_RED = 'FFAF511A';
 const HEADER_FILL = 'FFFFEEDD';
-const HEALTH_LABEL: Record<string, string> = { on_track: 'On track', needs_attention: 'Needs attention', critical: 'Critical' };
-// Status cell colours: text, then fill.
-const STATUS_STYLE: Record<string, [string, string]> = {
-  'On track': ['FF047857', 'FFECFDF5'],
-  'Needs attention': ['FFB45309', 'FFFFFBEB'],
-  Critical: ['FFB91C1C', 'FFFEF2F2'],
-  'Not reported': ['FF64748B', 'FFF1F5F9'],
-};
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const statusOf = (r: Report | null) => (r ? HEALTH_LABEL[r.health] ?? r.health : 'Not reported');
 const keyNumbers = (r: Report | null) => (r?.metrics ?? []).filter((m) => m.label).map((m) => `${m.label}: ${m.value}`).join('\n');
 // Issues and tomorrow's plan are no longer asked for; older reports that have
 // them keep them under the day's remarks so nothing is lost.
@@ -78,7 +69,7 @@ function rowHeight(values: Cell[], widths: number[]) {
 function addSheet(
   wb: InstanceType<ExcelJSModule['Workbook']>,
   opts: { name: string; title: string; summary: string; brand: string; heading: string; headers: string[]; widths: number[];
-    rows: Cell[][]; statusCol?: number; footer?: string[] },
+    rows: Cell[][]; footer?: string[] },
 ): Worksheet {
   const ws = wb.addWorksheet(opts.name, {
     views: [{ state: 'frozen', ySplit: 6 }],
@@ -119,12 +110,6 @@ function addSheet(
       c.border = { top: { style: 'hair' }, left: { style: 'hair' }, bottom: { style: 'hair' }, right: { style: 'hair' } };
       if (values[col - 1] instanceof Date) c.numFmt = 'dd mmm yyyy';
     }
-    if (opts.statusCol) {
-      const c = row.getCell(opts.statusCol);
-      const [color, fill] = STATUS_STYLE[String(c.value)] ?? STATUS_STYLE['Not reported'];
-      c.font = { name: 'Calibri', size: 11, bold: true, color: { argb: color } };
-      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } };
-    }
   });
   const last = 6 + opts.rows.length;
   ws.autoFilter = { from: { row: 6, column: 1 }, to: { row: Math.max(6, last), column: n } };
@@ -141,7 +126,9 @@ function addSheet(
   return ws;
 }
 
-const REPORT_HEADERS = ['Review date', 'Department', 'Reported by', 'Status', 'Key numbers', 'Today key remarks updates', 'CCM Remarks', 'Founder Remarks'];
+// The remarks are written by each department's head, named under Reported by.
+export const HEAD_REMARKS = "Department Head's Remarks";
+const REPORT_HEADERS = ['Review date', 'Department', 'Reported by', 'Key numbers', HEAD_REMARKS, 'CCM Remarks', 'Founder Remarks'];
 const ANALYZED_BY = ['Report analyzed by : CCM'];
 
 /** Download one day as the old Daily Review CRM workbook. */
@@ -157,7 +144,7 @@ export async function downloadReviewDay(moduleKey: string, day: ReviewDay, brand
   const base = { title: dayTitle(day.date), summary, brand };
 
   const reportRow = (d: ReviewDay['departments'][number]): Cell[] => [
-    date, d.name, reportedBy(d.name, d.today), statusOf(d.today), keyNumbers(d.today), keyRemarks(d.today),
+    date, d.name, reportedBy(d.name, d.today), keyNumbers(d.today), keyRemarks(d.today),
     remarksOf(d.today, 'ccm_remark'), remarksOf(d.today, 'founder_remark'),
   ];
   const deptSheet = (dept: string) => depts.filter((d) => d.name.toLowerCase() === dept.toLowerCase()).map(reportRow);
@@ -180,11 +167,11 @@ export async function downloadReviewDay(moduleKey: string, day: ReviewDay, brand
   wb.creator = 'Diwakar Solar Management Suite';
 
   addSheet(wb, { ...base, name: 'Department reports', heading: 'Department reports', headers: REPORT_HEADERS,
-    widths: [17, 31, 23, 22, 34, 48, 44, 40], rows: depts.map(reportRow), statusCol: 4, footer: ANALYZED_BY });
+    widths: [17, 31, 23, 34, 48, 44, 40], rows: depts.map(reportRow), footer: ANALYZED_BY });
   addSheet(wb, { ...base, name: 'HR Report', heading: 'HR Operations Review', headers: REPORT_HEADERS,
-    widths: [17, 20, 23, 20, 34, 48, 40, 40], rows: deptSheet('HR'), statusCol: 4, footer: ANALYZED_BY });
+    widths: [17, 20, 23, 34, 48, 40, 40], rows: deptSheet('HR'), footer: ANALYZED_BY });
   addSheet(wb, { ...base, name: 'Admin Report', heading: 'Admin Operations Review', headers: REPORT_HEADERS,
-    widths: [17, 20, 23, 20, 34, 48, 40, 40], rows: deptSheet('Admin'), statusCol: 4, footer: ANALYZED_BY });
+    widths: [17, 20, 23, 34, 48, 40, 40], rows: deptSheet('Admin'), footer: ANALYZED_BY });
   addSheet(wb, { ...base, name: 'Headline numbers', heading: 'Company headline numbers', headers: ['Review date', 'Metric', 'Value'],
     widths: [19, 48, 27], rows: headlineRows.length ? headlineRows : [[date, '', '']] });
   addSheet(wb, { ...base, name: 'Founder remarks', heading: 'Founder Remarks', headers: ['Review date', 'Remarks and action points'],
@@ -252,7 +239,7 @@ function fieldFor(header: string): Field | null {
   if (h === 'department') return 'department';
   if (h.startsWith('reported by')) return 'reporter';
   if (h === 'status' || h === 'health') return 'status';
-  if (h.startsWith('today key remarks') || h.startsWith('work completed')) return 'updates';
+  if (h.startsWith('today key remarks') || h.startsWith('work completed') || h.startsWith("department head's remarks") || h.startsWith('department head remarks')) return 'updates';
   if (h.startsWith('issues')) return 'issues';
   if (h.startsWith('plan for tomorrow')) return 'plan';
   if (h.startsWith('ccm remark')) return 'ccm';
@@ -302,9 +289,9 @@ export async function readReviewWorkbook(file: File): Promise<ImportRow[]> {
         else r[field] = v;
       }
       // Rows without a department are the sheet's own lines, e.g. "Report analyzed by : CCM";
-      // a department marked "Not reported" with nothing in it is not a report to import.
+      // a department row with nothing filled in (one that did not report) is not a report to import.
       const empty = !r.metrics.length && !r.updates && !r.issues && !r.plan && !r.ccm && !r.founder;
-      if (r.department && !(empty && /^not (reported|filed)$/i.test(r.status ?? ''))) rows.push(r);
+      if (r.department && !empty) rows.push(r);
     });
     return rows;
   }

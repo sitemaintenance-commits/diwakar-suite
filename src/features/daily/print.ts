@@ -66,7 +66,7 @@ export function printDayReview(review: PrintableReview, company: string, founder
       <p class="muted">Reported by CCM</p>
       ${metrics}
       <div class="grid">
-        <div><h3>Work completed</h3><p>${para(r.work_completed)}</p></div>
+        <div><h3>Department Head's Remarks</h3><p>${para(r.work_completed)}</p></div>
         <div><h3>Issues / stuck</h3><p>${para(r.issues)}</p></div>
         <div><h3>Plan for tomorrow</h3><p>${para(r.next_day_plan)}</p></div>
       </div>

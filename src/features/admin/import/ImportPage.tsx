@@ -219,7 +219,7 @@ function ReviewWorkbookCard({ canImport }: { canImport: boolean }) {
           <div>
             <CardTitle>Department Review workbook (Excel)</CardTitle>
             <CardDescription>
-              Department reports by day: reported by, status, department updates, today’s key remarks, CCM and Founder remarks.
+              Department reports by day: reported by, key numbers, the department head’s remarks, CCM and Founder remarks.
             </CardDescription>
           </div>
         </div>

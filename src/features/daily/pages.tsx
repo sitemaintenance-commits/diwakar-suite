@@ -11,7 +11,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
 import { printDayReview } from '@/features/daily/print';
-import { downloadReviewDay } from '@/features/daily/reviewExcel';
+import { downloadReviewDay, HEAD_REMARKS } from '@/features/daily/reviewExcel';
 import { DEPARTMENT_HEADS } from '@/features/daily/heads';
 import { fmtDate, fmtDateTime, fmtNumber, safeNum, todayIST } from '@/lib/format';
 import type { BadgeTone } from '@/lib/types';
@@ -222,7 +222,7 @@ export function DailyReportsPage() {
       <PageHeader
         icon={ClipboardList}
         title="Department Reports"
-        description="One report per department per day: the department's numbers and today's key remarks."
+        description="One report per department per day: the department's numbers and its head's remarks."
       />
 
       <Card className="mb-6">
@@ -418,7 +418,7 @@ function ReportEditor({
             </div>
           </div>
 
-          <Field label="Today key remarks updates" htmlFor="d_work">
+          <Field label={DEPARTMENT_HEADS[entry.name] ? `${HEAD_REMARKS} (${DEPARTMENT_HEADS[entry.name]})` : HEAD_REMARKS} htmlFor="d_work">
             <Textarea id="d_work" rows={5} value={work} onChange={(e) => setWork(e.target.value)} disabled={locked} />
           </Field>
 
@@ -807,7 +807,7 @@ export function ManagementReviewPage() {
                 )}
                 {d.today!.work_completed && (
                   <div>
-                    <div className="text-xs text-muted-foreground">Today key remarks updates</div>
+                    <div className="text-xs text-muted-foreground">{HEAD_REMARKS}</div>
                     <p className="whitespace-pre-wrap">{d.today!.work_completed}</p>
                   </div>
                 )}
