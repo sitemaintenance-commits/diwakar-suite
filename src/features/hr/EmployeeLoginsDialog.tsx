@@ -25,6 +25,10 @@ interface LoginRow {
   email: string | null;
   phone: string | null;
   department: string | null;
+  work_location: string | null;
+  /** The plant the work location names ("Budsu, Nagaur" -> Budsu). */
+  site_id: string | null;
+  site: string | null;
   user_id: string | null;
   login_email: string | null;
   login_status: 'invited' | 'active' | 'inactive' | null;
@@ -88,6 +92,11 @@ export function EmployeeLoginsDialog({ open, onOpenChange }: { open: boolean; on
     if (!targets.length) return;
     if (!role) return toast.error('Choose the role the new logins get.');
     if (mode === 'create' && passwordProblem(password)) return toast.error(passwordProblem(password)!);
+    const roleKey = roles.data?.find((r) => r.id === role)?.key;
+    const noPlant = targets.filter((r) => !r.site_id);
+    if (roleKey === 'technician' && noPlant.length) {
+      return toast.error(`No plant in the work location of: ${noPlant.map((r) => r.full_name).join(', ')}. Give them their login from User Management and tick their plants.`);
+    }
     setProgress({ done: 0, total: targets.length });
     let ok = 0;
     for (const [i, r] of targets.entries()) {
@@ -97,7 +106,8 @@ export function EmployeeLoginsDialog({ open, onOpenChange }: { open: boolean; on
           email: r.email,
           full_name: r.full_name,
           ...(mode === 'create' ? { password } : { redirect_to: `${window.location.origin}/accept-invite` }),
-          data: { employee_id: r.employee_id, role_ids: [role] },
+          // A login covers the plant the person works at, and only that one.
+          data: { employee_id: r.employee_id, role_ids: [role], all_sites: false, site_ids: r.site_id ? [r.site_id] : [] },
         });
         ok += 1;
       } catch (e) {
@@ -129,8 +139,9 @@ export function EmployeeLoginsDialog({ open, onOpenChange }: { open: boolean; on
           <DialogTitle>Employee logins</DialogTitle>
           <DialogDescription>
             {counts.has} with a login · {counts.none} without{counts.noEmail ? ` (${counts.noEmail} have no email yet: import the HR sheet or add it on the employee)` : ''}.
-            A login is linked to the person’s existing employee record; with the Employee role they see only their own
-            Daily Work sheet, score, attendance and leave.
+            A login is linked to the person’s existing employee record and covers only the plant in their work location
+            (Head Office staff get no plant). With the Employee role they see only their own Daily Work sheet, score,
+            attendance and leave; give site technicians the Technician role.
           </DialogDescription>
         </DialogHeader>
 
@@ -160,6 +171,7 @@ export function EmployeeLoginsDialog({ open, onOpenChange }: { open: boolean; on
                   </TableHead>
                   <TableHead>Employee</TableHead>
                   <TableHead className="hidden md:table-cell">Email</TableHead>
+                  <TableHead className="hidden sm:table-cell">Plant</TableHead>
                   <TableHead>Login</TableHead>
                   <TableHead className="hidden lg:table-cell">Role</TableHead>
                   <TableHead className="hidden lg:table-cell">Last sign-in</TableHead>
@@ -177,6 +189,7 @@ export function EmployeeLoginsDialog({ open, onOpenChange }: { open: boolean; on
                       <div className="text-xs text-muted-foreground">{r.employee_code}{r.department ? ` · ${r.department}` : ''}</div>
                     </TableCell>
                     <TableCell className="hidden md:table-cell text-sm">{r.login_email ?? r.email ?? '—'}</TableCell>
+                    <TableCell className="hidden sm:table-cell text-sm">{r.site ?? <span className="text-muted-foreground">{r.work_location ?? '—'}</span>}</TableCell>
                     <TableCell>{status(r)}</TableCell>
                     <TableCell className="hidden lg:table-cell text-sm">{r.roles.join(', ') || '—'}</TableCell>
                     <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
@@ -185,7 +198,7 @@ export function EmployeeLoginsDialog({ open, onOpenChange }: { open: boolean; on
                   </TableRow>
                 ))}
                 {!rows.length && (
-                  <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">Nobody here.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">Nobody here.</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>

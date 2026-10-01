@@ -1605,8 +1605,12 @@ await expectValue('the task statuses are mapped from the form wording', OWNER,
 console.log('\nPMS people - the master, its spellings, and the history');
 await expectValue('the 21 PMS employees are on the master with their DRIPL numbers', OWNER,
   `select count(*)::int from public.employees where employee_code like 'DRIPL\\_%'`, 20);
-await expectValue('and Shivdatt Singh, who has no DRIPL number yet, is there too', OWNER,
-  `select employee_code like 'DS-%' from public.employees where full_name = 'Shivdatt Singh'`, true);
+await expectValue('Shivdatt Singh, whom HR took off the list, is no longer on it', OWNER,
+  `select count(*)::int from public.employees where full_name = 'Shivdatt Singh'`, 0);
+{
+  const r = await asSystem(`select status::text || ' / ' || (deleted_at is not null) s from public.employees where full_name = 'Shivdatt Singh'`);
+  r.rows[0]?.s === 'inactive / true' ? ok('but is marked removed, not erased') : bad('Shivdatt kept', JSON.stringify(r.rows));
+}
 await expectValue('"Banwari" is Banwari Verma', OWNER,
   `select e.employee_code from public.employees e where e.id = app.employee_by_name('  banwari ')`, 'DRIPL_1101');
 await expectValue('"RAMKESH DAINI" is Ramkesh Saini', OWNER,
@@ -1847,6 +1851,29 @@ console.log('\nPMS replacement: employee logins and the work history calendar');
     `select public.get_work_history($1, current_date - 6, current_date)`, 'may not see', [banwariId]);
   await expectValue('HR opens anyone\'s', OWNER,
     `select jsonb_array_length(public.get_work_history($1, current_date - 6, current_date)->'days')`, 7, [banwariId]);
+}
+
+console.log('\nNo duplicate employees, and technicians on their own plant');
+{
+  const again = (await as(OWNER, `select public.import_employees($1::jsonb) r`,
+    [JSON.stringify([{ code: 'DS-1001', name: 'Shivdatt Singh', department: 'Opreation & Maintenance', job_title: 'Site Engineer' }])])).rows[0].r;
+  again.added.length === 0 && again.skipped.some((s) => /Removed/.test(s.reason))
+    ? ok('the HR sheet does not bring back someone removed from the list')
+    : bad('import of a removed employee', JSON.stringify(again).slice(0, 300));
+
+  await asSystem(`insert into public.employees (employee_code, full_name, email, work_location)
+                  values ('DRIPL_9010', 'Test Linker', 'linker@example.test', 'Budsu, Nagaur')`);
+  const LINKER = await createAuthUser('linker@example.test', 'Test Linker');
+  await expectOk('User Management creates a login with an email already on the employee list', OWNER,
+    `select public.admin_save_user($1, $2, true)`, [LINKER, JSON.stringify({ full_name: 'Test Linker', role_ids: [role.technician] })]);
+  await expectValue('the login is linked to that employee; no second record is made', OWNER,
+    `select (select e.employee_code from public.profiles p join public.employees e on e.id = p.employee_id where p.id = $1)
+            || ' / ' || (select count(*) from public.employees where full_name = 'Test Linker')`, 'DRIPL_9010 / 1', [LINKER]);
+  const list = (await as(OWNER, `select public.employee_logins() r`)).rows[0].r;
+  const t = list.find((x) => x.employee_code === 'DRIPL_9010');
+  t?.site === 'Budsu' && t.site_id && t.work_location === 'Budsu, Nagaur'
+    ? ok('a work location like "Budsu, Nagaur" names the plant the login should cover')
+    : bad('plant from work location', JSON.stringify(t));
 }
 
 console.log('\nDeactivation');
