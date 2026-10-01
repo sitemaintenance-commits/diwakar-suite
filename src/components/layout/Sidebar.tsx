@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { NavLink, useLocation } from 'react-router';
+import { NavLink, useLocation, useNavigate } from 'react-router';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAccess } from '@/auth/AccessProvider';
@@ -110,6 +110,7 @@ function FlyoutGroup({ group }: { group: NavGroup }) {
   const GroupIcon = iconFor(group.icon);
   const active = useActiveInGroup(group);
   const location = useLocation();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const rowRef = useRef<HTMLButtonElement>(null);
@@ -180,9 +181,17 @@ function FlyoutGroup({ group }: { group: NavGroup }) {
         aria-haspopup="true"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
-        onClick={() => (open ? setOpen(false) : show())}
+        // A click opens the category's first page (O&M -> Daily Entry); hovering
+        // shows the rest. The keyboard opens the list with arrow right or space.
+        onClick={() => {
+          const first = group.items[0]?.route;
+          if (first) {
+            setOpen(false);
+            navigate(first);
+          } else show();
+        }}
         onKeyDown={(e) => {
-          if (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') {
+          if (e.key === 'ArrowRight' || e.key === ' ') {
             e.preventDefault();
             openWithKeyboard();
           }
