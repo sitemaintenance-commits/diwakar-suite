@@ -754,7 +754,9 @@ http
       }
       if (req.method === 'DELETE') {
         const { where, values } = filterSql(url.searchParams, 0);
-        await asUser(sub, (tx) => tx.query(`delete from public.${name} ${where}`, values));
+        const r = await asUser(sub, (tx) => tx.query(`delete from public.${name} ${where} returning to_jsonb(${name}.*) as v`, values));
+        // Like PostgREST: .delete().select() gets the deleted rows back (RLS hides a refused delete as zero rows).
+        if (url.searchParams.has('select') || /return=representation/.test(req.headers.prefer ?? '')) return send(res, 200, r.rows.map((x) => x.v));
         return send(res, 204);
       }
 

@@ -619,6 +619,28 @@ await expectOk('management marks the report reviewed', OWNER, `update public.dai
 await expectValue('the reviewer is stamped', OWNER, `select reviewed_by = $1 from public.daily_reports`, true, [OWNER]);
 await expectRows('the author can read the remark on their report', RAHUL, `select 1 from public.review_actions`, 1);
 
+// Deleting remarks: the writer or Management Review editors; never the report's history entries.
+const deleted = (where) => `with d as (delete from public.review_actions where ${where} returning 1) select count(*)::int from d`;
+await expectValue("the report's author cannot delete management's remark", RAHUL, deleted('true'), 0);
+await expectOk('management adds a remark it will delete', OWNER,
+  `insert into public.review_actions (report_id, action, comment, reviewer_id)
+   select id, 'founder_remark', 'Typo, please ignore.', auth.uid() from public.daily_reports limit 1`);
+await expectOk('a returned entry is part of the report history', OWNER,
+  `insert into public.review_actions (report_id, action, comment, reviewer_id)
+   select id, 'returned', 'Missing numbers', auth.uid() from public.daily_reports limit 1`);
+await expectValue('management deletes a remark', OWNER, deleted(`comment = 'Typo, please ignore.'`), 1);
+await expectValue('history entries cannot be deleted', OWNER, deleted(`action = 'returned'`), 0);
+await expectValue('the deletion is in the audit log', OWNER,
+  `select count(*)::int from public.audit_logs where module_key = 'daily.review' and action ilike '%delete%'`, 1);
+await expectValue('the review lists remark ids and who may delete them', OWNER,
+  `select bool_and((rv->>'id') is not null and (rv->>'can_delete')::boolean = (rv->>'action' in ('ccm_remark','founder_remark')))
+     from public.daily_reports r,
+          jsonb_array_elements(public.get_daily_review(r.report_date) -> 'departments') d,
+          jsonb_array_elements(coalesce(d -> 'today' -> 'reviews', '[]')) rv
+    where (d -> 'today' ->> 'id')::uuid = r.id`, true);
+// Users may not delete history, so the test removes its own entry as the system.
+await asSystem(`delete from public.review_actions where action = 'returned' and comment = 'Missing numbers'`);
+
 await expectOk('the founder records the day headline', OWNER,
   `insert into public.daily_headlines (headline_date, metrics, note)
    values (current_date, '[{"label":"Collections today","value":"12,40,000"},{"label":"Generation","value":"36,500 kWh"}]'::jsonb,

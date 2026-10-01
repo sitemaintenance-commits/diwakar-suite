@@ -24,7 +24,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/misc';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { EmptyState, ErrorState, Field, PageHeader, StatCard } from '@/components/common';
+import { ConfirmDialog, EmptyState, ErrorState, Field, PageHeader, StatCard } from '@/components/common';
 import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { useDepartments } from '@/features/admin/api';
 import { StatusChip } from '@/features/crm/shared';
@@ -92,6 +92,53 @@ function RemarkMeta({ action, by, at }: { action: string; by: string | null; at:
   );
 }
 
+/** Deletes one CCM / Founder remark after a confirmation. Shown only where the database allows it. */
+function DeleteRemarkButton({ remark, onDeleted }: { remark: Remark; onDeleted?: (id: string) => void }) {
+  const qc = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  if (!remark.id || !remark.can_delete) return null;
+  const id = remark.id;
+
+  async function remove() {
+    setBusy(true);
+    // Ask for the deleted row back: RLS hides a refused delete instead of raising an error.
+    const { data, error } = await supabase.from('review_actions').delete().eq('id', id).select('id');
+    setBusy(false);
+    if (error) return toast.error(errorMessage(error));
+    if (!data?.length) return toast.error('This remark could not be deleted. You can delete remarks you wrote, or any remark if you can edit Management Review.');
+    toast.success('Remark deleted');
+    onDeleted?.(id);
+    await qc.invalidateQueries({ queryKey: ['daily-review'] });
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        className="ml-1 align-middle text-muted-foreground hover:text-destructive"
+        disabled={busy}
+        onClick={() => setConfirming(true)}
+        aria-label="Delete remark"
+        title="Delete remark"
+      >
+        {busy ? <Loader2 className="animate-spin" /> : <Trash2 />}
+      </Button>
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title="Delete this remark?"
+        description={<>“{remark.comment}” will be removed from the review and from future Excel exports. This is recorded in the audit log.</>}
+        confirmLabel="Delete remark"
+        destructive
+        onConfirm={() => void remove()}
+      />
+    </>
+  );
+}
+
 function emptyMetricsFor(departmentName: string): Metric[] {
   const labels = DEFAULT_METRICS_BY_DEPARTMENT[departmentName];
   return labels?.length ? labels.map((label) => ({ label, value: '' })) : [{ label: '', value: '' }];
@@ -107,7 +154,16 @@ interface DeptReport {
   remarks: string | null;
   reporter: string | null;
   metrics: Metric[];
-  reviews: { action: string; comment: string | null; at: string; by: string | null }[];
+  reviews: Remark[];
+}
+interface Remark {
+  id?: string;
+  action: string;
+  comment: string | null;
+  at: string;
+  by: string | null;
+  /** The database's own rule: the writer, or Management Review editors; never history entries. */
+  can_delete?: boolean;
 }
 interface DailyReview {
   date: string;
@@ -271,6 +327,8 @@ function ReportEditor({
   const [remarks, setRemarks] = useState('');
   const [metrics, setMetrics] = useState<Metric[]>([{ label: '', value: '' }]);
   const [busy, setBusy] = useState(false);
+  // Remarks deleted while this dialog is open (its report is a snapshot).
+  const [removedRemarks, setRemovedRemarks] = useState<string[]>([]);
 
   useEffect(() => {
     const r = entry?.report;
@@ -376,12 +434,13 @@ function ReportEditor({
             <div className="rounded-lg border p-3">
               <p className="mb-2 text-sm font-medium">Management remarks</p>
               <ul className="grid gap-2 text-sm">
-                {entry.report.reviews.map((r, i) => (
-                  <li key={i}>
+                {entry.report.reviews.filter((r) => !r.id || !removedRemarks.includes(r.id)).map((r, i) => (
+                  <li key={r.id ?? i}>
                     <Badge variant={r.action === 'founder_remark' ? 'destructive' : 'warning'}>
                       {r.action === 'founder_remark' ? 'Founder' : r.action === 'ccm_remark' ? 'CCM' : r.action}
                     </Badge>{' '}
                     {r.comment}
+                    <DeleteRemarkButton remark={r} onDeleted={(id) => setRemovedRemarks((ids) => [...ids, id])} />
                     <RemarkMeta action={r.action} by={r.by} at={r.at} />
                   </li>
                 ))}
@@ -544,11 +603,12 @@ export function ReviewSummaryPage() {
                         </TableCell>
                         <TableCell className="text-sm">
                           {(d.today?.reviews ?? []).map((r, i) => (
-                            <div key={i} className="mb-1">
+                            <div key={r.id ?? i} className="mb-1">
                               <Badge variant={r.action === 'founder_remark' ? 'destructive' : 'warning'}>
                                 {r.action === 'founder_remark' ? 'Founder' : 'CCM'}
                               </Badge>{' '}
                               <span className="text-xs">{r.comment}</span>
+                              <DeleteRemarkButton remark={r} />
                             </div>
                           ))}
                         </TableCell>
@@ -762,11 +822,12 @@ export function ManagementReviewPage() {
                 {d.today!.reviews.length > 0 && (
                   <ul className="grid gap-2 border-t pt-3">
                     {d.today!.reviews.map((r, i) => (
-                      <li key={i}>
+                      <li key={r.id ?? i}>
                         <Badge variant={r.action === 'founder_remark' ? 'destructive' : 'warning'}>
                           {r.action === 'founder_remark' ? 'Founder' : 'CCM'}
                         </Badge>{' '}
                         {r.comment}
+                        <DeleteRemarkButton remark={r} />
                         <RemarkMeta action={r.action} by={r.by} at={r.at} />
                       </li>
                     ))}
