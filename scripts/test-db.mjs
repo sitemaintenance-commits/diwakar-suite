@@ -1824,10 +1824,12 @@ console.log('\nPMS replacement: employee logins and the work history calendar');
   const task = `'[{"seq":1,"description":"Gate register checked","status":"completed"},{"seq":2,"description":"Patrol round","status":"in_progress"}]'::jsonb`;
   await expectOk('Ketan files and submits today\'s sheet himself', EMPL,
     `select public.save_work_log(current_date, ${task}, 'medium', 'All quiet', true)`);
-  await expectOk('and yesterday\'s, which he forgot, as a draft', EMPL,
-    `select public.save_work_log(current_date - 1, ${task}, 'low', null, false)`);
-  await expectError('but not a sheet three days back', EMPL,
-    `select public.save_work_log(current_date - 5, ${task}, 'low', null, false)`, 'today or yesterday');
+  await expectError('but not yesterday\'s, even if he forgot it', EMPL,
+    `select public.save_work_log(current_date - 1, ${task}, 'low', null, false)`, 'sheet only');
+  await expectError('nor one from days back', EMPL,
+    `select public.save_work_log(current_date - 5, ${task}, 'low', null, false)`, 'sheet only');
+  await expectOk('HR keeps a draft of his yesterday for him', OWNER,
+    `select public.save_work_log(current_date - 1, ${task}, 'low', null, false, $1)`, [ketanId]);
   await expectError('nor a colleague\'s sheet', EMPL,
     `select public.save_work_log(current_date, ${task}, 'low', null, false, $1)`, 'may not file', [banwariId]);
   await expectOk('HR can still fill in an older day for him', OWNER,
