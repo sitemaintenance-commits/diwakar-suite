@@ -2,7 +2,7 @@
 // Self-service is deliberate: anyone can see their own attendance, leave and
 // review without an HR permission — the database enforces that boundary.
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   CalendarCheck, CalendarOff, CheckCircle2, Contact, Download, KeyRound, ListChecks, Loader2, Plus, Save, Star, TrendingUp, Upload, X,
@@ -218,6 +218,17 @@ export function AttendancePage() {
   // not file and is not marked counts as absent, so the form starts there.
   const workingDay = (dayRecords.data ?? []).some((r) => r.source === 'daily_work');
   const unmarked: AttendanceStatus = date < todayIST() && workingDay ? 'absent' : 'present';
+  // Site technicians do not keep the daily sheet, so not filing one says nothing about them.
+  const filers = useQuery({
+    queryKey: ['daily-sheet-filers'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('daily_sheet_filers');
+      if (error) throw error;
+      return new Set((data ?? []) as string[]);
+    },
+  });
+  const defaultFor = (employeeId: string): AttendanceStatus =>
+    unmarked === 'absent' && filers.data && !filers.data.has(employeeId) ? 'present' : unmarked;
 
   useEffect(() => {
     const byEmployee = Object.fromEntries((dayRecords.data ?? []).map((r) => [r.employee_id, r]));
@@ -226,19 +237,19 @@ export function AttendancePage() {
         (employees.data ?? []).map((e) => [
           e.id,
           {
-            status: (byEmployee[e.id]?.status ?? unmarked) as AttendanceStatus,
-            remarks: byEmployee[e.id]?.remarks ?? (unmarked === 'absent' ? 'No Daily Work filed' : ''),
+            status: (byEmployee[e.id]?.status ?? defaultFor(e.id)) as AttendanceStatus,
+            remarks: byEmployee[e.id]?.remarks ?? (defaultFor(e.id) === 'absent' ? 'No Daily Work filed' : ''),
           },
         ]),
       ),
     );
-  }, [employees.data, dayRecords.data, unmarked]);
+  }, [employees.data, dayRecords.data, unmarked, filers.data]);
 
   async function save() {
     const rows = (employees.data ?? []).map((e) => ({
       employee_id: e.id,
       att_date: date,
-      status: marks[e.id]?.status ?? unmarked,
+      status: marks[e.id]?.status ?? defaultFor(e.id),
       remarks: marks[e.id]?.remarks || null,
     }));
     if (!rows.length) return;
@@ -321,7 +332,7 @@ export function AttendancePage() {
                     </TableCell>
                     <TableCell>
                       <FilterSelect
-                        value={marks[e.id]?.status ?? unmarked}
+                        value={marks[e.id]?.status ?? defaultFor(e.id)}
                         onChange={(v) => setMarks((m) => ({ ...m, [e.id]: { ...m[e.id], status: v as AttendanceStatus } }))}
                         options={Object.entries(ATTENDANCE_STATUS).map(([k, v]) => [k, v.label] as [string, string])}
                       />

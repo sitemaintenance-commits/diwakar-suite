@@ -348,10 +348,9 @@ console.log('\nO&M / Solar (Phase 4)');
   // the daily form, the site register, their tickets and their own score.
   const r = await as(TECH, `select public.get_my_access() a`);
   const keys = Object.keys(r.rows[0].a.permissions).sort();
-  const expected = ['dashboard', 'documents', 'hr.history', 'hr.scorecard', 'hr.worklog',
-                    'om.daily_entry', 'om.operations', 'om.performance', 'om.tickets'];
+  const expected = ['dashboard', 'documents', 'om.daily_entry', 'om.operations', 'om.performance', 'om.tickets'];
   JSON.stringify(keys) === JSON.stringify(expected)
-    ? ok('by default a technician sees the forms they file, their tickets, their own scores and the documents page')
+    ? ok('by default a technician sees the plant forms they file, their tickets and the documents page (no daily task sheet)')
     : bad('default technician scope', keys.join(', '));
 }
 // Roles are data: the Super Admin widens the Technician role for this site
@@ -587,9 +586,9 @@ await expectError('a colleague without the module cannot read the day sheets', T
 await expectOk('a colleague with no HR permission still files their own sheet', TECH,
   `select public.save_work_log(current_date,
      '[{"seq":1,"description":"Module cleaning block C","status":"completed"}]'::jsonb, 'medium', null, true)`);
-await expectValue('a day of approved leave is not counted as an absence', OWNER,
-  `select x->>'attendance_source' from jsonb_array_elements(public.get_pms_scores()->'rows') x
-   where x->>'employee_id' = $1`, 'discipline', [TECH_EMP]);
+await expectValue('a site technician does not keep the daily sheet: even a sheet filed by hand is not scored', OWNER,
+  `select count(*)::int from jsonb_array_elements(public.get_pms_scores()->'rows' || public.get_pms_scores()->'not_reporting') x
+   where x->>'employee_id' = $1`, 0, [TECH_EMP]);
 await expectValue('an employee who never reported is listed separately, not scored as zero', OWNER,
   `select jsonb_array_length(public.get_pms_scores()->'not_reporting') > 0`, true);
 
@@ -1693,10 +1692,8 @@ await expectValue('and the counts on the sheet are computed, not trusted', OWNER
   `select task_count || '-' || completed || '-' || in_progress from public.work_logs w
    join public.employees e on e.id = w.employee_id
    where w.log_date = '2026-01-05' and e.full_name = 'Technician One'`, '2-1-1');
-await expectValue('the imported history scores like any other sheet', OWNER,
-  `select (x->>'kpi')::int from jsonb_array_elements(
-     public.get_pms_scores('2026-01-01', '2026-01-31')->'rows') x
-   where x->>'employee' = 'Technician One'`, 90);
+await expectValue('the imported history shows in Work History like any other sheet', OWNER,
+  `select (public.get_work_history($1, '2026-01-05', '2026-01-05')->'days'->0->>'score')::int`, 75, [TECH_EMP]);
 
 console.log('\nHR employee master import');
 {
