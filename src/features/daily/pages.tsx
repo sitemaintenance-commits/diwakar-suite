@@ -316,7 +316,7 @@ function ReportEditor({
             {entry.name} · {fmtDate(date)}
           </DialogTitle>
           <DialogDescription>
-            {entry.report ? `Filed by ${entry.report.reporter ?? 'unknown'}` : 'New daily report'}
+            {entry.report ? 'Report filed for this day' : 'New daily report'}
           </DialogDescription>
         </DialogHeader>
 
@@ -523,7 +523,6 @@ export function ReviewSummaryPage() {
                             <span className="h-2.5 w-2.5 rounded-full" style={{ background: d.color }} />
                             {d.name}
                           </span>
-                          <span className="text-xs text-muted-foreground">{d.today?.reporter ?? ''}</span>
                         </TableCell>
                         <TableCell>
                           {d.today ? <StatusChip map={HEALTH} value={d.today.health} /> : <Badge variant="secondary">Not filed</Badge>}
@@ -716,7 +715,6 @@ export function ManagementReviewPage() {
                     <StatusChip map={HEALTH} value={d.today!.health} />
                     <StatusChip map={REPORT_STATUS} value={d.today!.status} />
                   </CardTitle>
-                  <CardDescription>{d.today!.reporter ?? 'Unknown reporter'}</CardDescription>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {can.create && (
