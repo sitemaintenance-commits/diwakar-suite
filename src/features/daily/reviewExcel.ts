@@ -1,8 +1,9 @@
-// The Department Review in the legacy workbook's shape ("Daily Review Update
-// Tracker.xlsx"): one row per department and day, the same eight columns,
-// and the same three sheets -- Daily Reports, HR Reports, Admin Reports.
-// Used both to download a day and to read a workbook for import.
-import { exportXlsxBook, type XlsxColumn } from '@/lib/export';
+// The Department Review in the old Daily Review CRM site's workbook layout:
+// Department reports, HR Report, Admin Report, Headline numbers, Founder
+// remarks and Department metrics, each under the brand, day and summary
+// lines. Used both to download a day and to read a workbook for import.
+import { download, recordExport } from '@/lib/export';
+import { DEPARTMENT_HEADS } from '@/features/daily/heads';
 
 interface Metric { label: string; value: string }
 interface Report {
@@ -18,55 +19,181 @@ interface Report {
 export interface ReviewDay {
   date: string;
   compare_date: string;
+  headline?: { metrics: Metric[]; note: string | null } | null;
   departments: { name: string; today: Report | null }[];
 }
 
+type Cell = string | number | Date | null;
+type ExcelJSModule = typeof import('exceljs');
+type Worksheet = import('exceljs').Worksheet;
+
+const BRAND_RED = 'FFAF511A';
+const HEADER_FILL = 'FFFFEEDD';
 const HEALTH_LABEL: Record<string, string> = { on_track: 'On track', needs_attention: 'Needs attention', critical: 'Critical' };
+// Status cell colours: text, then fill.
+const STATUS_STYLE: Record<string, [string, string]> = {
+  'On track': ['FF047857', 'FFECFDF5'],
+  'Needs attention': ['FFB45309', 'FFFFFBEB'],
+  Critical: ['FFB91C1C', 'FFFEF2F2'],
+  'Not reported': ['FF64748B', 'FFF1F5F9'],
+};
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-type Row = { date: Date; name: string; r: Report | null };
+const statusOf = (r: Report | null) => (r ? HEALTH_LABEL[r.health] ?? r.health : 'Not reported');
+const keyNumbers = (r: Report | null) => (r?.metrics ?? []).filter((m) => m.label).map((m) => `${m.label}: ${m.value}`).join('\n');
+// Issues and tomorrow's plan are no longer asked for; older reports that have
+// them keep them under the day's remarks so nothing is lost.
+const keyRemarks = (r: Report | null) => [
+  r?.work_completed,
+  r?.issues ? `Issues: ${r.issues}` : null,
+  r?.next_day_plan ? `Plan for tomorrow: ${r.next_day_plan}` : null,
+].filter(Boolean).join('\n\n');
+const remarksOf = (r: Report | null, action: string) =>
+  (r?.reviews ?? []).filter((x) => x.action === action && x.comment).map((x) => x.comment).join('\n');
+const reportedBy = (name: string, r: Report | null) => DEPARTMENT_HEADS[name] ?? r?.reporter ?? '';
+const noFormula = (s: string) => (/^[=+\-@\t\r]/.test(s) ? `'${s}` : s);
 
-function columns(): XlsxColumn<Row>[] {
-  const remarks = (r: Report | null, action: string) =>
-    (r?.reviews ?? []).filter((x) => x.action === action && x.comment).map((x) => x.comment).join('\n');
-  return [
-    { header: 'Review date', value: (x) => x.date, numFmt: 'dd mmm yyyy', width: 14 },
-    { header: 'Department', value: (x) => x.name, width: 24 },
-    // Every report is filed and analysed by the CCM's office, so the sheet says CCM, not who typed it in.
-    { header: 'Reported by', value: (x) => (x.r ? 'CCM' : ''), width: 14 },
-    { header: 'Status', value: (x) => (x.r ? HEALTH_LABEL[x.r.health] ?? x.r.health : 'Not reported'), width: 16 },
-    {
-      header: 'Department updates',
-      value: (x) => (x.r?.metrics ?? []).filter((m) => m.label).map((m) => `${m.label}: ${m.value}`).join('\n'),
-      width: 42,
-    },
-    {
-      header: 'Today Key Remarks Updates',
-      // The legacy sheet has no columns for issues or tomorrow's plan; they
-      // follow the day's remarks so nothing typed in the suite is lost.
-      value: (x) => [
-        x.r?.work_completed,
-        x.r?.issues ? `Issues: ${x.r.issues}` : null,
-        x.r?.next_day_plan ? `Plan for tomorrow: ${x.r.next_day_plan}` : null,
-      ].filter(Boolean).join('\n\n'),
-      width: 55,
-    },
-    { header: 'CCM Remarks', value: (x) => remarks(x.r, 'ccm_remark'), width: 40 },
-    { header: 'Founder Remarks', value: (x) => remarks(x.r, 'founder_remark'), width: 40 },
-  ];
+/** "Daily Review CRM - Mon, 28 Sept 2026", as the old site wrote it. */
+function dayTitle(iso: string) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  return `Daily Review CRM - ${DAYS[d.getUTCDay()]}, ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
-/** Download one day as the legacy workbook. */
-export async function downloadReviewDay(moduleKey: string, day: ReviewDay) {
+/** Rough height so wrapped text shows in full (Excel does not grow rows it did not lay out). */
+function rowHeight(values: Cell[], widths: number[]) {
+  let lines = 1;
+  values.forEach((v, i) => {
+    if (typeof v !== 'string' || !v) return;
+    const perLine = Math.max(8, Math.floor((widths[i] ?? 15) * 1.15));
+    lines = Math.max(lines, v.split('\n').reduce((n, l) => n + Math.max(1, Math.ceil(l.length / perLine)), 0));
+  });
+  return Math.max(32, lines * 15 + 6);
+}
+
+/**
+ * One sheet in the old site's layout: brand, day and summary lines, a
+ * section title, a peach header row, the rows, and optional footer lines.
+ */
+function addSheet(
+  wb: InstanceType<ExcelJSModule['Workbook']>,
+  opts: { name: string; title: string; summary: string; brand: string; heading: string; headers: string[]; widths: number[];
+    rows: Cell[][]; statusCol?: number; footer?: string[] },
+): Worksheet {
+  const ws = wb.addWorksheet(opts.name, {
+    views: [{ state: 'frozen', ySplit: 6 }],
+    pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+  });
+  const n = opts.headers.length;
+  const line = (row: number, text: string, font: Partial<import('exceljs').Font>, height: number) => {
+    ws.mergeCells(row, 1, row, n);
+    const c = ws.getCell(row, 1);
+    c.value = text;
+    c.font = { name: 'Calibri', ...font };
+    ws.getRow(row).height = height;
+  };
+  line(1, opts.brand, { size: 22, bold: true, color: { argb: BRAND_RED } }, 36);
+  line(2, opts.title, { size: 12 }, 23);
+  line(3, opts.summary, { size: 11 }, 25);
+  ws.getRow(4).height = 10;
+  line(5, opts.heading, { size: 12, bold: true, color: { argb: BRAND_RED } }, 24);
+
+  const head = ws.getRow(6);
+  head.values = opts.headers;
+  head.height = 32;
+  head.eachCell((c) => {
+    c.font = { name: 'Calibri', size: 11, bold: true };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_FILL } };
+    c.alignment = { vertical: 'middle', wrapText: true };
+    c.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+  });
+
+  opts.rows.forEach((values, i) => {
+    const row = ws.getRow(7 + i);
+    row.values = values.map((v) => (typeof v === 'string' ? noFormula(v) : v));
+    row.height = rowHeight(values, opts.widths);
+    for (let col = 1; col <= n; col++) {
+      const c = row.getCell(col);
+      c.font = { name: 'Calibri', size: 11 };
+      c.alignment = { vertical: 'top', wrapText: true };
+      c.border = { top: { style: 'hair' }, left: { style: 'hair' }, bottom: { style: 'hair' }, right: { style: 'hair' } };
+      if (values[col - 1] instanceof Date) c.numFmt = 'dd mmm yyyy';
+    }
+    if (opts.statusCol) {
+      const c = row.getCell(opts.statusCol);
+      const [color, fill] = STATUS_STYLE[String(c.value)] ?? STATUS_STYLE['Not reported'];
+      c.font = { name: 'Calibri', size: 11, bold: true, color: { argb: color } };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } };
+    }
+  });
+  const last = 6 + opts.rows.length;
+  ws.autoFilter = { from: { row: 6, column: 1 }, to: { row: Math.max(6, last), column: n } };
+
+  (opts.footer ?? []).forEach((text, i) => {
+    const r = last + 1 + i;
+    ws.mergeCells(r, 1, r, n);
+    const c = ws.getCell(r, 1);
+    c.value = text;
+    c.font = { name: 'Calibri', size: 11, italic: true };
+    c.alignment = { horizontal: 'right' };
+  });
+  opts.widths.forEach((w, i) => (ws.getColumn(i + 1).width = w));
+  return ws;
+}
+
+const REPORT_HEADERS = ['Review date', 'Department', 'Reported by', 'Status', 'Key numbers', 'Today key remarks updates', 'CCM Remarks', 'Founder Remarks'];
+const ANALYZED_BY = ['Report analyzed by : CCM'];
+
+/** Download one day as the old Daily Review CRM workbook. */
+export async function downloadReviewDay(moduleKey: string, day: ReviewDay, brand = 'Diwakar Solar') {
   const date = new Date(`${day.date}T00:00:00Z`);
-  const all: Row[] = day.departments.map((d) => ({ date, name: d.name, r: d.today }));
-  const only = (name: string) => all.filter((x) => x.name.toLowerCase() === name.toLowerCase());
-  const cols = columns();
-  const footer = ['Report analyzed by : CCM'];
-  await exportXlsxBook(moduleKey, `department-review-${day.date}`, [
-    { name: 'Daily Reports', rows: all, columns: cols, footer },
-    { name: 'HR Reports', rows: only('HR'), columns: cols, footer },
-    { name: 'Admin Reports', rows: only('Admin'), columns: cols, footer },
-  ]);
+  // The old site's order (the heads list); any other department after them, A to Z.
+  const order = Object.keys(DEPARTMENT_HEADS);
+  const rank = (name: string) => (order.indexOf(name) === -1 ? order.length : order.indexOf(name));
+  const depts = [...day.departments].sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name));
+  const reported = depts.filter((d) => d.today);
+  const count = (h: string) => reported.filter((d) => d.today!.health === h).length;
+  const summary = `${reported.length} of ${depts.length} departments reported   |   On track: ${count('on_track')}   |   Attention: ${count('needs_attention')}   |   Critical: ${count('critical')}`;
+  const base = { title: dayTitle(day.date), summary, brand };
+
+  const reportRow = (d: ReviewDay['departments'][number]): Cell[] => [
+    date, d.name, reportedBy(d.name, d.today), statusOf(d.today), keyNumbers(d.today), keyRemarks(d.today),
+    remarksOf(d.today, 'ccm_remark'), remarksOf(d.today, 'founder_remark'),
+  ];
+  const deptSheet = (dept: string) => depts.filter((d) => d.name.toLowerCase() === dept.toLowerCase()).map(reportRow);
+
+  // The day's founder remarks once each: one sent to every department is one line.
+  const founder = new Map<string, string[]>();
+  for (const d of reported) {
+    for (const r of d.today!.reviews) {
+      if (r.action === 'founder_remark' && r.comment) founder.set(r.comment, [...(founder.get(r.comment) ?? []), d.name]);
+    }
+  }
+  const founderRows: Cell[][] = [...founder].map(([text, names]) => [date, names.length === reported.length ? text : `${text} (${names.join(', ')})`]);
+  const headlineRows: Cell[][] = (day.headline?.metrics ?? []).filter((m) => m.label).map((m) => [date, m.label, m.value]);
+  const metricRows: Cell[][] = reported.flatMap((d) =>
+    d.today!.metrics.filter((m) => m.label).map((m) => [date, d.name, reportedBy(d.name, d.today), m.label, m.value] as Cell[]));
+
+  await recordExport(moduleKey, `Exported the Department Review for ${day.date} (${depts.length} departments)`);
+  const { default: ExcelJS } = await import('exceljs');
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Diwakar Solar Management Suite';
+
+  addSheet(wb, { ...base, name: 'Department reports', heading: 'Department reports', headers: REPORT_HEADERS,
+    widths: [17, 31, 23, 22, 34, 48, 44, 40], rows: depts.map(reportRow), statusCol: 4, footer: ANALYZED_BY });
+  addSheet(wb, { ...base, name: 'HR Report', heading: 'HR Operations Review', headers: REPORT_HEADERS,
+    widths: [17, 20, 23, 20, 34, 48, 40, 40], rows: deptSheet('HR'), statusCol: 4, footer: ANALYZED_BY });
+  addSheet(wb, { ...base, name: 'Admin Report', heading: 'Admin Operations Review', headers: REPORT_HEADERS,
+    widths: [17, 20, 23, 20, 34, 48, 40, 40], rows: deptSheet('Admin'), statusCol: 4, footer: ANALYZED_BY });
+  addSheet(wb, { ...base, name: 'Headline numbers', heading: 'Company headline numbers', headers: ['Review date', 'Metric', 'Value'],
+    widths: [19, 48, 27], rows: headlineRows.length ? headlineRows : [[date, '', '']] });
+  addSheet(wb, { ...base, name: 'Founder remarks', heading: 'Founder Remarks', headers: ['Review date', 'Remarks and action points'],
+    widths: [19, 95], rows: founderRows.length ? founderRows : [[date, '']] });
+  addSheet(wb, { ...base, name: 'Department metrics', heading: 'Department key numbers', headers: ['Review date', 'Department', 'Reported by', 'Metric', 'Value'],
+    widths: [19, 32, 24, 35, 24], rows: metricRows });
+
+  const buf = await wb.xlsx.writeBuffer();
+  download(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `diwakar-daily-review-${day.date}.xlsx`);
 }
 
 // ------------------------------------------------------------------ import
@@ -143,7 +270,7 @@ export async function readReviewWorkbook(file: File): Promise<ImportRow[]> {
   const { default: ExcelJS } = await import('exceljs');
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(await file.arrayBuffer());
-  const preferred = wb.worksheets.find((w) => w.name.trim().toLowerCase() === 'daily reports');
+  const preferred = wb.worksheets.find((w) => ['daily reports', 'department reports'].includes(w.name.trim().toLowerCase()));
   for (const ws of preferred ? [preferred] : wb.worksheets) {
     let headRow = 0;
     const map: Record<number, Field> = {};
@@ -166,12 +293,18 @@ export async function readReviewWorkbook(file: File): Promise<ImportRow[]> {
       if (n <= headRow) return;
       const r: ImportRow = { date: null, department: null, reporter: null, status: null, metrics: [], updates: null, issues: null, plan: null, ccm: null, founder: null };
       for (const [col, field] of Object.entries(map)) {
-        const v = cellText(row.getCell(Number(col)).value);
+        const cell = row.getCell(Number(col));
+        // A cell merged into another (a full-width line such as "Report
+        // analyzed by : CCM") repeats that cell's text; it is not a value.
+        const v = cell.isMerged && cell.master.address !== cell.address ? null : cellText(cell.value);
         if (field === 'metrics') r.metrics = parseMetrics(v);
         else if (field === 'date') r.date = toIsoDate(v);
         else r[field] = v;
       }
-      if (r.date || r.department) rows.push(r);
+      // Rows without a department are the sheet's own lines, e.g. "Report analyzed by : CCM";
+      // a department marked "Not reported" with nothing in it is not a report to import.
+      const empty = !r.metrics.length && !r.updates && !r.issues && !r.plan && !r.ccm && !r.founder;
+      if (r.department && !(empty && /^not (reported|filed)$/i.test(r.status ?? ''))) rows.push(r);
     });
     return rows;
   }

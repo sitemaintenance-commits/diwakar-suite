@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
 import { printDayReview } from '@/features/daily/print';
 import { downloadReviewDay } from '@/features/daily/reviewExcel';
+import { DEPARTMENT_HEADS } from '@/features/daily/heads';
 import { fmtDate, fmtDateTime, fmtNumber, safeNum, todayIST } from '@/lib/format';
 import type { BadgeTone } from '@/lib/types';
 import { useAccess, useCan } from '@/auth/AccessProvider';
@@ -138,16 +139,6 @@ function DeleteRemarkButton({ remark, onDeleted }: { remark: Remark; onDeleted?:
     </>
   );
 }
-
-/** Department heads, shown under each department's name (display only). */
-const DEPARTMENT_HEADS: Record<string, string> = {
-  'Design & Engineering': 'Ganesh',
-  'Procurement & Stores': 'Rajat Bhargav',
-  'Projects & Installation': 'Ankit Goyal',
-  'O&M / Service': 'Rajpal Singh Shekhawat',
-  HR: 'Banwari Verma',
-  Admin: 'Keshav Agarwal',
-};
 
 function DepartmentHead({ name }: { name: string }) {
   const head = DEPARTMENT_HEADS[name];
@@ -484,7 +475,7 @@ export function ReviewSummaryPage() {
   async function onExport() {
     if (!review.data) return;
     try {
-      await downloadReviewDay('daily.summary', review.data);
+      await downloadReviewDay('daily.summary', review.data, setting('brand_name', 'Diwakar Solar'));
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -698,7 +689,7 @@ export function ManagementReviewPage() {
   async function onDownload() {
     if (!review.data) return;
     try {
-      await downloadReviewDay(summary.export ? 'daily.summary' : 'daily.reports', review.data);
+      await downloadReviewDay(summary.export ? 'daily.summary' : 'daily.reports', review.data, setting('brand_name', 'Diwakar Solar'));
     } catch (e) {
       toast.error(errorMessage(e));
     }

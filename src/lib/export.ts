@@ -32,7 +32,7 @@ export async function exportCsv<T>(moduleKey: string, filename: string, rows: T[
   download(blob, filename.endsWith('.csv') ? filename : `${filename}.csv`);
 }
 
-function download(blob: Blob, name: string) {
+export function download(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -77,17 +77,19 @@ export interface XlsxSheet<T> {
   footer?: string[];
 }
 
+/**
+ * Writes the export to the audit log first; the database refuses it (and
+ * nothing is downloaded) without EXPORT permission on the module.
+ */
+export async function recordExport(moduleKey: string, summary: string) {
+  const { error } = await supabase.rpc('log_event', { p_action: 'export', p_module: moduleKey, p_summary: summary, p_details: null });
+  if (error) throw new Error(error.message);
+}
+
 /** The same as exportXlsx, with several sheets in one workbook. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function exportXlsxBook(moduleKey: string, filename: string, sheets: XlsxSheet<any>[]) {
-  const total = sheets.reduce((n, s) => n + s.rows.length, 0);
-  const { error } = await supabase.rpc('log_event', {
-    p_action: 'export',
-    p_module: moduleKey,
-    p_summary: `Exported ${total} row(s) to ${filename}`,
-    p_details: null,
-  });
-  if (error) throw new Error(error.message);
+  await recordExport(moduleKey, `Exported ${sheets.reduce((n, s) => n + s.rows.length, 0)} row(s) to ${filename}`);
 
   const { default: ExcelJS } = await import('exceljs');
   const wb = new ExcelJS.Workbook();
