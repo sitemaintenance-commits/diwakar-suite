@@ -21,16 +21,11 @@ export interface ReviewDay {
   departments: { name: string; today: Report | null }[];
 }
 
-export interface ReviewNames {
-  founder: string;     // Founder Remarks (Sunil Bansal)
-  coordinator: string; // Today Key Remarks Updates (Jitendra Sharma)
-}
-
 const HEALTH_LABEL: Record<string, string> = { on_track: 'On track', needs_attention: 'Needs attention', critical: 'Critical' };
 
 type Row = { date: Date; name: string; r: Report | null };
 
-function columns(names: ReviewNames): XlsxColumn<Row>[] {
+function columns(): XlsxColumn<Row>[] {
   const remarks = (r: Report | null, action: string) =>
     (r?.reviews ?? []).filter((x) => x.action === action && x.comment).map((x) => x.comment).join('\n');
   return [
@@ -45,7 +40,7 @@ function columns(names: ReviewNames): XlsxColumn<Row>[] {
       width: 42,
     },
     {
-      header: `Today Key Remarks Updates (${names.coordinator})`,
+      header: 'Today Key Remarks Updates',
       // The legacy sheet has no columns for issues or tomorrow's plan; they
       // follow the day's remarks so nothing typed in the suite is lost.
       value: (x) => [
@@ -56,16 +51,16 @@ function columns(names: ReviewNames): XlsxColumn<Row>[] {
       width: 55,
     },
     { header: 'CCM Remarks', value: (x) => remarks(x.r, 'ccm_remark'), width: 40 },
-    { header: `Founder Remarks (${names.founder})`, value: (x) => remarks(x.r, 'founder_remark'), width: 40 },
+    { header: 'Founder Remarks', value: (x) => remarks(x.r, 'founder_remark'), width: 40 },
   ];
 }
 
 /** Download one day as the legacy workbook. */
-export async function downloadReviewDay(moduleKey: string, day: ReviewDay, names: ReviewNames) {
+export async function downloadReviewDay(moduleKey: string, day: ReviewDay) {
   const date = new Date(`${day.date}T00:00:00Z`);
   const all: Row[] = day.departments.map((d) => ({ date, name: d.name, r: d.today }));
   const only = (name: string) => all.filter((x) => x.name.toLowerCase() === name.toLowerCase());
-  const cols = columns(names);
+  const cols = columns();
   const footer = ['Report analyzed by : CCM'];
   await exportXlsxBook(moduleKey, `department-review-${day.date}`, [
     { name: 'Daily Reports', rows: all, columns: cols, footer },

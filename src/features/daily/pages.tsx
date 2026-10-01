@@ -484,7 +484,7 @@ export function ReviewSummaryPage() {
   async function onExport() {
     if (!review.data) return;
     try {
-      await downloadReviewDay('daily.summary', review.data, names);
+      await downloadReviewDay('daily.summary', review.data);
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -698,7 +698,7 @@ export function ManagementReviewPage() {
   async function onDownload() {
     if (!review.data) return;
     try {
-      await downloadReviewDay(summary.export ? 'daily.summary' : 'daily.reports', review.data, names);
+      await downloadReviewDay(summary.export ? 'daily.summary' : 'daily.reports', review.data);
     } catch (e) {
       toast.error(errorMessage(e));
     }
