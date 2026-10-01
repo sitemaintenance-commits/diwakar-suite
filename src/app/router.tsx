@@ -18,6 +18,7 @@ import { ImportPage } from '@/features/admin/import/ImportPage';
 import { DepartmentsPage } from '@/features/hr/org/DepartmentsPage';
 import { AttendancePage, EmployeesPage, LeavePage, PerformancePage, TasksPage } from '@/features/hr/pages';
 import { DailyWorkPage } from '@/features/hr/worklog/DailyWorkPage';
+import { WorkHistoryPage } from '@/features/hr/worklog/WorkHistoryPage';
 import { ScorecardPage } from '@/features/hr/worklog/ScorecardPage';
 import { DailyReportsPage, ManagementReviewPage, ReviewSummaryPage } from '@/features/daily/pages';
 import { SolarSitesPage as SitePortfolioPage } from '@/features/portfolio/SolarSitesPage';
@@ -166,6 +167,7 @@ export const router = createBrowserRouter([
         children: [
           { path: 'employees', element: guard('hr.employees', <EmployeesPage />) },
           { path: 'daily-work', element: guard('hr.worklog', <DailyWorkPage />) },
+          { path: 'daily-work/history', element: guard('hr.worklog', <WorkHistoryPage />) },
           { path: 'attendance', element: guard('hr.attendance', <AttendancePage />) },
           { path: 'scorecard', element: guard('hr.scorecard', <ScorecardPage />) },
           { path: 'performance', element: guard('hr.performance', <PerformancePage />) },

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  CalendarCheck, CalendarOff, CheckCircle2, Contact, Download, ListChecks, Loader2, Plus, Save, Star, TrendingUp, Upload, X,
+  CalendarCheck, CalendarOff, CheckCircle2, Contact, Download, KeyRound, ListChecks, Loader2, Plus, Save, Star, TrendingUp, Upload, X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
@@ -29,6 +29,7 @@ import { useDepartments, usePeople, useSites } from '@/features/admin/api';
 import { StatusChip } from '@/features/crm/shared';
 import { PRIORITY, TASK_STATUS } from '@/features/om/shared';
 import { EmployeeImportDialog } from '@/features/hr/EmployeeImportDialog';
+import { EmployeeLoginsDialog } from '@/features/hr/EmployeeLoginsDialog';
 import { fetchTasks, useAttendance, useEmployees, useHrSummary, useLeaveRequests, useReviewGoals, useReviews, useTasks, type TaskFilters } from '@/features/hr/api';
 
 const NONE = '__none__';
@@ -68,6 +69,8 @@ export function EmployeesPage() {
   const [status, setStatus] = useState('active');
   const employees = useEmployees(search, departmentId, status);
   const [importOpen, setImportOpen] = useState(false);
+  const [loginsOpen, setLoginsOpen] = useState(false);
+  const { can: canDo } = useAccess();
 
   async function onExport() {
     try {
@@ -95,6 +98,11 @@ export function EmployeesPage() {
         description="The people directory. Accounts and access are managed in User Management; salary and identity data sit behind a separate permission."
         actions={
           <>
+            {canDo('admin.users', 'create') && (
+              <Button variant="outline" onClick={() => setLoginsOpen(true)}>
+                <KeyRound /> Logins
+              </Button>
+            )}
             {can.create && can.edit && (
               <Button variant="outline" onClick={() => setImportOpen(true)}>
                 <Upload /> Import HR sheet
@@ -109,6 +117,7 @@ export function EmployeesPage() {
         }
       />
       <EmployeeImportDialog open={importOpen} onOpenChange={setImportOpen} />
+      <EmployeeLoginsDialog open={loginsOpen} onOpenChange={setLoginsOpen} />
 
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Active employees" value={safeNum(summary.data?.employees)} icon={Contact} loading={summary.isLoading} />

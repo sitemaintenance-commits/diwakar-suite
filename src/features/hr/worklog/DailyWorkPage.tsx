@@ -5,12 +5,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CheckCircle2, ClipboardCheck, Download, Loader2, Plus, Save, Send, Trash2 } from 'lucide-react';
+import { CalendarDays, CheckCircle2, ClipboardCheck, Download, Loader2, Plus, Save, Send, Trash2 } from 'lucide-react';
+import { Link } from 'react-router';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
 import { fmtDate, fmtNumber, todayIST } from '@/lib/format';
 import { exportXlsx } from '@/lib/export';
-import { useCan } from '@/auth/AccessProvider';
+import { useAccess, useCan } from '@/auth/AccessProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,6 +43,12 @@ interface Row {
 
 export function DailyWorkPage() {
   const can = useCan('hr.worklog');
+  const { access } = useAccess();
+  // HR (team or all scope) files for others and for any past day; everyone
+  // else files their own sheet, for today or -- if forgotten -- yesterday.
+  const scope = access?.permissions?.['hr.worklog']?.scope;
+  const hr = Boolean(access?.is_super_admin) || scope === 'all' || scope === 'team';
+  const earliest = hr ? undefined : yesterdayIST();
   const qc = useQueryClient();
   const [date, setDate] = useState(todayIST());
   // HR can file for someone without a login -- the PMS form never needed
@@ -123,7 +130,17 @@ export function DailyWorkPage() {
     );
   }
 
-  const picker = can.edit ? <FilingFor value={filingFor} onChange={setFilingFor} /> : null;
+  const history = (
+    <Button variant="outline" asChild>
+      <Link to="/hr/daily-work/history"><CalendarDays /> Work history</Link>
+    </Button>
+  );
+  const picker = (
+    <>
+      {can.edit && hr && <FilingFor value={filingFor} onChange={setFilingFor} />}
+      {history}
+    </>
+  );
 
   if (!data?.employee) {
     return (
@@ -172,7 +189,7 @@ export function DailyWorkPage() {
           <div className="flex flex-wrap items-end gap-2">
             <label className="grid gap-1 text-xs text-muted-foreground">
               Date
-              <Input type="date" value={date} max={todayIST()} onChange={(e) => setDate(e.target.value)} className="h-9 w-40" />
+              <Input type="date" value={date} min={earliest} max={todayIST()} onChange={(e) => setDate(e.target.value)} className="h-9 w-40" />
             </label>
             <label className="grid gap-1 text-xs text-muted-foreground">
               Priority
@@ -387,6 +404,13 @@ function DaySheets({ canExport }: { canExport: boolean }) {
   );
 }
 
+
+/** The day before today, in India time: the oldest sheet an employee may file. */
+function yesterdayIST(): string {
+  const d = new Date(`${todayIST()}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
 
 /** "Filing for": yourself, or -- for HR -- any active employee. */
 function FilingFor({ value, onChange }: { value: string; onChange: (v: string) => void }) {

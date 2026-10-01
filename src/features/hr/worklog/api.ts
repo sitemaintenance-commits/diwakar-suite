@@ -118,3 +118,44 @@ export function usePmsScores(from: string, to: string, departmentId: string) {
       ),
   });
 }
+
+// ------------------------------------------------- work history calendar
+export type HistoryState = 'submitted' | 'draft' | 'missed' | 'absent' | 'leave' | 'holiday' | 'week_off' | 'none';
+
+export interface HistoryDay {
+  date: string;
+  state: HistoryState;
+  working: boolean;
+  attendance: string | null;
+  priority: string | null;
+  remarks: string | null;
+  task_count: number | null;
+  completed: number | null;
+  in_progress: number | null;
+  score: number | null;
+  tasks: { seq: number; description: string; status: WorkTaskStatus }[] | null;
+}
+
+export interface WorkHistory {
+  employee: { id: string; code: string; name: string; department: string | null; designation: string | null; joining_date: string | null } | null;
+  from: string;
+  to: string;
+  summary: {
+    working_days: number; submitted: number; drafts: number; missed: number; leave: number;
+    tasks: number; completed: number; in_progress: number; score: number | null;
+  };
+  days: HistoryDay[];
+}
+
+/** One employee's days between two dates (your own when employeeId is empty). */
+export function useWorkHistory(employeeId: string | null, from: string, to: string, enabled = true) {
+  return useQuery({
+    queryKey: ['work-history', employeeId ?? 'me', from, to],
+    enabled,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_work_history', { p_employee: employeeId, p_from: from, p_to: to });
+      if (error) throw error;
+      return data as WorkHistory;
+    },
+  });
+}

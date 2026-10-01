@@ -1790,6 +1790,65 @@ console.log('\nDocuments in every section');
     `select count(*)::int from public.documents where file_name = 'inverter-fault-photos.pdf'`, 0);
 }
 
+console.log('\nPMS replacement: employee logins and the work history calendar');
+{
+  const ketanId = (await asSystem(`select app.employee_by_name('Ketan Sharma') id`)).rows[0].id;
+  const banwariId = (await asSystem(`select app.employee_by_name('Banwari Verma') id`)).rows[0].id;
+  const EMPL = await createAuthUser('ketan.login@diwakarsolar.test', 'Ketan Sharma');
+  await expectOk('HR gives Ketan, already on the employee list, a login with the Employee role', OWNER,
+    `select public.admin_save_user($1, $2, true)`,
+    [EMPL, JSON.stringify({ full_name: 'Ketan Sharma', employee_id: ketanId, role_ids: [role.employee] })]);
+  await signIn(EMPL);
+  await expectValue('the login is linked to his existing record, not a new one', OWNER,
+    `select (select employee_id from public.profiles where id = $1) = $2
+        and (select count(*) from public.employees where full_name = 'Ketan Sharma' and deleted_at is null) = 1`,
+    true, [EMPL, ketanId]);
+  const SECOND = await createAuthUser('ketan.again@diwakarsolar.test', 'Ketan Again');
+  await expectError('a second login for the same employee is refused', OWNER,
+    `select public.admin_save_user($1, $2, true)`, 'already has a login',
+    [SECOND, JSON.stringify({ full_name: 'Ketan Again', employee_id: ketanId, role_ids: [role.employee] })]);
+  {
+    const list = (await as(OWNER, `select public.employee_logins() r`)).rows[0].r;
+    const k = list.find((x) => x.employee_id === ketanId);
+    const b = list.find((x) => x.employee_id === banwariId);
+    k?.login_email === 'ketan.login@diwakarsolar.test' && k.roles.includes('Employee') && b && !b.user_id
+      ? ok('the login list shows who has a login and who is still to be invited')
+      : bad('employee_logins', JSON.stringify({ k, b }));
+  }
+  await expectError('someone without user management cannot read it', EMPL, `select public.employee_logins()`, 'admin.users');
+  await expectValue('an Employee sees only their own work, score, attendance, leave, the dashboard and documents', EMPL,
+    `select string_agg(k, ',' order by k) from jsonb_object_keys(public.get_my_access()->'permissions') k`,
+    'dashboard,documents,hr.attendance,hr.leave,hr.scorecard,hr.worklog');
+
+  const task = `'[{"seq":1,"description":"Gate register checked","status":"completed"},{"seq":2,"description":"Patrol round","status":"in_progress"}]'::jsonb`;
+  await expectOk('Ketan files and submits today\'s sheet himself', EMPL,
+    `select public.save_work_log(current_date, ${task}, 'medium', 'All quiet', true)`);
+  await expectOk('and yesterday\'s, which he forgot, as a draft', EMPL,
+    `select public.save_work_log(current_date - 1, ${task}, 'low', null, false)`);
+  await expectError('but not a sheet three days back', EMPL,
+    `select public.save_work_log(current_date - 5, ${task}, 'low', null, false)`, 'today or yesterday');
+  await expectError('nor a colleague\'s sheet', EMPL,
+    `select public.save_work_log(current_date, ${task}, 'low', null, false, $1)`, 'may not file', [banwariId]);
+  await expectOk('HR can still fill in an older day for him', OWNER,
+    `select public.save_work_log(current_date - 6, ${task}, 'low', 'Filled in by HR', true, $1)`, [ketanId]);
+
+  const mine = (await as(EMPL, `select public.get_work_history(null, current_date - 6, current_date) r`)).rows[0].r;
+  const day = (d) => mine.days.find((x) => x.date === d);
+  const today = (await asSystem(`select current_date::text d, (current_date - 1)::text y, (current_date - 6)::text o`)).rows[0];
+  day(today.d)?.state === 'submitted' && day(today.d).tasks.length === 2 && Number(day(today.d).score) === 75
+    && day(today.y)?.state === 'draft' && day(today.o)?.state === 'submitted' && mine.days.length === 7
+    && mine.employee.name === 'Ketan Sharma'
+    ? ok('his calendar shows each day: submitted with its tasks and score, the draft, the day HR filled in')
+    : bad('work history', JSON.stringify(mine).slice(0, 500));
+  Number(mine.summary.submitted) >= 2 && Number(mine.summary.tasks) >= 4 && 'missed' in mine.summary
+    ? ok('with a summary of days filed, missed, tasks and score')
+    : bad('work history summary', JSON.stringify(mine.summary));
+  await expectError('he cannot open a colleague\'s calendar', EMPL,
+    `select public.get_work_history($1, current_date - 6, current_date)`, 'may not see', [banwariId]);
+  await expectValue('HR opens anyone\'s', OWNER,
+    `select jsonb_array_length(public.get_work_history($1, current_date - 6, current_date)->'days')`, 7, [banwariId]);
+}
+
 console.log('\nDeactivation');
 await expectOk('Admin deactivates Technician', ADMIN, `select public.admin_set_user_status($1, 'inactive')`, [TECH]);
 await expectValue('deactivated user loses every permission immediately', TECH, `select public.has_permission('dashboard','view')`, false);
