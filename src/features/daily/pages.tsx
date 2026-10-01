@@ -715,6 +715,7 @@ export function ManagementReviewPage() {
                     <StatusChip map={HEALTH} value={d.today!.health} />
                     <StatusChip map={REPORT_STATUS} value={d.today!.status} />
                   </CardTitle>
+                  <CardDescription>Reported by CCM</CardDescription>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {can.create && (

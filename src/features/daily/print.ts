@@ -63,6 +63,7 @@ export function printDayReview(review: PrintableReview, company: string, founder
     return `<section class="dept">
       <h2>${esc(d.name)} <span class="pill" style="color:${color};border-color:${color}">${esc(label)}</span>
         ${r.status === 'draft' ? '<em class="missing">Draft</em>' : ''}</h2>
+      <p class="muted">Reported by CCM</p>
       ${metrics}
       <div class="grid">
         <div><h3>Work completed</h3><p>${para(r.work_completed)}</p></div>

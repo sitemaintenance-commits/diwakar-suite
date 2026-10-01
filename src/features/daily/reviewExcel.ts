@@ -36,7 +36,8 @@ function columns(names: ReviewNames): XlsxColumn<Row>[] {
   return [
     { header: 'Review date', value: (x) => x.date, numFmt: 'dd mmm yyyy', width: 14 },
     { header: 'Department', value: (x) => x.name, width: 24 },
-    { header: 'Reported by', value: (x) => x.r?.reporter ?? '', width: 22 },
+    // Every report is filed and analysed by the CCM's office, so the sheet says CCM, not who typed it in.
+    { header: 'Reported by', value: (x) => (x.r ? 'CCM' : ''), width: 14 },
     { header: 'Status', value: (x) => (x.r ? HEALTH_LABEL[x.r.health] ?? x.r.health : 'Not reported'), width: 16 },
     {
       header: 'Department updates',
