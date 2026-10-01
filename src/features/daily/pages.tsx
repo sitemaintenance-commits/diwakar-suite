@@ -1,6 +1,6 @@
 // Daily Review — rebuilt natively from the existing Daily Review CRM.
 //   Daily Reports      file / edit one report per department per day
-//   Review Summary     today vs the previous day, plus the month view
+//   Review Summary     the day, another day beside it when one is chosen, plus the month view
 //   Management Review  CCM and Founder remarks, mark reviewed / returned
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -470,7 +470,9 @@ export function ReviewSummaryPage() {
   const can = useCan('daily.summary');
   const { setting } = useAccess();
   const [date, setDate] = useState(todayIST());
+  // The other day's column appears only once a "Compare with" date is chosen.
   const [compare, setCompare] = useState('');
+  const comparing = Boolean(compare);
   const review = useDailyReview(date, compare || undefined);
   const [month, setMonth] = useState(todayIST().slice(0, 7));
   const monthData = useDailyMonth(month);
@@ -501,7 +503,7 @@ export function ReviewSummaryPage() {
       <PageHeader
         icon={ClipboardCheck}
         title="Review Summary"
-        description="The day at a glance, next to the day before — the comparison the founder's office reviews."
+        description="The day at a glance. Pick a Compare with date to see another day side by side."
         actions={
           <>
             <Button variant="outline" onClick={onPrint} disabled={!review.data}>
@@ -534,7 +536,9 @@ export function ReviewSummaryPage() {
             <CardHeader className="flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <CardTitle>{fmtDate(date)}</CardTitle>
-                <CardDescription>Compared with {fmtDate(review.data?.compare_date ?? '')}</CardDescription>
+                <CardDescription>
+                  {comparing ? `Compared with ${fmtDate(compare)}` : 'Choose a Compare with date to see another day side by side.'}
+                </CardDescription>
               </div>
               <div className="flex gap-3">
                 <label className="grid gap-1.5">
@@ -545,6 +549,11 @@ export function ReviewSummaryPage() {
                   <span className="text-xs text-muted-foreground">Compare with</span>
                   <Input type="date" value={compare} max={date} onChange={(e) => setCompare(e.target.value)} className="w-40" />
                 </label>
+                {comparing && (
+                  <Button variant="ghost" size="sm" className="self-end" onClick={() => setCompare('')}>
+                    Clear
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -570,7 +579,7 @@ export function ReviewSummaryPage() {
                       <TableHead>Health</TableHead>
                       <TableHead>Department updates</TableHead>
                       <TableHead>Today</TableHead>
-                      <TableHead className="hidden lg:table-cell">Previous day</TableHead>
+                      {comparing && <TableHead className="hidden lg:table-cell">{fmtDate(compare)}</TableHead>}
                       <TableHead>Management</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -598,9 +607,11 @@ export function ReviewSummaryPage() {
                           {d.today?.work_completed ?? '—'}
                           {d.today?.issues && <div className="mt-1 text-xs text-amber-700">Issue: {d.today.issues}</div>}
                         </TableCell>
-                        <TableCell className="hidden max-w-xs text-sm text-muted-foreground lg:table-cell">
-                          {d.previous?.work_completed ?? '—'}
-                        </TableCell>
+                        {comparing && (
+                          <TableCell className="hidden max-w-xs text-sm text-muted-foreground lg:table-cell">
+                            {d.previous?.work_completed ?? '—'}
+                          </TableCell>
+                        )}
                         <TableCell className="text-sm">
                           {(d.today?.reviews ?? []).map((r, i) => (
                             <div key={r.id ?? i} className="mb-1">
