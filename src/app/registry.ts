@@ -23,6 +23,7 @@ import {
   FileText,
   Flag,
   FolderKanban,
+  FolderOpen,
   Gavel,
   Handshake,
   LayoutDashboard,
@@ -63,6 +64,7 @@ export const ICONS: Record<string, LucideIcon> = {
   FileText,
   Flag,
   FolderKanban,
+  FolderOpen,
   Gavel,
   Handshake,
   LayoutDashboard,
@@ -94,6 +96,7 @@ export function iconFor(name: string | null | undefined): LucideIcon {
 /** Module keys whose pages exist in this build (Phase 1). */
 export const BUILT_MODULES = new Set<string>([
   'dashboard',
+  'documents',
   'crm.leads',
   'crm.tenders',
   'crm.quotations',

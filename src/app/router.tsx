@@ -42,6 +42,11 @@ import { SiteOperationsPage } from '@/features/om/operations/SiteOperationsPage'
 import { TeamPerformancePage } from '@/features/om/performance/TeamPerformancePage';
 import { SiteTeamsPage } from '@/features/om/team/SiteTeamsPage';
 import { AnalyticsPage } from '@/features/om/analytics/AnalyticsPage';
+import { DocumentsPage, SectionDocumentsButton } from '@/features/documents/SectionDocuments';
+import { registerPageHeaderExtra } from '@/components/common';
+
+// Every section's page header carries its Documents button.
+registerPageHeaderExtra(SectionDocumentsButton);
 
 /** Wrap a page in its module permission gate. */
 const guard = (module: string, element: React.ReactNode, action: PermAction = 'view') => (
@@ -64,6 +69,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: guard('dashboard', <DashboardPage />) },
       { path: 'profile', element: <ProfilePage /> },
+      { path: 'documents', element: guard('documents', <DocumentsPage />) },
       { path: '403', element: <ForbiddenPage /> },
 
       // CRM & Tenders

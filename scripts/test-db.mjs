@@ -348,10 +348,10 @@ console.log('\nO&M / Solar (Phase 4)');
   // the daily form, the site register, their tickets and their own score.
   const r = await as(TECH, `select public.get_my_access() a`);
   const keys = Object.keys(r.rows[0].a.permissions).sort();
-  const expected = ['dashboard', 'hr.scorecard', 'hr.worklog',
+  const expected = ['dashboard', 'documents', 'hr.scorecard', 'hr.worklog',
                     'om.daily_entry', 'om.operations', 'om.performance', 'om.tickets'];
   JSON.stringify(keys) === JSON.stringify(expected)
-    ? ok('by default a technician sees the forms they file, their tickets and their own scores')
+    ? ok('by default a technician sees the forms they file, their tickets, their own scores and the documents page')
     : bad('default technician scope', keys.join(', '));
 }
 // Roles are data: the Super Admin widens the Technician role for this site
@@ -1743,6 +1743,45 @@ console.log('\nHR employee master import');
       ? ok('importing the same sheet again changes nothing, and shows where the sheet differs')
       : bad('employee re-import', JSON.stringify(again).slice(0, 400));
   }
+}
+
+console.log('\nDocuments in every section');
+{
+  const addDoc = (module, name, extra = '') => `insert into public.documents
+      (module_key, entity_type, entity_id, category, file_name, storage_path${extra ? ', valid_until' : ''})
+    values ('${module}', 'section', null, 'Site report', '${name}', '${module}/section/' || gen_random_uuid() || '-${name}'${extra ? `, ${extra}` : ''})`;
+  await expectOk('a technician with only VIEW adds a work document to the Team Performance section', TECH,
+    addDoc('om.performance', 'inverter-fault-photos.pdf'));
+  await expectError('but not to a section they cannot open', TECH,
+    addDoc('crm.tenders', 'not-mine.pdf'), 'row-level security');
+  await expectError('programs and scripts are refused', TECH,
+    addDoc('om.performance', 'tool.exe'), 'row-level security');
+  await expectError('a section document belongs to no record', TECH,
+    `insert into public.documents (module_key, entity_type, entity_id, file_name, storage_path)
+     values ('om.performance', 'section', gen_random_uuid(), 'x.pdf', 'om.performance/section/x.pdf')`, 'documents_entity_check');
+  await expectOk('storage takes the file in the section folder', TECH,
+    `insert into storage.objects (bucket_id, name, owner_id) values ('documents', 'om.performance/section/a-photo.jpg', $1)`, [TECH]);
+  await expectError('and refuses another section\'s folder', TECH,
+    `insert into storage.objects (bucket_id, name, owner_id) values ('documents', 'crm.tenders/section/a.pdf', $1)`, 'row-level security', [TECH]);
+  await expectOk('the same with an expiry date, for a certificate', TECH,
+    addDoc('om.performance', 'insurance-certificate.pdf', 'current_date + 10'));
+
+  const mine = (await as(TECH, `select public.list_documents('om.performance', 'section') r`)).rows[0].r;
+  const photo = mine.rows.find((d) => d.file_name === 'inverter-fault-photos.pdf');
+  const cert = mine.rows.find((d) => d.file_name === 'insurance-certificate.pdf');
+  mine.total === 2 && photo?.mine && photo.can_delete && photo.uploaded_by === 'Technician One' && cert?.expiry === 'expiring'
+    ? ok('the library lists them with the uploader, what they may do, and what is expiring')
+    : bad('section document list', JSON.stringify(mine).slice(0, 400));
+  await expectValue('the expiring filter finds the certificate only', TECH,
+    `select (public.list_documents(null, 'all', null, null, false, true)->>'total')::int`, 1);
+  await expectValue('someone who cannot open the section does not see them', SALES,
+    `select (public.list_documents('om.performance')->>'total')::int`, 0);
+  await expectValue('every role may open the Documents page', SALES,
+    `select public.get_my_access()->'permissions' ? 'documents'`, true);
+  await expectOk('the uploader deletes their own document', TECH,
+    `delete from public.documents where file_name = 'inverter-fault-photos.pdf'`);
+  await expectValue('and it is gone', OWNER,
+    `select count(*)::int from public.documents where file_name = 'inverter-fault-photos.pdf'`, 0);
 }
 
 console.log('\nDeactivation');

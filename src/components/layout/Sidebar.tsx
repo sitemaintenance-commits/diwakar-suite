@@ -76,9 +76,10 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </div>
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="Main">
         {groups.map((g) => {
-          // A group with a single item named like the group (Dashboard) renders flat.
-          if (g.items.length === 1 && g.items[0].label === g.label) {
-            return <NavItem key={g.key} item={g.items[0]} onNavigate={onNavigate} />;
+          // The top group (Dashboard, Documents) and any group with a single item
+          // named like the group render flat: one click, no flyout.
+          if (g.key === 'dashboard' || (g.items.length === 1 && g.items[0].label === g.label)) {
+            return g.items.map((item) => <NavItem key={item.key} item={item} onNavigate={onNavigate} />);
           }
           return flyouts ? <FlyoutGroup key={g.key} group={g} /> : <AccordionGroup key={g.key} group={g} onNavigate={onNavigate} />;
         })}

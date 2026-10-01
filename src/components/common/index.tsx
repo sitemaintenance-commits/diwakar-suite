@@ -1,5 +1,5 @@
 // Shared page-building blocks used by every module.
-import { useState, type ReactNode } from 'react';
+import { useState, type ComponentType, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, Search, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -23,6 +23,14 @@ import { signedUrl } from '@/lib/supabase';
 import type { UserStatus } from '@/lib/types';
 
 // ---------------------------------------------------------------- PageHeader
+// One extra action every page header shows (the section's Documents
+// button). The app registers it at start-up, so this file does not import
+// the documents feature, which itself builds on these components.
+let HeaderExtra: ComponentType | null = null;
+export function registerPageHeaderExtra(component: ComponentType) {
+  HeaderExtra = component;
+}
+
 export function PageHeader({
   title,
   description,
@@ -47,7 +55,12 @@ export function PageHeader({
           {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
         </div>
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {(actions || HeaderExtra) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {actions}
+          {HeaderExtra && <HeaderExtra />}
+        </div>
+      )}
     </div>
   );
 }

@@ -371,7 +371,9 @@ export interface DocumentRow {
   id: string;
   module_key: string;
   entity_type: string;
-  entity_id: string;
+  /** null for a section library document (entity_type 'section'). */
+  entity_id: string | null;
+  valid_until?: string | null;
   category: string | null;
   file_name: string;
   storage_path: string;
