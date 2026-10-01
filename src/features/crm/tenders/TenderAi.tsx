@@ -45,6 +45,10 @@ const MAX_IMAGES = 4;
 const MAX_PDF = 50_000_000;
 
 // ---------------------------------------------------------------- summary view
+/** Saved AI output is data: show anything that is not text as text rather than let one odd item break the page. */
+const asText = (v: unknown): string =>
+  typeof v === 'string' ? v : v == null ? '' : typeof v === 'object' && 'text' in v ? asText((v as { text: unknown }).text) : String(v);
+
 function List({ title, items }: { title: string; items: string[] }) {
   if (!items?.length) return null;
   return (
@@ -52,7 +56,7 @@ function List({ title, items }: { title: string; items: string[] }) {
       <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</h4>
       <ul className="list-disc space-y-0.5 pl-5 text-sm text-slate-700">
         {items.map((x, i) => (
-          <li key={i}>{x}</li>
+          <li key={i}>{asText(x)}</li>
         ))}
       </ul>
     </div>
@@ -67,8 +71,8 @@ function Pairs({ title, items }: { title: string; items: { label: string; value:
       <dl className="grid grid-cols-1 gap-x-4 gap-y-1 text-sm sm:grid-cols-[minmax(0,14rem)_1fr]">
         {items.map((x, i) => (
           <div key={i} className="contents">
-            <dt className="text-slate-500">{x.label}</dt>
-            <dd className="font-medium text-slate-800">{x.value}</dd>
+            <dt className="text-slate-500">{asText(x.label)}</dt>
+            <dd className="font-medium text-slate-800">{asText(x.value)}</dd>
           </div>
         ))}
       </dl>
