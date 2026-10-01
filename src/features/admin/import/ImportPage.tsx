@@ -4,10 +4,10 @@
 // Every importer is idempotent: a record that is already here is left
 // alone. "Check first" runs the same code with p_dry_run, so you can see
 // what would land before anything is written.
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Blocks, ClipboardCheck, FileUp, Loader2, Play, Search, Sun } from 'lucide-react';
+import { Blocks, ClipboardCheck, FileSpreadsheet, FileUp, Loader2, Play, Search, Sun } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
 import { fmtNumber } from '@/lib/format';
@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/common';
+import { ImportReviewDialog } from '@/features/daily/ImportReviewDialog';
 
 /** A small CSV reader: quoted fields, embedded commas and newlines. */
 function parseCsv(text: string): string[][] {
@@ -146,7 +147,7 @@ const SOURCES: Source[] = [
   },
   {
     key: 'daily',
-    title: 'Daily Review reports',
+    title: 'Department Review reports (backup file)',
     icon: ClipboardCheck,
     rpc: 'import_daily_reports',
     arg: 'p_payload',
@@ -195,10 +196,45 @@ export function ImportPage() {
 
       <div className="grid gap-6">
         {SOURCES.map((s) => (
-          <ImportCard key={s.key} source={s} canImport={can.create} />
+          <Fragment key={s.key}>
+            <ImportCard source={s} canImport={can.create} />
+            {s.key === 'daily' && <ReviewWorkbookCard canImport={can.create} />}
+          </Fragment>
         ))}
       </div>
     </>
+  );
+}
+
+/** The legacy "Daily Review Update Tracker" workbook, or the old site's Excel download. */
+function ReviewWorkbookCard({ canImport }: { canImport: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary">
+            <FileSpreadsheet className="h-5 w-5" />
+          </div>
+          <div>
+            <CardTitle>Department Review workbook (Excel)</CardTitle>
+            <CardDescription>
+              Department reports by day: reported by, status, department updates, today’s key remarks, CCM and Founder remarks.
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="flex flex-wrap items-center gap-3">
+        <p className="flex-1 text-xs text-muted-foreground">
+          The “Daily Review Update Tracker” workbook, or an Excel file downloaded from the old Daily Review CRM. You see
+          what would change before anything is written.
+        </p>
+        <Button size="sm" onClick={() => setOpen(true)} disabled={!canImport}>
+          <FileSpreadsheet className="mr-2 h-4 w-4" /> Choose workbook
+        </Button>
+      </CardContent>
+      <ImportReviewDialog open={open} onOpenChange={setOpen} />
+    </Card>
   );
 }
 

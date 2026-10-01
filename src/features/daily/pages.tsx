@@ -6,13 +6,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  CalendarDays, CheckCircle2, ClipboardCheck, ClipboardList, Download, Loader2, MessageSquareText, Megaphone, Plus, Printer, Save, Send, TriangleAlert, Trash2, Upload,
+  CalendarDays, CheckCircle2, ClipboardCheck, ClipboardList, Download, Loader2, MessageSquareText, Megaphone, Plus, Printer, Save, Send, TriangleAlert, Trash2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
 import { printDayReview } from '@/features/daily/print';
 import { downloadReviewDay } from '@/features/daily/reviewExcel';
-import { ImportReviewDialog } from '@/features/daily/ImportReviewDialog';
 import { fmtDate, fmtDateTime, fmtNumber, safeNum, todayIST } from '@/lib/format';
 import type { BadgeTone } from '@/lib/types';
 import { useAccess, useCan } from '@/auth/AccessProvider';
@@ -620,7 +619,6 @@ export function ManagementReviewPage() {
   const [remarkFor, setRemarkFor] = useState<{ report: DeptReport; department: string } | null>(null);
   const [headlineOpen, setHeadlineOpen] = useState(false);
   const [broadcastOpen, setBroadcastOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
   const reports = useCan('daily.reports');
   const summary = useCan('daily.summary');
   const names = useReviewNames();
@@ -676,11 +674,6 @@ export function ManagementReviewPage() {
                 <Plus /> Day headline
               </Button>
             )}
-            {reports.create && (
-              <Button variant="outline" onClick={() => setImportOpen(true)}>
-                <Upload /> Import Excel
-              </Button>
-            )}
             {(summary.export || reports.export) && (
               <Button variant="outline" onClick={() => void onDownload()} disabled={!review.data}>
                 <Download /> Download Excel
@@ -692,7 +685,6 @@ export function ManagementReviewPage() {
           </>
         }
       />
-      <ImportReviewDialog open={importOpen} onOpenChange={setImportOpen} />
 
       <Card className="mb-6">
         <CardContent className="flex flex-wrap items-end gap-3 p-4">
