@@ -139,6 +139,21 @@ function DeleteRemarkButton({ remark, onDeleted }: { remark: Remark; onDeleted?:
   );
 }
 
+/** Department heads, shown under each department's name (display only). */
+const DEPARTMENT_HEADS: Record<string, string> = {
+  'Design & Engineering': 'Ganesh',
+  'Procurement & Stores': 'Rajat Bhargav',
+  'Projects & Installation': 'Ankit Goyal',
+  'O&M / Service': 'Rajpal Singh Shekhawat',
+  HR: 'Banwari Verma',
+  Admin: 'Keshav Agarwal',
+};
+
+function DepartmentHead({ name }: { name: string }) {
+  const head = DEPARTMENT_HEADS[name];
+  return head ? <div className="text-xs text-muted-foreground">Head: {head}</div> : null;
+}
+
 function emptyMetricsFor(departmentName: string): Metric[] {
   const labels = DEFAULT_METRICS_BY_DEPARTMENT[departmentName];
   return labels?.length ? labels.map((label) => ({ label, value: '' })) : [{ label: '', value: '' }];
@@ -255,9 +270,12 @@ export function DailyReportsPage() {
           {review.data.departments.map((d) => (
             <Card key={d.department_id}>
               <CardHeader className="flex-row items-start justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-full" style={{ background: d.color }} />
-                  <CardTitle className="text-base">{d.name}</CardTitle>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="h-3 w-3 rounded-full" style={{ background: d.color }} />
+                    <CardTitle className="text-base">{d.name}</CardTitle>
+                  </div>
+                  <div className="pl-5"><DepartmentHead name={d.name} /></div>
                 </div>
                 {d.today ? <StatusChip map={REPORT_STATUS} value={d.today.status} /> : <Badge variant="secondary">Not filed</Badge>}
               </CardHeader>
@@ -786,6 +804,7 @@ export function ManagementReviewPage() {
                     <StatusChip map={HEALTH} value={d.today!.health} />
                     <StatusChip map={REPORT_STATUS} value={d.today!.status} />
                   </CardTitle>
+                  <DepartmentHead name={d.name} />
                   <CardDescription>Reported by CCM</CardDescription>
                 </div>
                 <div className="flex flex-wrap gap-2">
