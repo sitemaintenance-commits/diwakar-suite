@@ -138,7 +138,7 @@ export function DailyReportsPage() {
     <>
       <PageHeader
         icon={ClipboardList}
-        title="Daily Reports"
+        title="Department Reports"
         description="One report per department per day: what was done, what is stuck, and tomorrow's plan."
       />
 

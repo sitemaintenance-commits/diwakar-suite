@@ -304,7 +304,7 @@ function RolloutCard() {
     { phase: 3, label: 'Projects & tasks' },
     { phase: 4, label: 'O&M & solar monitoring' },
     { phase: 5, label: 'HR / PMS' },
-    { phase: 6, label: 'Daily Review' },
+    { phase: 6, label: 'Department Review' },
     { phase: 7, label: 'Reports & analytics' },
   ];
   const released = (p: number) => {

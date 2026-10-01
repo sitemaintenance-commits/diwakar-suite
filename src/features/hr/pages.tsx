@@ -894,7 +894,7 @@ export function TasksPage() {
       <PageHeader
         icon={ListChecks}
         title="Task Log"
-        description="One task list across CRM, tenders, O&M, HR and daily reviews."
+        description="One task list across CRM, tenders, O&M, HR and department reviews."
         actions={
           <>
             {can.export && (

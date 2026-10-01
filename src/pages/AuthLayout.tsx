@@ -6,7 +6,7 @@ const MODULES = [
   { icon: Handshake, label: 'CRM' },
   { icon: Sun, label: 'Projects & O&M' },
   { icon: Users, label: 'HR & Performance' },
-  { icon: ClipboardList, label: 'Daily Review' },
+  { icon: ClipboardList, label: 'Department Review' },
   { icon: BarChart3, label: 'Reports' },
   { icon: ShieldCheck, label: 'Role-based access' },
 ];
@@ -34,7 +34,7 @@ export function AuthLayout({ title, subtitle, children }: { title: string; subti
         <div className="relative mt-auto max-w-md">
           <h2 className="text-3xl font-bold leading-tight">One platform for every team.</h2>
           <p className="mt-3 text-white/85">
-            Sales, projects, plant operations, people and daily reviews — with one login and access tailored to your role and
+            Sales, projects, plant operations, people and department reviews — with one login and access tailored to your role and
             sites.
           </p>
           <div className="mt-8 grid grid-cols-2 gap-3">

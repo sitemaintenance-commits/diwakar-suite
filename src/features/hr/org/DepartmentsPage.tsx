@@ -44,7 +44,7 @@ export function DepartmentsPage() {
 
   return (
     <>
-      <PageHeader icon={Network} title="Departments" description="Organisation structure used across HR, users and daily reviews." />
+      <PageHeader icon={Network} title="Departments" description="Organisation structure used across HR, users and department reviews." />
       <Tabs defaultValue="departments">
         <TabsList>
           <TabsTrigger value="departments">
