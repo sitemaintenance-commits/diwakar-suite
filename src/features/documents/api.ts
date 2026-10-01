@@ -9,6 +9,8 @@ export interface LibraryDoc {
   module_key: string;
   module_label: string;
   module_route: string | null;
+  group_key: string;
+  group_label: string;
   entity_type: string;
   entity_id: string | null;
   category: string | null;
@@ -37,6 +39,8 @@ export interface DocList {
 
 export interface DocFilters {
   module?: string | null;
+  /** A menu category (module group key): O&M, Projects ... */
+  group?: string | null;
   scope?: 'all' | 'section' | 'records';
   search?: string;
   category?: string | null;
@@ -61,6 +65,7 @@ export async function fetchDocuments(f: DocFilters): Promise<DocList> {
     p_expiring: f.expiring ?? false,
     p_limit: f.limit ?? 50,
     p_offset: f.offset ?? 0,
+    p_group: f.group ?? null,
   });
   if (error) throw error;
   return data as DocList;

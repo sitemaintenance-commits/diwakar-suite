@@ -52,16 +52,24 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
     [access, can],
   );
 
+  const groups = useMemo(
+    () => [...(access?.groups ?? [])]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .filter((g) => modules.some((m) => m.group === g.key)),
+    [access, modules],
+  );
+
   // ------------------------------------------------------------ filters
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState(ALL);
-  const [section, setSection] = useState(ALL);
+  const [section, setSection] = useState(ALL); // a menu category on the Documents page
   const [scope, setScope] = useState<'all' | 'section' | 'records'>(moduleKey ? 'section' : 'all');
   const [mine, setMine] = useState(false);
   const [expiring, setExpiring] = useState(false);
   const [limit, setLimit] = useState(PAGE);
   const filters = {
-    module: moduleKey ?? (section === ALL ? null : section),
+    module: moduleKey ?? null,
+    group: moduleKey || section === ALL ? null : section,
     scope,
     search,
     category: category === ALL ? null : category,
@@ -75,6 +83,13 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
   const fileRef = useRef<HTMLInputElement>(null);
   const [queue, setQueue] = useState<File[]>([]);
   const [target, setTarget] = useState(moduleKey ?? '');
+  const [targetGroup, setTargetGroup] = useState('');
+  const groupModules = modules.filter((m) => m.group === targetGroup);
+  function chooseGroup(g: string) {
+    setTargetGroup(g);
+    const inGroup = modules.filter((m) => m.group === g);
+    setTarget(inGroup.length === 1 ? inGroup[0].key : '');
+  }
   const [upCategory, setUpCategory] = useState('');
   const [upNotes, setUpNotes] = useState('');
   const [upValid, setUpValid] = useState('');
@@ -96,7 +111,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
   }
 
   async function uploadAll() {
-    if (!target) return toast.error('Choose the section the documents belong to.');
+    if (!target) return toast.error(moduleKey ? 'No section.' : 'Choose the category and section the documents belong to.');
     if (!queue.length) return;
     setUploading({ done: 0, total: queue.length });
     const failed: File[] = [];
@@ -132,6 +147,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
       const all = await fetchDocuments({ ...filters, limit: 5000, offset: 0 });
       await exportXlsx('documents', `documents-${todayIST()}`, all.rows, [
         { header: 'File', value: (r) => r.file_name, width: 40 },
+        { header: 'Category', value: (r) => r.group_label, width: 18 },
         { header: 'Section', value: (r) => r.module_label, width: 22 },
         { header: 'Type', value: (r) => r.category ?? '', width: 18 },
         { header: 'Plant', value: (r) => r.site ?? '', width: 16 },
@@ -187,9 +203,15 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
               </ul>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {!moduleKey && (
+                  <Field label="Category" required>
+                    <FilterSelect value={targetGroup} onChange={chooseGroup} placeholder="O&M, Projects, HR…"
+                      options={groups.map((g) => [g.key, g.label] as [string, string])} />
+                  </Field>
+                )}
+                {!moduleKey && groupModules.length > 1 && (
                   <Field label="Section" required>
                     <FilterSelect value={target} onChange={setTarget} placeholder="Choose a section"
-                      options={modules.map((m) => [m.key, m.label] as [string, string])} />
+                      options={groupModules.map((m) => [m.key, m.label] as [string, string])} />
                   </Field>
                 )}
                 <Field label="Document type">
@@ -229,7 +251,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
         <div className={`grid flex-1 gap-2 ${moduleKey ? 'grid-cols-1 sm:max-w-xs' : 'grid-cols-1 sm:grid-cols-3'}`}>
           {!moduleKey && (
             <FilterSelect value={section} onChange={(v) => { setSection(v); setLimit(PAGE); }}
-              options={[[ALL, 'All sections'], ...modules.map((m) => [m.key, m.label] as [string, string])]} />
+              options={[[ALL, 'All categories'], ...groups.map((g) => [g.key, g.label] as [string, string])]} />
           )}
           <FilterSelect value={category} onChange={(v) => { setCategory(v); setLimit(PAGE); }}
             options={[[ALL, 'All types'], ...(list.data?.categories ?? []).map((c) => [c, c] as [string, string])]} />
@@ -274,7 +296,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
                       {d.entity_type !== 'section' && <Badge variant="outline">Attached to a {d.entity_type}</Badge>}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {!moduleKey && `${d.module_label} · `}
+                      {!moduleKey && (d.group_label === d.module_label ? `${d.module_label} · ` : `${d.group_label} › ${d.module_label} · `)}
                       {d.site && `${d.site} · `}
                       {d.uploaded_by ?? 'Unknown'} · {fmtDate(d.created_at)}
                       {d.size_bytes ? ` · ${fmtSize(d.size_bytes)}` : ''}

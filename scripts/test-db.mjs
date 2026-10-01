@@ -1774,6 +1774,12 @@ console.log('\nDocuments in every section');
     : bad('section document list', JSON.stringify(mine).slice(0, 400));
   await expectValue('the expiring filter finds the certificate only', TECH,
     `select (public.list_documents(null, 'all', null, null, false, true)->>'total')::int`, 1);
+  await expectValue('filtering by menu category: both are under O&M', TECH,
+    `select (public.list_documents(null, 'all', null, null, false, false, 50, 0, 'operations')->>'total')::int`, 2);
+  await expectValue('and none under CRM & Tenders', TECH,
+    `select (public.list_documents(null, 'all', null, null, false, false, 50, 0, 'crm')->>'total')::int`, 0);
+  await expectValue('each document says which category it belongs to', TECH,
+    `select public.list_documents('om.performance')->'rows'->0->>'group_label'`, 'O&M');
   await expectValue('someone who cannot open the section does not see them', SALES,
     `select (public.list_documents('om.performance')->>'total')::int`, 0);
   await expectValue('every role may open the Documents page', SALES,
