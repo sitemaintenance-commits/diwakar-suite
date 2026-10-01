@@ -132,7 +132,7 @@ export function DailyWorkPage() {
 
   const history = (
     <Button variant="outline" asChild>
-      <Link to="/hr/daily-work/history"><CalendarDays /> Work history</Link>
+      <Link to="/hr/work-history"><CalendarDays /> Work history</Link>
     </Button>
   );
   const picker = (

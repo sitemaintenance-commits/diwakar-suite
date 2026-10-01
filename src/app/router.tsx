@@ -167,7 +167,8 @@ export const router = createBrowserRouter([
         children: [
           { path: 'employees', element: guard('hr.employees', <EmployeesPage />) },
           { path: 'daily-work', element: guard('hr.worklog', <DailyWorkPage />) },
-          { path: 'daily-work/history', element: guard('hr.worklog', <WorkHistoryPage />) },
+          { path: 'work-history', element: guard('hr.history', <WorkHistoryPage />) },
+          { path: 'daily-work/history', element: <Navigate to="/hr/work-history" replace /> },
           { path: 'attendance', element: guard('hr.attendance', <AttendancePage />) },
           { path: 'scorecard', element: guard('hr.scorecard', <ScorecardPage />) },
           { path: 'performance', element: guard('hr.performance', <PerformancePage />) },

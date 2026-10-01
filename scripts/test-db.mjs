@@ -348,7 +348,7 @@ console.log('\nO&M / Solar (Phase 4)');
   // the daily form, the site register, their tickets and their own score.
   const r = await as(TECH, `select public.get_my_access() a`);
   const keys = Object.keys(r.rows[0].a.permissions).sort();
-  const expected = ['dashboard', 'documents', 'hr.scorecard', 'hr.worklog',
+  const expected = ['dashboard', 'documents', 'hr.history', 'hr.scorecard', 'hr.worklog',
                     'om.daily_entry', 'om.operations', 'om.performance', 'om.tickets'];
   JSON.stringify(keys) === JSON.stringify(expected)
     ? ok('by default a technician sees the forms they file, their tickets, their own scores and the documents page')
@@ -1820,9 +1820,9 @@ console.log('\nPMS replacement: employee logins and the work history calendar');
       : bad('employee_logins', JSON.stringify({ k, b }));
   }
   await expectError('someone without user management cannot read it', EMPL, `select public.employee_logins()`, 'admin.users');
-  await expectValue('an Employee sees only their own work, score, attendance, leave, the dashboard and documents', EMPL,
+  await expectValue('an Employee sees only their own work and its history, score, attendance, leave, the dashboard and documents', EMPL,
     `select string_agg(k, ',' order by k) from jsonb_object_keys(public.get_my_access()->'permissions') k`,
-    'dashboard,documents,hr.attendance,hr.leave,hr.scorecard,hr.worklog');
+    'dashboard,documents,hr.attendance,hr.history,hr.leave,hr.scorecard,hr.worklog');
 
   const task = `'[{"seq":1,"description":"Gate register checked","status":"completed"},{"seq":2,"description":"Patrol round","status":"in_progress"}]'::jsonb`;
   await expectOk('Ketan files and submits today\'s sheet himself', EMPL,
