@@ -1881,6 +1881,26 @@ console.log('\nNo duplicate employees, and technicians on their own plant');
     : bad('plant from work location', JSON.stringify(t));
 }
 
+console.log('\nDepartment Review Coordinator');
+{
+  const COORD = await createAuthUser('coordinator@diwakarsolar.test', 'Review Coordinator');
+  await expectOk('a coordinator login is created', OWNER, `select public.admin_save_user($1, $2, true)`,
+    [COORD, JSON.stringify({ full_name: 'Review Coordinator', role_ids: [role.review_coordinator, role.employee] })]);
+  await signIn(COORD);
+  const depts = (await asSystem(`select id, name from public.departments where in_daily_review and status = 'active' order by name limit 2`)).rows;
+  for (const d of depts) {
+    await expectOk(`the coordinator files ${d.name}'s report of the day`, COORD,
+      `select public.save_daily_report(jsonb_build_object('report_date', (current_date + 0)::text, 'department_id', $1::text,
+         'health', 'on_track', 'work_completed', 'Filed by the coordinator', 'status', 'submitted'), '[]'::jsonb)`, [d.id]);
+  }
+  await expectOk('and writes the CCM remark for all departments at once', COORD,
+    `select public.save_review_remark(current_date, 'Keep the dispatch on schedule', null, 'ccm_remark')`);
+  await expectValue('the Review Summary shows those reports to the coordinator', COORD,
+    `select (public.get_daily_review(current_date)->'totals'->>'reported')::int >= 2`, true);
+  await expectValue('but marking a report reviewed stays with management', COORD,
+    `select public.has_permission('daily.review', 'approve')`, false);
+}
+
 console.log('\nDeactivation');
 await expectOk('Admin deactivates Technician', ADMIN, `select public.admin_set_user_status($1, 'inactive')`, [TECH]);
 await expectValue('deactivated user loses every permission immediately', TECH, `select public.has_permission('dashboard','view')`, false);

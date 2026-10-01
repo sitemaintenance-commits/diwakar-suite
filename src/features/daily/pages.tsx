@@ -6,11 +6,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  CalendarDays, CheckCircle2, ClipboardCheck, ClipboardList, Download, Loader2, MessageSquareText, Megaphone, Plus, Save, Send, TriangleAlert, Trash2,
+  CalendarDays, CheckCircle2, ClipboardCheck, ClipboardList, Download, Loader2, MessageSquareText, Megaphone, Plus, Printer, Save, Send, TriangleAlert, Trash2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
+import { printDayReview } from '@/features/daily/print';
 import { fmtDate, fmtDateTime, fmtNumber, safeNum, todayIST } from '@/lib/format';
 import type { BadgeTone } from '@/lib/types';
 import { useAccess, useCan } from '@/auth/AccessProvider';
@@ -390,6 +391,7 @@ function ReportEditor({
 // ==================================================================== Review summary
 export function ReviewSummaryPage() {
   const can = useCan('daily.summary');
+  const { setting } = useAccess();
   const [date, setDate] = useState(todayIST());
   const [compare, setCompare] = useState('');
   const review = useDailyReview(date, compare || undefined);
@@ -397,21 +399,37 @@ export function ReviewSummaryPage() {
   const monthData = useDailyMonth(month);
   const t = review.data?.totals;
 
+  const remarkLabel = (a: string) => (a === 'founder_remark' ? 'Founder' : a === 'ccm_remark' ? 'CCM' : a);
+
   async function onExport() {
-    const rows = review.data?.departments ?? [];
+    const data = review.data;
+    if (!data) return;
+    const headline = (data.headline?.metrics ?? []).map((m) => `${m.label}: ${m.value}`).join('   ·   ');
     try {
-      await exportCsv('daily.summary', `daily-review-${date}`, rows, [
-        { header: 'Department', value: (r) => r.name },
-        { header: 'Status', value: (r) => (r.today ? REPORT_STATUS[r.today.status]?.label : 'Not filed') },
-        { header: 'Health', value: (r) => (r.today ? HEALTH[r.today.health]?.label : '') },
-        { header: 'Reported by', value: (r) => r.today?.reporter },
-        { header: 'Key numbers', value: (r) => (r.today?.metrics ?? []).map((m) => `${m.label}: ${m.value}`).join(' | ') },
-        { header: 'Work completed', value: (r) => r.today?.work_completed },
-        { header: 'Issues', value: (r) => r.today?.issues },
-        { header: 'Plan for tomorrow', value: (r) => r.today?.next_day_plan },
-        { header: 'Management remarks', value: (r) => (r.today?.reviews ?? []).map((x) => `${x.action}: ${x.comment}`).join(' | ') },
-        { header: 'Previous day work', value: (r) => r.previous?.work_completed },
-      ]);
+      await exportXlsx('daily.summary', `department-review-${date}`, data.departments, [
+        { header: 'Department', value: (r) => r.name, width: 22 },
+        { header: 'Status', value: (r) => (r.today ? REPORT_STATUS[r.today.status]?.label ?? r.today.status : 'Not filed'), width: 12 },
+        { header: 'Health', value: (r) => (r.today ? HEALTH[r.today.health]?.label ?? r.today.health : ''), width: 14 },
+        { header: 'Reported by', value: (r) => r.today?.reporter ?? '', width: 18 },
+        { header: 'Key numbers', value: (r) => (r.today?.metrics ?? []).filter((m) => m.label).map((m) => `${m.label}: ${m.value}`).join('\n'), width: 40 },
+        { header: 'Work completed', value: (r) => r.today?.work_completed ?? '', width: 45 },
+        { header: 'Issues / stuck', value: (r) => r.today?.issues ?? '', width: 35 },
+        { header: 'Plan for tomorrow', value: (r) => r.today?.next_day_plan ?? '', width: 35 },
+        { header: 'Founder / CCM remarks', value: (r) => (r.today?.reviews ?? []).filter((x) => x.comment).map((x) => `${remarkLabel(x.action)}: ${x.comment}`).join('\n'), width: 40 },
+        { header: `Previous day (${fmtDate(data.compare_date)}) work`, value: (r) => r.previous?.work_completed ?? '', width: 40 },
+      ], {
+        sheet: 'Department Review',
+        title: ['DEPARTMENT REVIEW', `${fmtDate(date)} · compared with ${fmtDate(data.compare_date)}`, ...(headline ? [headline] : [])],
+      });
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
+
+  function onPrint() {
+    if (!review.data) return;
+    try {
+      printDayReview(review.data, setting('company_name', 'Diwakar Renewable & Infra Pvt. Ltd.'));
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -424,11 +442,16 @@ export function ReviewSummaryPage() {
         title="Review Summary"
         description="The day at a glance, next to the day before — the comparison the founder's office reviews."
         actions={
-          can.export && (
-            <Button variant="outline" onClick={onExport}>
-              <Download /> Export
+          <>
+            <Button variant="outline" onClick={onPrint} disabled={!review.data}>
+              <Printer /> Print / PDF
             </Button>
-          )
+            {can.export && (
+              <Button variant="outline" onClick={onExport} disabled={!review.data}>
+                <Download /> Download Excel
+              </Button>
+            )}
+          </>
         }
       />
 
