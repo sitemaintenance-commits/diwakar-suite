@@ -11,6 +11,7 @@
 import {
   Activity,
   Award,
+  BadgeCheck,
   BarChart3,
   Blocks,
   Building2,
@@ -53,6 +54,7 @@ import {
 export const ICONS: Record<string, LucideIcon> = {
   Activity,
   Award,
+  BadgeCheck,
   BarChart3,
   Blocks,
   Building2,
@@ -99,6 +101,7 @@ export function iconFor(name: string | null | undefined): LucideIcon {
 export const BUILT_MODULES = new Set<string>([
   'dashboard',
   'documents',
+  'approvals',
   'crm.leads',
   'crm.tenders',
   'crm.quotations',

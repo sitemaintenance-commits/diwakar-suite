@@ -44,6 +44,7 @@ import { TeamPerformancePage } from '@/features/om/performance/TeamPerformancePa
 import { SiteTeamsPage } from '@/features/om/team/SiteTeamsPage';
 import { AnalyticsPage } from '@/features/om/analytics/AnalyticsPage';
 import { DocumentsPage, SectionDocumentsButton } from '@/features/documents/SectionDocuments';
+import { ApprovalsPage } from '@/features/approvals/ApprovalsPage';
 import { registerPageHeaderExtra } from '@/components/common';
 
 // Every section's page header carries its Documents button.
@@ -71,6 +72,7 @@ export const router = createBrowserRouter([
       { index: true, element: guard('dashboard', <DashboardPage />) },
       { path: 'profile', element: <ProfilePage /> },
       { path: 'documents', element: guard('documents', <DocumentsPage />) },
+      { path: 'approvals', element: guard('approvals', <ApprovalsPage />) },
       { path: '403', element: <ForbiddenPage /> },
 
       // CRM & Tenders
