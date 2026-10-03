@@ -12,9 +12,14 @@ What the app adds on top of the website:
 - a green splash screen while it loads, and a "No internet connection" screen with **Try again**;
 - WhatsApp, phone and email links open in WhatsApp, the dialer and the mail app;
 - the phone's back button goes back inside the app;
-- pull down to refresh.
+- if the app page hasn't loaded after a few seconds, the splash screen gives way to the page or a **Try again** screen, never an endless green screen.
 
-The app link is set at the top of `lib/main.dart` (`appUrl`). Change it only if you create a brand-new deployment with a different link.
+The links are at the top of `lib/main.dart`:
+
+- `appUrl`: the app page on GitHub Pages (no Google warning bar).
+- `fallbackUrl`: your Apps Script web app link. The phone app opens this one automatically if the GitHub Pages page isn't available.
+
+Change them only if the GitHub repository or the Apps Script deployment link changes.
 
 ---
 
@@ -30,13 +35,14 @@ GitHub builds the APK for you on its servers.
    and drag it into the GitHub page. Click **Commit changes**.
    GitHub accepts up to 100 files per upload. If it says there are too many, upload the `android`
    folder first and commit, then upload everything else the same way and commit again.
-5. Click the **Actions** tab. A run called **Build app** starts by itself (about 8 minutes).
-6. When it shows a green tick, open it and scroll to **Artifacts**. Download **sadhna-healing-android-apk**.
-   Unzip it to get `app-release.apk`.
+5. Click the **Actions** tab. A run called **Build Sadhna Healing app** starts by itself when you push to the `sadhna-healing-app` branch (about 6 minutes).
+6. When it shows a green tick, the finished files are saved to the branch `sadhna-healing-builds`:
+   `Sadhna-Healing-Android.apk` (most phones), `Sadhna-Healing-Android-older-phones.apk`,
+   `Sadhna-Healing-Android-all-phones.apk` and `Sadhna-Healing-iPhone-unsigned.ipa`.
 
 ### Install the APK on an Android phone
 
-1. Send `app-release.apk` to the phone (WhatsApp it to yourself, Google Drive, or a USB cable).
+1. Send `Sadhna-Healing-Android.apk` to the phone (WhatsApp it to yourself, Google Drive, or a USB cable).
 2. Tap it. Android asks to allow installing from this source: tap **Settings → Allow**, then **Install**.
 3. Open **Sadhna Healing** from the home screen.
 
