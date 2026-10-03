@@ -24,10 +24,14 @@ jobs:
         run: |
           set -o pipefail
           flutter build apk --release 2>&1 | tee android-build.log
-          cp build/app/outputs/flutter-apk/app-release.apk Sadhna-Healing-Android.apk
+          cp build/app/outputs/flutter-apk/app-release.apk Sadhna-Healing-Android-all-phones.apk
+          # Smaller copies: one for modern 64-bit phones (almost all phones since 2019) and one for older phones.
+          flutter build apk --release --split-per-abi 2>&1 | tail -n 20 >> android-build.log
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk Sadhna-Healing-Android.apk
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk Sadhna-Healing-Android-older-phones.apk
       - if: always()
         uses: actions/upload-artifact@v4
-        with: { name: android, path: "Sadhna-Healing-Android.apk\nandroid-build.log", if-no-files-found: ignore }
+        with: { name: android, path: "Sadhna-Healing-Android.apk\nSadhna-Healing-Android-older-phones.apk\nSadhna-Healing-Android-all-phones.apk\nandroid-build.log", if-no-files-found: ignore }
 
   ios:
     runs-on: macos-latest
