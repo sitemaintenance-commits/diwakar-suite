@@ -1,0 +1,2440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1F4D46">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Sadhna Healing">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Sadhna Healing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Mukta:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: phone-first single column for patients; widens to a desk layout for the admin panel. */
+:root{
+  --bg:#EEF3F1; --surface:#FFFFFF; --surface-2:#F6F9F8;
+  --ink:#16221F; --muted:#5B6B66; --line:#D7E2DE;
+  --primary:#1F4D46; --primary-2:#2C6A60; --primary-ink:#FFFFFF; --primary-soft:#DDEBE7;
+  --accent:#D99A24; --accent-soft:#FBF0DA; --accent-ink:#1C1505;
+  --danger:#B3402F; --danger-soft:#F8E3DF;
+  --ok:#2E7D5B; --ok-soft:#DFF1E8;
+  --info:#3A5E9C; --info-soft:#E1E9F6;
+  --scrim:rgba(10,20,18,.45);
+  --shadow:0 1px 2px rgba(22,34,31,.06),0 8px 24px rgba(22,34,31,.07);
+  --display:"Cormorant Garamond",Georgia,"Times New Roman",serif;
+  --body:"Mukta",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --ease:cubic-bezier(.2,.8,.2,1);
+  --appw:480px;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1816; --surface:#17231F; --surface-2:#1C2B27;
+    --ink:#E6EEEB; --muted:#9DB0AA; --line:#2A3B36;
+    --primary:#7FC3B4; --primary-2:#5FA697; --primary-ink:#0F1816; --primary-soft:#1F3934;
+    --accent:#E8B04A; --accent-soft:#3A2F1A; --accent-ink:#1C1505;
+    --danger:#E58473; --danger-soft:#3A221E;
+    --ok:#6FCB9F; --ok-soft:#1C3329;
+    --info:#8FB0E8; --info-soft:#1E2A3D;
+    --scrim:rgba(0,0,0,.6);
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.25);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1816; --surface:#17231F; --surface-2:#1C2B27;
+  --ink:#E6EEEB; --muted:#9DB0AA; --line:#2A3B36;
+  --primary:#7FC3B4; --primary-2:#5FA697; --primary-ink:#0F1816; --primary-soft:#1F3934;
+  --accent:#E8B04A; --accent-soft:#3A2F1A; --accent-ink:#1C1505;
+  --danger:#E58473; --danger-soft:#3A221E;
+  --ok:#6FCB9F; --ok-soft:#1C3329;
+  --info:#8FB0E8; --info-soft:#1E2A3D;
+  --scrim:rgba(0,0,0,.6);
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.25);
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px);-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5;-webkit-tap-highlight-color:transparent}
+body.is-wide{--appw:1120px}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+a{color:var(--primary)}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:6px}
+h2,h3{text-wrap:balance}
+
+.app{max-width:var(--appw);margin:0 auto;min-height:100vh;display:flex;flex-direction:column;background:var(--bg);position:relative;overflow-x:hidden}
+@media (min-width:600px){ body{background:var(--line)} .app{box-shadow:0 0 0 1px var(--line),0 20px 60px rgba(0,0,0,.15)} }
+
+/* ---------- splash ---------- */
+.splash{position:fixed;inset:0;z-index:100;background:var(--primary);color:var(--primary-ink);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;transition:opacity .5s var(--ease),visibility .5s}
+.splash.hide{opacity:0;visibility:hidden}
+.splash svg{width:96px;height:96px}
+.splash svg path{stroke-dasharray:120;stroke-dashoffset:120;animation:draw .5s var(--ease) forwards}
+.splash svg path:nth-child(2){animation-delay:.05s}
+.splash svg path:nth-child(3){animation-delay:.1s}
+.splash svg path:nth-child(4){animation-delay:.15s}
+.splash h1{margin:0;font-family:var(--display);font-size:38px;font-weight:700;opacity:0;animation:rise .35s var(--ease) .05s forwards}
+.splash p{margin:0;opacity:0;font-size:15px;animation:rise .35s var(--ease) .1s forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:.95;transform:none}}
+
+/* ---------- header ---------- */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:10;background:var(--primary);color:var(--primary-ink);padding:12px 16px 14px}
+.top-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.lotus{width:32px;height:32px;flex:none}
+.brand h1{margin:0;font-family:var(--display);font-weight:700;font-size:24px;line-height:1}
+.brand p{margin:2px 0 0;font-size:13px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top-actions{display:flex;gap:8px;align-items:center}
+.icon-btn{background:rgba(255,255,255,.12);border:0;color:inherit;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;transition:transform .15s}
+.icon-btn:active{transform:scale(.9)}
+.back-btn{background:none;border:0;color:inherit;display:flex;align-items:center;gap:4px;padding:6px 8px 6px 0;font-weight:600;font-size:16px}
+.sync{font-size:12px;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.14);white-space:nowrap}
+
+main{flex:1;padding:20px 16px 112px;outline:none}
+.view{animation:viewIn .38s var(--ease)}
+.view.from-right{animation:slideIn .38s var(--ease)}
+.view.from-left{animation:slideBack .38s var(--ease)}
+@keyframes viewIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes slideIn{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:none}}
+@keyframes slideBack{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:none}}
+.stagger > *{animation:viewIn .45s var(--ease) both}
+.stagger > *:nth-child(2){animation-delay:.05s}.stagger > *:nth-child(3){animation-delay:.1s}.stagger > *:nth-child(4){animation-delay:.15s}.stagger > *:nth-child(5){animation-delay:.2s}.stagger > *:nth-child(6){animation-delay:.25s}
+
+/* ---------- bottom tabs ---------- */
+.tabs{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:var(--appw);z-index:20;background:var(--surface);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(5,1fr);padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px))}
+.tab{background:none;border:0;padding:4px 0;display:flex;flex-direction:column;align-items:center;gap:1px;font-size:11.5px;color:var(--muted);border-radius:12px}
+.tab svg{width:22px;height:22px}
+.tab-dot{padding:3px 14px;border-radius:999px;display:grid;place-items:center;transition:background .25s var(--ease)}
+.tab[aria-current="page"]{color:var(--primary);font-weight:600}
+.tab[aria-current="page"] .tab-dot{background:var(--primary-soft)}
+.tab[aria-current="page"] svg{animation:bounce .4s var(--ease)}
+.tab.book .tab-dot{background:var(--primary);color:var(--primary-ink);padding:6px 16px;margin-top:-2px}
+.tab.book[aria-current="page"] .tab-dot{background:var(--primary-2)}
+@keyframes bounce{0%{transform:scale(1)}40%{transform:scale(1.22) translateY(-2px)}100%{transform:scale(1)}}
+
+/* ---------- type ---------- */
+h2{font-family:var(--display);font-weight:700;font-size:30px;line-height:1.12;margin:0 0 6px}
+h3{font-size:17px;font-weight:600;margin:0;line-height:1.3}
+.sub{color:var(--muted);margin:0 0 18px;font-size:15px}
+.section{margin-top:28px}
+.section-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;gap:10px;flex-wrap:wrap}
+.section-head h3{font-family:var(--display);font-size:23px;font-weight:700}
+.link{background:none;border:0;color:var(--primary);font-weight:600;padding:4px;font-size:15px}
+.label{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.num{font-variant-numeric:tabular-nums}
+
+/* ---------- buttons ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:14px;padding:13px 20px;font-weight:600;font-size:16px;min-height:48px;transition:transform .12s var(--ease),background .2s,box-shadow .2s;text-decoration:none}
+.btn:active:not(:disabled){transform:scale(.97)}
+.btn-primary{background:var(--primary);color:var(--primary-ink);box-shadow:0 6px 16px -6px var(--primary)}
+.btn-accent{background:var(--accent);color:var(--accent-ink)}
+.btn-ghost{background:var(--surface);color:var(--ink);border:1px solid var(--line)}
+.btn-danger{background:var(--danger-soft);color:var(--danger)}
+.btn-ok{background:var(--ok-soft);color:var(--ok)}
+.btn-wa{background:#1F8F55;color:#FFFFFF}
+.btn-block{width:100%}
+.btn-sm{min-height:36px;padding:6px 12px;font-size:14px;border-radius:10px}
+.btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+
+/* ---------- hero ---------- */
+.hero{background:var(--primary);color:var(--primary-ink);border-radius:24px;padding:22px 20px;position:relative;overflow:hidden}
+.hero .ring{position:absolute;border-radius:50%;border:1.5px solid rgba(255,255,255,.18);pointer-events:none}
+.hero .r1{width:220px;height:220px;right:-70px;top:-70px;animation:breathe 6s ease-in-out infinite}
+.hero .r2{width:140px;height:140px;right:-30px;top:-30px;animation:breathe 6s ease-in-out infinite .8s}
+@keyframes breathe{0%,100%{transform:scale(1);opacity:.6}50%{transform:scale(1.08);opacity:1}}
+.hero > *:not(.ring){position:relative}
+.hero small{font-size:14px;opacity:.85}
+.hero h2{font-size:31px;max-width:14ch;margin-top:2px}
+.hero p{margin:0 0 16px;opacity:.9;font-size:15px}
+.hero .btn{background:var(--accent);color:var(--accent-ink);box-shadow:none}
+
+.quick{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.quick button{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px 6px;display:flex;flex-direction:column;align-items:center;gap:6px;font-size:13px;font-weight:600;transition:transform .12s}
+.quick button:active{transform:scale(.96)}
+.quick svg{width:24px;height:24px;color:var(--primary)}
+
+/* ---------- cards ---------- */
+.card-btn{display:flex;gap:14px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:14px;margin-bottom:10px;text-align:left;width:100%;transition:transform .12s var(--ease),border-color .2s,box-shadow .2s}
+button.card-btn:active{transform:scale(.985)}
+button.card-btn:hover{border-color:var(--primary-2)}
+.mark{width:54px;height:54px;border-radius:15px;background:var(--accent-soft);color:var(--ink);display:grid;place-items:center;font-family:var(--display);font-weight:700;font-size:20px;flex:none}
+.body{flex:1;min-width:0}
+.body p{margin:2px 0 0;color:var(--muted);font-size:14px;line-height:1.4}
+.meta{display:flex;gap:12px;margin-top:6px;font-size:13px;color:var(--muted);flex-wrap:wrap}
+.meta span{display:inline-flex;align-items:center;gap:4px}
+.meta .price{color:var(--ink);font-weight:700}
+.chev{color:var(--muted);flex:none;transition:transform .2s}
+.card-btn:hover .chev{transform:translateX(3px)}
+.pick[aria-pressed="true"]{border-color:var(--primary);box-shadow:0 0 0 2px var(--primary) inset;background:var(--primary-soft);animation:pop .25s var(--ease)}
+@keyframes pop{0%{transform:scale(.97)}60%{transform:scale(1.01)}100%{transform:scale(1)}}
+
+.teachers{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.teacher{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:14px;text-align:left;width:100%;transition:transform .12s}
+.teacher:active{transform:scale(.97)}
+.avatar{width:46px;height:46px;border-radius:50%;background:var(--primary-soft);color:var(--primary);display:grid;place-items:center;font-weight:700;flex:none;overflow:hidden}
+.avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.teacher .avatar{margin-bottom:8px}
+.teacher h3{font-size:16px}
+.teacher p{margin:2px 0 0;font-size:13px;color:var(--muted)}
+
+/* ---------- detail page ---------- */
+.detail-hero{background:var(--accent-soft);border-radius:24px;padding:22px 20px;margin-bottom:18px;position:relative;overflow:hidden}
+.detail-hero .mark{width:64px;height:64px;font-size:24px;background:var(--surface);margin-bottom:12px}
+.detail-hero h2{margin-bottom:4px}
+.detail-hero .meta{font-size:14px;color:var(--ink)}
+.fee{display:flex;gap:10px;margin-top:14px}
+.fee div{flex:1;background:var(--surface);border-radius:14px;padding:10px 12px}
+.fee b{display:block;font-family:var(--display);font-size:26px;line-height:1.1}
+.fee small{color:var(--muted);font-size:13px}
+.block{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:12px}
+.block h3{font-family:var(--display);font-size:21px;font-weight:700;margin-bottom:8px}
+.block p{margin:0;color:var(--muted)}
+.block.prep{background:var(--info-soft);border-color:transparent}
+.ticks{list-style:none;padding:0;margin:0}
+.ticks li{display:flex;gap:10px;padding:6px 0;align-items:flex-start}
+.ticks li::before{content:"";flex:none;width:20px;height:20px;margin-top:2px;border-radius:50%;background:var(--ok-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232E7D5B' stroke-width='3'%3E%3Cpath d='M6 12l4 4 8-8'/%3E%3C/svg%3E") center/12px no-repeat}
+.steps-list{margin:0;padding-left:20px}
+.steps-list li{padding:4px 0}
+.people{display:flex;flex-direction:column;gap:8px}
+.person{display:flex;align-items:center;gap:12px;background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:10px 12px;text-align:left;width:100%}
+.person .avatar{width:40px;height:40px;font-size:14px}
+.sticky-cta{position:sticky;bottom:calc(76px + env(safe-area-inset-bottom,0px));margin-top:16px;z-index:5}
+.disclaimer{font-size:13px;color:var(--muted);margin-top:8px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:15px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;font-weight:500;min-width:0}
+.dayrow{display:flex;gap:6px;flex-wrap:wrap}
+.daypill{font-size:13px;padding:3px 10px;border-radius:999px;background:var(--surface-2);border:1px solid var(--line);color:var(--muted)}
+.daypill.on{background:var(--primary-soft);border-color:transparent;color:var(--primary);font-weight:600}
+
+/* ---------- booking ---------- */
+.steps{display:flex;gap:6px;margin-bottom:16px}
+.steps i{flex:1;height:5px;border-radius:5px;background:var(--line);overflow:hidden;position:relative}
+.steps i.on::after{content:"";position:absolute;inset:0;background:var(--primary);animation:fill .4s var(--ease) both}
+@keyframes fill{from{transform:scaleX(0);transform-origin:left}to{transform:scaleX(1);transform-origin:left}}
+.step-label{font-size:14px;color:var(--muted);margin:0 0 2px}
+.dates{display:flex;gap:8px;overflow-x:auto;padding:2px 16px 10px;margin:0 -16px;scrollbar-width:none}
+.dates::-webkit-scrollbar{display:none}
+.date{flex:none;width:62px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:8px 0;text-align:center;transition:transform .12s,background .2s}
+.date:active:not(:disabled){transform:scale(.94)}
+.date small{display:block;font-size:12px;color:var(--muted)}
+.date b{display:block;font-size:22px;font-family:var(--display);line-height:1.1}
+.date:disabled{opacity:.5;cursor:not-allowed;background:var(--surface-2)}
+.date[aria-pressed="true"]{background:var(--primary);color:var(--primary-ink);border-color:var(--primary);animation:pop .25s var(--ease)}
+.date[aria-pressed="true"] small{color:inherit;opacity:.85}
+.slots{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.slot{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:11px 4px;font-weight:600;font-size:15px;transition:transform .12s,background .2s}
+.slot:active:not(:disabled){transform:scale(.94)}
+.slot[aria-pressed="true"]{background:var(--primary);color:var(--primary-ink);border-color:var(--primary);animation:pop .25s var(--ease)}
+.slot:disabled{text-decoration:line-through;color:var(--muted);background:var(--surface-2);cursor:not-allowed}
+.legend{display:flex;gap:14px;font-size:13px;color:var(--muted);margin:10px 0 0}
+
+.field{display:block;margin-bottom:14px}
+.field > span{display:block;font-size:14px;font-weight:600;margin-bottom:6px}
+.field small{display:block;color:var(--muted);font-size:13px;margin-top:4px}
+.field input,.field textarea,.field select{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:12px 14px;font-size:16px;transition:border-color .2s,box-shadow .2s}
+.field textarea{min-height:84px;resize:vertical}
+.field input:focus,.field textarea:focus,.field select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+.grid2 > *{min-width:0}
+.checks{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.check{display:inline-flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:14px;cursor:pointer}
+.check input{width:16px;height:16px;accent-color:var(--primary)}
+.pw{position:relative}
+.pw input{padding-right:64px}
+.pw button{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:0;color:var(--primary);font-weight:600;font-size:14px;padding:6px 8px}
+.err{color:var(--danger);font-size:13px;margin-top:4px;animation:shake .3s}
+@keyframes shake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+.summary{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:4px 16px;margin-bottom:16px}
+.summary .row{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);font-size:15px}
+.summary .row:last-child{border-bottom:0}
+.summary .row span{color:var(--muted)}
+.summary .row b{text-align:right;font-weight:600}
+.summary .row.total b{font-size:18px}
+.actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+.actions .btn{flex:1}
+.seg-mini{display:flex;gap:6px;margin-bottom:16px}
+.seg-mini button{flex:1;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px;font-weight:600;font-size:14px;color:var(--muted)}
+.seg-mini button[aria-pressed="true"]{background:var(--primary-soft);color:var(--primary);border-color:transparent}
+
+/* ---------- success ---------- */
+.success{text-align:center;padding-top:8px}
+.tick{width:84px;height:84px;border-radius:50%;background:var(--ok-soft);color:var(--ok);display:grid;place-items:center;margin:0 auto 18px;position:relative;animation:popIn .5s var(--ease)}
+.tick::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid var(--ok);animation:ripple 1.4s var(--ease) .3s 2}
+.tick path{stroke-dasharray:30;stroke-dashoffset:30;animation:draw .45s var(--ease) .3s forwards}
+@keyframes popIn{0%{transform:scale(.4);opacity:0}70%{transform:scale(1.08)}100%{transform:scale(1);opacity:1}}
+@keyframes ripple{from{transform:scale(1);opacity:.8}to{transform:scale(1.6);opacity:0}}
+.code{font-family:var(--display);font-size:32px;font-weight:700;letter-spacing:1px;color:var(--primary)}
+.petals{position:fixed;inset:0;pointer-events:none;z-index:60;overflow:hidden}
+.petal{position:absolute;top:-20px;width:12px;height:16px;border-radius:12px 0 12px 0;opacity:.9;animation:fall linear forwards}
+@keyframes fall{to{transform:translateY(110vh) rotate(540deg);opacity:0}}
+
+/* ---------- booking cards ---------- */
+.bk{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:12px;border-left:4px solid var(--primary)}
+.bk.st-completed{border-left-color:var(--ok)}
+.bk.st-checkedin{border-left-color:var(--accent)}
+.bk.st-noshow{border-left-color:var(--muted)}
+.bk.st-cancelled{border-left-color:var(--danger);opacity:.85}
+.bk-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.bk-when{font-family:var(--display);font-size:22px;font-weight:700;line-height:1.1}
+.bk p{margin:4px 0 0;color:var(--muted);font-size:14px}
+.bk .snote{background:var(--surface-2);border-radius:10px;padding:8px 10px;margin-top:8px;font-size:14px;color:var(--ink)}
+.bk-id{font-size:12px;color:var(--muted);margin-top:10px}
+.badge{font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;white-space:nowrap;display:inline-block}
+.b-confirmed{background:var(--primary-soft);color:var(--primary)}
+.b-checkedin{background:var(--accent-soft);color:var(--ink)}
+.b-completed{background:var(--ok-soft);color:var(--ok)}
+.b-noshow{background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+.b-cancelled{background:var(--danger-soft);color:var(--danger)}
+.b-off{background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+.bk-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.wa-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
+.wa-row .label{margin-right:4px}
+.wa{font-size:13px;font-weight:600;text-decoration:none;padding:5px 10px;border-radius:999px;background:var(--ok-soft);color:var(--ok)}
+.wa.sent::after{content:" ✓"}
+.seg{display:flex;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:3px;margin-bottom:14px;position:relative}
+.seg button{flex:1;background:none;border:0;padding:8px;border-radius:9px;font-weight:600;color:var(--muted);font-size:14px;transition:background .2s,color .2s}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.empty{text-align:center;padding:34px 20px;background:var(--surface);border:1px dashed var(--line);border-radius:18px;color:var(--muted)}
+.empty h3{color:var(--ink);margin-bottom:6px}
+.empty .btn{margin-top:14px}
+
+/* ---------- profile ---------- */
+.profile-card{display:flex;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:16px;margin-bottom:14px}
+.profile-card .avatar{width:58px;height:58px;font-size:20px}
+.menu{background:var(--surface);border:1px solid var(--line);border-radius:18px;overflow:hidden;margin-bottom:14px}
+.menu button{display:flex;align-items:center;gap:12px;width:100%;background:none;border:0;border-bottom:1px solid var(--line);padding:14px 16px;text-align:left;font-size:16px}
+.menu button:last-child{border-bottom:0}
+.menu button:active{background:var(--surface-2)}
+.menu svg{width:20px;height:20px;color:var(--primary);flex:none}
+.menu .grow{flex:1}
+
+/* ---------- admin ---------- */
+.admin-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.admin-head p{margin:0;color:var(--muted);font-size:14px}
+.chips{display:flex;gap:6px;overflow-x:auto;padding:2px 16px 12px;margin:0 -16px 6px;scrollbar-width:thin}
+.chip{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 14px;font-weight:600;font-size:14px;color:var(--muted)}
+.chip[aria-current="true"]{background:var(--primary);color:var(--primary-ink);border-color:var(--primary)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:14px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px}
+.stat b{display:block;font-family:var(--display);font-size:30px;line-height:1;font-variant-numeric:tabular-nums}
+.stat small{color:var(--muted);font-size:13px}
+.stat.hl{background:var(--primary);border-color:var(--primary);color:var(--primary-ink)}
+.stat.hl small{color:inherit;opacity:.85}
+.cols{display:grid;grid-template-columns:1fr;gap:14px}
+@media (min-width:860px){ .cols{grid-template-columns:1fr 1fr} .cols > *{min-width:0} }
+.bars{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:14px 16px;margin-bottom:14px}
+.bar-row{display:grid;grid-template-columns:minmax(90px,140px) 1fr auto;gap:10px;align-items:center;font-size:14px;padding:5px 0}
+.bar{height:10px;background:var(--surface-2);border-radius:10px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--primary);border-radius:10px;transform-origin:left;animation:grow .7s var(--ease) both}
+@keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:12px}
+.filters select,.filters input{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 10px;font-size:14px;min-height:40px}
+.search{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:11px 14px;font-size:16px;margin-bottom:12px}
+.note{font-size:14px;color:var(--muted);background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:14px}
+.note b{color:var(--ink)}
+.note.warn{background:var(--accent-soft);border-color:transparent;color:var(--ink)}
+.note code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px}
+pre.mono{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:10px;overflow-x:auto;white-space:pre}
+.demo-box{background:var(--accent-soft);border-radius:16px;padding:14px;margin-bottom:18px;font-size:14px}
+.demo-box b{font-size:15px}
+.demo-box .btn{margin-top:10px}
+.otp-box{background:var(--info-soft);border-radius:14px;padding:12px 14px;margin-bottom:14px;font-size:14px}
+.otp-box b{font-size:20px;letter-spacing:3px;font-variant-numeric:tabular-nums}
+.row-inline{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.list-row{display:flex;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin-bottom:8px}
+.list-row .body h3{font-size:16px}
+.list-row .btns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+@media (max-width:560px){ .list-row{flex-wrap:wrap} .list-row .btns{width:100%;justify-content:flex-start} }
+.inactive{opacity:.6}
+
+.tbl-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:16px;margin-bottom:14px}
+table.tbl{border-collapse:collapse;width:100%;font-size:14px}
+.tbl th,.tbl td{padding:9px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.tbl tr:last-child td{border-bottom:0}
+.tbl th{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--surface-2);position:sticky;top:0}
+.tbl td.c,.tbl th.c{text-align:center}
+.tbl td.n,.tbl th.n{text-align:right;font-variant-numeric:tabular-nums}
+.tbl .grp td{background:var(--surface-2);font-weight:600;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.tbl input[type=checkbox]{width:18px;height:18px;accent-color:var(--primary)}
+
+/* calendar */
+.cal-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.cal-head h3{font-family:var(--display);font-size:22px;font-weight:700}
+.month{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:16px}
+.month .dow{font-size:12px;color:var(--muted);text-align:center;font-weight:600}
+.mday{background:var(--surface);border:1px solid var(--line);border-radius:10px;min-height:56px;padding:4px 6px;text-align:left;display:flex;flex-direction:column;justify-content:space-between;font-size:14px}
+.mday.out{opacity:.35}
+.mday.today{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.mday[aria-pressed="true"]{background:var(--primary);color:var(--primary-ink);border-color:var(--primary)}
+.mday .cnt{font-size:12px;font-weight:700;align-self:flex-end;background:var(--primary-soft);color:var(--primary);border-radius:999px;padding:0 7px}
+.mday[aria-pressed="true"] .cnt{background:var(--primary-ink);color:var(--primary)}
+.dgrid td{min-width:130px}
+.dgrid td.t{min-width:72px;font-weight:600;white-space:nowrap}
+.slotchip{display:block;width:100%;text-align:left;border:0;border-radius:8px;padding:5px 8px;font-size:13px;line-height:1.3;background:var(--primary-soft);color:var(--ink)}
+.slotchip.st-checkedin{background:var(--accent-soft)}
+.slotchip.st-completed{background:var(--ok-soft)}
+.slotchip.st-noshow{background:var(--surface-2);border:1px solid var(--line)}
+.slotchip small{display:block;color:var(--muted)}
+.cell-off{font-size:12px;color:var(--muted)}
+.cell-free{font-size:12px;color:var(--ok)}
+
+/* modal */
+.modal{position:fixed;inset:0;z-index:80;background:var(--scrim);display:flex;align-items:flex-end;justify-content:center;padding:16px;animation:fade .2s}
+@media (min-width:600px){ .modal{align-items:center} }
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.sheet{background:var(--bg);border-radius:22px;width:100%;max-width:560px;max-height:calc(100vh - 32px);overflow-y:auto;padding:20px 18px;box-shadow:var(--shadow);animation:slideUp .28s var(--ease)}
+@keyframes slideUp{from{transform:translateY(30px);opacity:0}to{transform:none;opacity:1}}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}
+.sheet-head h2{font-size:26px;margin:0}
+.photo-pick{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.photo-pick .avatar{width:72px;height:72px;font-size:24px}
+.file-btn{position:relative;overflow:hidden}
+.file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.leave-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+.conn{display:flex;gap:12px;align-items:center;justify-content:space-between;background:var(--info-soft);border-radius:16px;padding:12px 14px;margin-bottom:16px}
+.conn p{margin:2px 0 0;font-size:14px;color:var(--muted)}
+.stale{position:fixed;top:calc(70px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);z-index:30;background:var(--info);color:var(--surface);border:0;border-radius:999px;padding:6px 14px;font-size:13px;font-weight:600;box-shadow:var(--shadow)}
+
+.toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:12px;font-size:14px;opacity:0;pointer-events:none;transition:.3s var(--ease);z-index:90;max-width:90%;text-align:center}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  .splash svg path{stroke-dashoffset:0}
+  .splash h1,.splash p{opacity:1}
+  .tick path{stroke-dashoffset:0}
+}
+</style>
+</head>
+<body>
+<div class="splash" id="splash" aria-hidden="true">
+  <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M20 8c3.5 4 3.5 12 0 18-3.5-6-3.5-14 0-18z"/>
+    <path d="M20 26c-5-1-9-5-10-11 5 0 9 4 10 11z"/>
+    <path d="M20 26c5-1 9-5 10-11-5 0-9 4-10 11z"/>
+    <path d="M8 30c4 2 8 2 12 2s8 0 12-2"/>
+  </svg>
+  <h1>Sadhna Healing</h1>
+  <p>Therapy sessions with our healers</p>
+  <div id="splash-help" hidden style="margin-top:22px;text-align:center;max-width:300px;padding:0 16px">
+    <p style="opacity:1;animation:none;margin-bottom:12px">The app is taking longer than usual to open. Check your internet connection and try again.</p>
+    <button onclick="location.reload()" style="background:#D99A24;color:#1C1505;border:0;border-radius:12px;padding:12px 26px;font-size:16px;font-weight:600">Reload</button>
+  </div>
+</div>
+<script>
+// Runs even if the main app code fails to load, so nobody is left on a blank green screen.
+setTimeout(function(){
+  if(window.__sadhnaStarted) return;
+  var h=document.getElementById("splash-help"); if(h) h.hidden=false;
+}, 6000);
+</script>
+
+<div class="app">
+  <header class="top" id="top"></header>
+  <main id="main" tabindex="-1"></main>
+  <nav class="tabs" aria-label="Main">
+    <button class="tab" data-go="home"><span class="tab-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></span>Home</button>
+    <button class="tab" data-go="therapies"><span class="tab-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4c2.5 3 2.5 9 0 13-2.5-4-2.5-10 0-13z"/><path d="M12 17c-4-.5-7-4-7.5-8.5 4 0 7 3.5 7.5 8.5zM12 17c4-.5 7-4 7.5-8.5-4 0-7 3.5-7.5 8.5z"/></svg></span>Therapies</button>
+    <button class="tab book" data-go="book"><span class="tab-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg></span>Book</button>
+    <button class="tab" data-go="bookings"><span class="tab-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>Bookings</button>
+    <button class="tab" data-go="profile"><span class="tab-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span><span id="tab-profile-label">Profile</span></button>
+  </nav>
+</div>
+<div id="modal-root"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* =========================================================
+   SETTINGS — edit these to change the app
+   Most of these can also be changed later from Admin → Settings.
+   ========================================================= */
+const CONFIG = {
+  centreName: "Sadhna Healing Centre",
+  centreAddress: "Add your centre address here",
+  centrePhone: "Add contact number",
+  centreWhatsApp: "",                 // 10-digit number patients can message on WhatsApp
+  centreHours: "Monday to Saturday, 9:00 AM – 6:30 PM",
+  // First admin login. Works only until the first admin account is saved; you must change the password on first login.
+  bootstrapAdmin: { username:"admin", password:"admin@123" },
+  // Lets the owner reset the super admin password from "Forgot admin password". Change this before real use.
+  recoveryCode: "SADHNA-RECOVER-2026",
+  demoMode: true,                     // shows test logins on screen; set to false for real use
+  daysAhead: 21,
+  slotMinutes: 60,                    // every therapy is 60 minutes
+  sessionTimeoutMin: 30,              // staff are logged out after this many idle minutes
+  // Shared online storage when you host this file yourself (Netlify, GitHub Pages…). See Admin → Settings → Data storage.
+  supabase: { url:"", anonKey:"" },
+  // Google Sheet storage. When the app is served by Apps Script (see Code.gs) this is automatic and can stay empty.
+  // When you host this file elsewhere, paste the Apps Script web app link (ends in /exec) here.
+  sheetsUrl: "https://script.google.com/macros/s/AKfycbw2f_qA7-79cAV1a6fjQtrwoblaM8Siprp9vEHbTTzgzrtdCwqG-CWVAU_VnIAw5gva/exec",
+  storageKey: "sadhna_healing_v4"
+};
+
+const PRICE = 2000, MINS = 60;
+const DEFAULT_SCHEDULE = { days:[1,2,3,4,5,6], start:"09:00", end:"18:30", breakStart:"13:00", breakEnd:"14:00", leave:[] };
+
+const DEFAULT_THERAPIES = [
+  { id:"cst", order:1, code:"CST", name:"CST", full:"Craniosacral Therapy", mins:MINS, price:PRICE, active:true,
+    desc:"Gentle touch therapy for the head, spine and nervous system.",
+    about:"A light-touch therapy that works with the head, spine and sacrum to help the body relax deeply and release held tension.",
+    benefits:["Deep relaxation and a calmer mind","Relief from stress-related tension","Better sleep for many people","Support for headaches and neck strain"],
+    who:"Anyone dealing with stress, tension headaches, restlessness or poor sleep.",
+    prep:["Wear loose, comfortable clothes","Eat light at least one hour before","Remove spectacles, hair clips and heavy jewellery","Tell your healer about any head, neck or spine injury"] },
+  { id:"marma", order:2, code:"Ma", name:"Marma", full:"Marma Therapy", mins:MINS, price:PRICE, active:true,
+    desc:"Ayurvedic therapy on the body's vital energy points.",
+    about:"An Ayurvedic practice that works on marma points, the vital energy points across the body, using gentle, focused pressure.",
+    benefits:["Improves the flow of energy","Eases muscle and joint stiffness","Calms the nervous system","Leaves you feeling light and refreshed"],
+    who:"Anyone with fatigue, body stiffness or low energy.",
+    prep:["Eat light at least two hours before","Don't apply oil or lotion on the day","Wear loose cotton clothes","Tell your healer if you are pregnant or have high blood pressure"] },
+  { id:"rekhno", order:3, code:"Re", name:"Rekhno", full:"Rekhno", mins:MINS, price:PRICE, active:true,
+    desc:"Hands-on healing session with a trained practitioner.",
+    about:"A hands-on healing session guided by a trained practitioner. Your healer explains the process at the start of the session.",
+    benefits:["One-to-one guided healing","Session shaped around your concern","Quiet time to rest and recover"],
+    who:"Anyone looking for a calm, guided healing session.",
+    prep:["Arrive 10 minutes early to settle in","Wear loose, comfortable clothes","Keep your phone on silent","Note down the main concern you want to work on"] },
+  { id:"osteo", order:4, code:"Os", name:"Osteo", full:"Osteo Therapy", mins:MINS, price:PRICE, active:true,
+    desc:"Manual therapy for joints, muscles and posture.",
+    about:"Manual therapy that works on bones, joints and muscles to improve posture and make movement easier.",
+    benefits:["Relief from back and neck discomfort","Better posture","Easier joint movement","Less muscle tightness"],
+    who:"People with back pain, stiff joints or posture problems from long sitting.",
+    prep:["Wear clothes you can move and stretch in","Bring any X-ray, MRI or doctor's reports","Eat light at least one hour before","Tell your healer about any pain medicine taken today"] },
+  { id:"meru", order:5, code:"Me", name:"Meru", full:"Meru Chikitsa", mins:MINS, price:PRICE, active:true,
+    desc:"Spine-centred therapy to restore balance.",
+    about:"A spine-centred therapy that uses gentle adjustments to bring the spine, and with it the whole body, back into balance.",
+    benefits:["Supports spinal alignment","Eases back pain","Improves overall balance","Helps posture-related discomfort"],
+    who:"Anyone with spine-related discomfort or imbalance.",
+    prep:["Wear loose clothes","Bring any spine reports or scans","Avoid a heavy meal two hours before","Tell your healer about any past surgery"] }
+];
+const ALL_T = DEFAULT_THERAPIES.map(t=>t.id);
+const DEFAULT_HEALERS = [
+  { id:"rashmi",  order:1, name:"Dr Rashmi Gupta",  photo:"", qualifications:"", experience:"", specialization:"", bio:"Healer at Sadhna Healing.", therapies:ALL_T, active:true, schedule:DEFAULT_SCHEDULE },
+  { id:"aparna",  order:2, name:"Aparna ji",        photo:"", qualifications:"", experience:"", specialization:"", bio:"Healer at Sadhna Healing.", therapies:ALL_T, active:true, schedule:DEFAULT_SCHEDULE },
+  { id:"suprita", order:3, name:"Suprita",          photo:"", qualifications:"", experience:"", specialization:"", bio:"Healer at Sadhna Healing.", therapies:ALL_T, active:true, schedule:DEFAULT_SCHEDULE },
+  { id:"suvidha", order:4, name:"Suvidha Aggarwal", photo:"", qualifications:"", experience:"", specialization:"", bio:"Healer at Sadhna Healing.", therapies:ALL_T, active:true, schedule:DEFAULT_SCHEDULE }
+];
+
+/* ---------- roles and permissions ---------- */
+const ROLES = { superadmin:"Super admin", admin:"Admin", reception:"Reception", healer:"Healer" };
+const PERMS = [
+  ["dashboard.view","See today's dashboard","Daily work"],
+  ["calendar.view","See the calendar","Daily work"],
+  ["bookings.view","See bookings","Bookings"],
+  ["bookings.create","Book a session for a patient","Bookings"],
+  ["bookings.manage","Check in, complete, mark no-show, cancel","Bookings"],
+  ["bookings.reschedule","Reschedule bookings","Bookings"],
+  ["bookings.notes","Write session notes","Bookings"],
+  ["notify.send","Send WhatsApp messages","Bookings"],
+  ["patients.view","See patients and their records","Patients"],
+  ["patients.manage","Edit, deactivate, delete patients and reset passwords","Patients"],
+  ["healers.manage","Add, edit, deactivate and delete healers","Healers and therapies"],
+  ["schedules.manage","Set healer hours, breaks and leave","Healers and therapies"],
+  ["therapies.manage","Edit therapies, prices and instructions","Healers and therapies"],
+  ["reports.view","See reports","Reports"],
+  ["reports.export","Export CSV files and backups","Reports"],
+  ["activity.view","See the activity log","Reports"],
+  ["settings.manage","Change centre settings and WhatsApp messages","Administration"],
+  ["staff.manage","Add staff and assign permissions","Administration"]
+];
+const DEFAULT_ROLES = {
+  admin: PERMS.map(p=>p[0]).filter(p=>p!=="staff.manage"),
+  reception: ["dashboard.view","calendar.view","bookings.view","bookings.create","bookings.manage","bookings.reschedule","notify.send","patients.view"],
+  healer: ["dashboard.view","calendar.view","bookings.view","bookings.notes"]
+};
+
+const DEFAULT_TEMPLATES = {
+  confirm: "Namaste {name}\nYour {therapy} session at {centre} is confirmed.\n\nHealer: {healer}\nDate: {date}\nTime: {time} ({mins} min)\nFee: {price}\nBooking ID: {id}\n\nBefore you come:\n{prep}\n\nPlease arrive 10 minutes early.",
+  reminder: "Namaste {name}, a reminder of your {therapy} session on {date} at {time} with {healer} at {centre}. Booking ID {id}.\n\nBefore you come:\n{prep}\n\nReply here if you need to change the time.",
+  reschedule: "Namaste {name}, your {therapy} session has been moved to {date} at {time} with {healer}. Booking ID {id}. Reply here if this time doesn't suit you.",
+  cancel: "Namaste {name}, your {therapy} session on {date} at {time} (Booking ID {id}) has been cancelled. Reply here to book a new time."
+};
+const TEMPLATE_NAMES = { confirm:"Confirmation", reminder:"Reminder", reschedule:"Rescheduled", cancel:"Cancellation" };
+const STATUS = { confirmed:"Confirmed", checkedin:"Checked in", completed:"Completed", noshow:"No-show", cancelled:"Cancelled" };
+
+/* =========================================================
+   DATA — one interface, three places it can live:
+   1. "db"       Claude's shared storage (when opened as a Claude artifact)
+   2. "supabase" your free Supabase project (when you host the file yourself)
+   3. "local"    this browser only (fallback, nothing shared)
+   ========================================================= */
+const COLS = ["users","staff","bookings","healers","therapies","config","activity"];
+const Data = {
+  mode:"local", c:{}, loaded:false, readOnly:false, backend:null, q:{}, pending:0, note:"",
+  all(col){ return Object.values(this.c[col]||{}); },
+  get(col,id){ return (this.c[col]||{})[id] || null; },
+  waiting(){
+    if(this.mode==="connecting"){ toast("Still loading the latest data. Try again in a moment."); return true; }
+    if(this.mode==="sheetError"){ toast("Can't save: the Google Sheet isn't connected. See the message at the top."); return true; }
+    if(this.mode==="needsAllow"){ toast("Tap Allow at the top of the page to connect shared data first."); return true; }
+    return false;
+  },
+  put(col,id,doc){
+    if(this.waiting()) return Promise.resolve();
+    if(this.readOnly){ toast("You can look but not change data here. Ask the owner for edit access."); return Promise.resolve(); }
+    doc = JSON.parse(JSON.stringify(doc));
+    this.c[col] = Object.assign({}, this.c[col], { [id]:doc });
+    if(this.mode==="local") saveLocal();
+    return this.enqueue(col+"/"+id, () => this.backend && this.backend.put(col,id,doc));
+  },
+  del(col,id){
+    if(this.waiting()) return Promise.resolve();
+    if(this.readOnly){ toast("You can look but not change data here."); return Promise.resolve(); }
+    const m = Object.assign({}, this.c[col]); delete m[id]; this.c[col] = m;
+    if(this.mode==="local") saveLocal();
+    return this.enqueue(col+"/"+id, () => this.backend && this.backend.del(col,id));
+  },
+  enqueue(key, fn){
+    this.pending++;
+    const p = (this.q[key] || Promise.resolve()).then(fn).catch(writeFailed).finally(()=>{ this.pending--; });
+    this.q[key] = p; return p;
+  }
+};
+function writeFailed(e){
+  console.error(e);
+  if(e && e.code==="invalid_argument"){ Data.readOnly = true; toast("You can look but not change data here. Ask the owner for edit access."); }
+  else if(e && e.code==="quota_exceeded") toast("Storage is full. Export a backup and delete old activity or bookings.");
+  else toast("Couldn't save that change. Check your connection and try again.");
+}
+function saveLocal(){ try{ localStorage.setItem(CONFIG.storageKey, JSON.stringify(Data.c)); }catch(_){} }
+function loadLocal(){
+  let c = null;
+  try{ const raw = localStorage.getItem(CONFIG.storageKey); if(raw) c = JSON.parse(raw); }catch(_){}
+  Data.mode = "local"; Data.backend = null; Data.c = c || {};
+  COLS.forEach(k=>{ Data.c[k] = Data.c[k] || {}; });
+}
+
+async function connectDb(db){
+  Data.mode = "db"; Data.c = {}; COLS.forEach(k=>Data.c[k]={});
+  Data.backend = { put:(c,i,d)=>db.collection(c).doc(i).set(d), del:(c,i)=>db.collection(c).doc(i).delete() };
+  await new Promise(resolve=>{
+    const waiting = new Set(COLS);
+    const settle = col => { waiting.delete(col); if(!waiting.size) resolve(); };
+    COLS.forEach(col=>{
+      db.collection(col).onSnapshot(snap=>{
+        const m = {}; snap.docs.forEach(d=>{ m[d.id] = d.data(); });
+        Data.c[col] = m;
+        settle(col);
+        if(Data.loaded) rerenderSoon();
+      }, err=>{ settle(col); if(err && err.code==="revoked") Data.readOnly = true; });
+    });
+    setTimeout(resolve, 6000);
+  });
+}
+
+async function connectSupabase(){
+  const base = CONFIG.supabase.url.replace(/\/$/,"") + "/rest/v1/records";
+  const H = { apikey:CONFIG.supabase.anonKey, Authorization:"Bearer "+CONFIG.supabase.anonKey, "Content-Type":"application/json" };
+  const ok = r => { if(!r.ok) throw new Error("Supabase " + r.status); return r; };
+  async function pull(){
+    const m = {}; COLS.forEach(k=>m[k]={});
+    for(let off=0;;off+=1000){
+      const r = ok(await fetch(`${base}?select=collection,id,data&order=collection,id&limit=1000&offset=${off}`, { headers:H }));
+      const rows = await r.json();
+      rows.forEach(x=>{ (m[x.collection] = m[x.collection] || {})[x.id] = x.data; });
+      if(rows.length < 1000) break;
+    }
+    return m;
+  }
+  Data.c = await pull();
+  Data.mode = "supabase";
+  Data.backend = {
+    put:(c,i,d)=>fetch(base,{ method:"POST", headers:{...H, Prefer:"resolution=merge-duplicates,return=minimal"}, body:JSON.stringify({ collection:c, id:i, data:d, updated_at:new Date().toISOString() }) }).then(ok),
+    del:(c,i)=>fetch(`${base}?collection=eq.${encodeURIComponent(c)}&id=eq.${encodeURIComponent(i)}`,{ method:"DELETE", headers:H }).then(ok)
+  };
+  setInterval(async()=>{
+    if(Data.pending) return;
+    try{ const m = await pull(); if(!Data.pending){ Data.c = m; rerenderSoon(); } }catch(_){}
+  }, 15000);
+}
+
+/* ---------- Google Sheet (through Apps Script) ---------- */
+const hasGS = () => !!(window.google && google.script && google.script.run);
+function gsRun(fn, arg){
+  return new Promise((resolve, reject)=>{
+    const r = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
+    arg === undefined ? r[fn]() : r[fn](arg);
+  });
+}
+async function sheetsCall(op, payload){
+  if(hasGS()) return gsRun({ pull:"apiPull", put:"apiPut", del:"apiDelete", activity:"apiActivity" }[op], op==="activity" ? payload.days : payload);
+  const r = await fetch(CONFIG.sheetsUrl, { method:"POST", redirect:"follow", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body:JSON.stringify(Object.assign({ op }, payload||{})) });
+  if(!r.ok) throw new Error("Sheet " + r.status);
+  const j = await r.json();
+  if(j.ok===false) throw new Error(j.error || "Sheet error");
+  return j;
+}
+const stamp = iso => { if(!iso) return ""; const d = new Date(iso); return isNaN(d) ? "" : `${ymd(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+function fromStamp(v){
+  const m = String(v||"").match(/^(\d{4})-(\d\d)-(\d\d)[ T](\d\d):(\d\d)/);
+  if(m) return new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5]).toISOString();
+  const d = new Date(v); return isNaN(d) ? new Date().toISOString() : d.toISOString();
+}
+// What each record looks like as a row in the Google Sheet.
+function sheetRows(col, id, d){
+  const yes = v => v===false ? "No" : "Yes";
+  if(col==="bookings") return [{ "Booking ID":d.id, "Date":d.date, "Time":niceTime(d.time), "Therapy":therapy(d.therapyId)?.full||d.therapyId, "Healer":healer(d.healerId)?.name||d.healerId,
+    "Patient":d.name, "Mobile":d.contact||d.phone, "Account mobile":d.phone, "Email":d.email||"", "Age":d.age||"", "Fee (₹)":Number(d.price)||0, "Status":STATUS[d.status]||d.status,
+    "Checked in":stamp(d.checkedInAt), "Concern":d.notes||"", "Session note":d.staffNotes||"", "Booked at":stamp(d.createdAt), "Booked by":d.createdBy||"" }];
+  if(col==="users") return [{ "Mobile":d.phone, "Name":d.name, "Email":d.email||"", "Status":d.active===false?"Deactivated":"Active",
+    "Can log in":d.passHash?"Yes":"Not yet, no password", "Joined":stamp(d.createdAt), "Last login":stamp(d.lastLogin) }];
+  if(col==="healers"){ const s = schedOf(d); return [{ "Healer":d.name, "Qualifications":d.qualifications||"", "Experience (yrs)":d.experience?Number(d.experience):"",
+    "Specialization":d.specialization||"", "Therapies":(d.therapies||[]).map(t=>therapy(t)?.name||t).join(", "), "Working days":s.days.map(x=>DAY[x]).join(", "),
+    "Hours":`${niceTime(s.start)} – ${niceTime(s.end)}`, "Break":s.breakStart&&s.breakEnd?`${niceTime(s.breakStart)} – ${niceTime(s.breakEnd)}`:"None",
+    "Leave":(s.leave||[]).map(l=>l.to&&l.to!==l.from?`${l.from} to ${l.to}`:l.from).join("; "), "Photo":d.photo?"Yes":"No", "Active":yes(d.active) }]; }
+  if(col==="therapies") return [{ "Therapy":d.full, "Short name":d.name, "Price (₹)":Number(d.price)||0, "Duration (min)":Number(d.mins)||0,
+    "How to prepare":(d.prep||[]).join("; "), "Shown to patients":yes(d.active) }];
+  if(col==="staff") return [{ "Username":d.username, "Name":d.name, "Role":ROLES[d.role]||d.role, "Linked healer":d.healerId?(healer(d.healerId)?.name||d.healerId):"",
+    "Active":yes(d.active), "Must set own password":d.mustChange?"Yes":"No", "Last login":stamp(d.lastLogin) }];
+  if(col==="config") return [{ "Setting":id==="roles"?"Role permissions":id==="centre"?"Centre details and WhatsApp messages":id,
+    "Summary":id==="roles" ? Object.entries(d.roles||{}).map(([r,p])=>`${ROLES[r]||r}: ${p.length} permissions`).join("; ") : (d.centreName||"") }];
+  if(col==="activity") return (d.entries||[]).map(e=>({ "Day":d.day, "When":stamp(e.at), "Who":e.by, "What":e.action, "Details":e.detail||"" }));
+  return [{}];
+}
+function fromSheet(cols){
+  const m = {}; COLS.forEach(c=>m[c]={});
+  Object.entries(cols||{}).forEach(([c, recs])=>{
+    if(!m[c]) return;
+    Object.entries(recs||{}).forEach(([id, rec])=>{
+      if(c==="activity") m[c][id] = { day:id, entries:(rec.rows||[]).filter(r=>r.When||r.What).map(r=>({ at:fromStamp(r.When), by:String(r.Who||""), action:String(r.What||""), detail:String(r.Details||"") })) };
+      else if(rec.data) m[c][id] = rec.data;
+    });
+  });
+  return m;
+}
+// Therapies, healers and centre settings are kept on the phone so the app can show
+// them instantly on the next visit; bookings and patients always come fresh from the Sheet.
+const CATALOG_KEY = "sadhna_catalog_v1";
+function loadCatalogCache(){
+  try{
+    const c = JSON.parse(localStorage.getItem(CATALOG_KEY) || "null");
+    if(!c) return false;
+    COLS.forEach(k=>{ Data.c[k] = Data.c[k] || {}; });
+    Data.c.therapies = c.therapies || {}; Data.c.healers = c.healers || {};
+    Data.c.config = c.centre ? { centre:c.centre } : {};
+    return true;
+  }catch(_){ return false; }
+}
+function saveCatalogCache(){
+  try{ localStorage.setItem(CATALOG_KEY, JSON.stringify({ therapies:Data.c.therapies||{}, healers:Data.c.healers||{}, centre:(Data.c.config||{}).centre||null })); }catch(_){}
+}
+let lastPull = 0;
+async function pullSheet(){
+  if(Data.pending || Data.pulling) return;
+  Data.pulling = true;
+  try{
+    const k = await sheetsCall("pull");
+    if(!Data.pending){
+      const older = state.activityLoaded ? Data.c.activity : null;
+      Data.c = fromSheet(k.collections);
+      if(older) Data.c.activity = Object.assign({}, older, Data.c.activity);
+      lastPull = Date.now(); saveCatalogCache(); rerenderSoon();
+    }
+  }catch(_){}
+  finally{ Data.pulling = false; }
+}
+async function connectSheets(){
+  const j = await sheetsCall("pull");
+  Data.c = fromSheet(j.collections); Data.sheetUrl = j.url || "";
+  lastPull = Date.now(); saveCatalogCache();
+  Data.mode = "sheets";
+  Data.backend = {
+    put:(c,i,d)=>sheetsCall("put", { collection:c, id:i, data:c==="activity"?null:d, rows:sheetRows(c,i,d) }),
+    del:(c,i)=>sheetsCall("del", { collection:c, id:i })
+  };
+  // A brand-new sheet: save the starting therapies and healers right away, so emails and the sheet show their full names.
+  if(!Data.all("therapies").length || !Data.all("healers").length) ensureCatalog().then(saveCatalogCache);
+  setInterval(()=>{ if(!document.hidden) pullSheet(); }, 60000);
+  document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && Date.now() - lastPull > 20000) pullSheet(); });
+}
+// Older activity is only downloaded when an admin opens the Activity page.
+async function loadOlderActivity(){
+  if(state.activityLoaded || state.activityLoading || Data.mode!=="sheets") return;
+  state.activityLoading = true;
+  try{
+    const r = await sheetsCall("activity", { days:30 });
+    const older = fromSheet({ activity:r.activity }).activity;
+    Data.c.activity = Object.assign({}, older, Data.c.activity);
+    state.activityLoaded = true; rerenderSoon();
+  }catch(_){ toast("Couldn't load older activity. Try again in a moment."); }
+  finally{ state.activityLoading = false; }
+}
+
+/* ---------- catalogue getters (defaults until an admin saves changes) ---------- */
+const byOrder = (a,b) => (a.order||0)-(b.order||0) || String(a.name).localeCompare(String(b.name));
+const therapies = () => { const l = Data.all("therapies"); return (l.length ? l : DEFAULT_THERAPIES).slice().sort(byOrder); };
+const healers = () => { const l = Data.all("healers"); return (l.length ? l : DEFAULT_HEALERS).slice().sort(byOrder); };
+const activeTherapies = () => therapies().filter(t=>t.active!==false);
+const activeHealers = () => healers().filter(h=>h.active!==false);
+const therapy = id => therapies().find(t=>t.id===id);
+const healer = id => healers().find(h=>h.id===id);
+const rolesCfg = () => (Data.get("config","roles") || {}).roles || DEFAULT_ROLES;
+const centre = () => Object.assign({}, CONFIG, Data.get("config","centre") || {});
+const templates = () => Object.assign({}, DEFAULT_TEMPLATES, (Data.get("config","centre") || {}).templates || {});
+async function ensureCatalog(){
+  const w = [];
+  if(!Data.all("therapies").length) DEFAULT_THERAPIES.forEach(t=>w.push(Data.put("therapies",t.id,t)));
+  if(!Data.all("healers").length) DEFAULT_HEALERS.forEach(h=>w.push(Data.put("healers",h.id,h)));
+  await Promise.all(w);
+}
+
+/* =========================================================
+   HELPERS
+   ========================================================= */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pad = n => String(n).padStart(2,"0");
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const today = () => ymd(new Date());
+const addDays = (s,n) => { const d = parseYmd(s); d.setDate(d.getDate()+n); return ymd(d); };
+const initials = n => String(n||"?").replace(/^Dr\.?\s+/,"").split(/\s+/).filter(Boolean).map(w=>w[0]).slice(0,2).join("").toUpperCase();
+const parseYmd = s => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); };
+const DAY = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const DAYFULL = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const MONFULL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const niceDate = s => { const d = parseYmd(s); return `${DAY[d.getDay()]}, ${d.getDate()} ${MON[d.getMonth()]}`; };
+const niceTime = t => { let [h,m] = t.split(":").map(Number); const ap = h>=12?"PM":"AM"; h = h%12||12; return `${h}:${pad(m)} ${ap}`; };
+const toMin = t => { const [h,m] = String(t||"0:0").split(":").map(Number); return h*60+(m||0); };
+const fromMin = n => `${pad(Math.floor(n/60))}:${pad(n%60)}`;
+const rupees = n => "₹" + Number(n||0).toLocaleString("en-IN");
+const whenOf = (date,time) => { const d = parseYmd(date); d.setHours(+time.slice(0,2), +time.slice(3), 0, 0); return d; };
+const isPast = b => whenOf(b.date,b.time) < new Date();
+const isUpcoming = b => b.status==="confirmed" && !isPast(b);
+const isActive = b => b.status!=="cancelled";
+const sortByWhen = (a,b) => (a.date+a.time).localeCompare(b.date+b.time);
+const bookingsAll = () => Data.all("bookings");
+const fmtStamp = iso => { if(!iso) return ""; const d = new Date(iso); return `${d.getDate()} ${MON[d.getMonth()]}, ${niceTime(pad(d.getHours())+":"+pad(d.getMinutes()))}`; };
+const validPhone = p => /^[6-9]\d{9}$/.test(p);
+const digits = v => String(v||"").replace(/\D/g,"");
+
+function hashLegacy(s){ let h = 5381; for(let i=0;i<s.length;i++) h = ((h<<5)+h) ^ s.charCodeAt(i); return "x"+(h>>>0).toString(36); }
+async function hashPw(pw, salt){
+  try{
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(salt + ":" + pw));
+    return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,"0")).join("");
+  }catch(_){ return hashLegacy(salt + ":" + pw); }
+}
+const newSalt = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36);
+async function withPassword(doc, pw){ const salt = newSalt(); return Object.assign({}, doc, { salt, passHash: await hashPw(pw, salt) }); }
+async function checkPassword(doc, pw){ return !!(doc && doc.passHash && doc.passHash === await hashPw(pw, doc.salt||"")); }
+
+function newId(){
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let id;
+  do { id = "SH-" + Array.from({length:5},()=>chars[Math.floor(Math.random()*chars.length)]).join(""); }
+  while (Data.get("bookings", id));
+  return id;
+}
+const slugId = (name, col) => { let base = String(name).toLowerCase().replace(/^dr\.?\s+/,"").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"") || "item"; let id = base, n = 2; while(Data.get(col,id) || (col==="healers"?healer(id):therapy(id))) id = base + "-" + (n++); return id; };
+
+/* ---------- schedules ---------- */
+const schedOf = h => Object.assign({}, DEFAULT_SCHEDULE, h && h.schedule || {});
+function onLeave(h, date){ return (schedOf(h).leave||[]).some(l => date >= l.from && date <= (l.to||l.from)); }
+function dayStatus(h, date){
+  if(!h || h.active===false) return "inactive";
+  const s = schedOf(h);
+  if(!s.days.includes(parseYmd(date).getDay())) return "off";
+  if(onLeave(h, date)) return "leave";
+  return "open";
+}
+function healerSlots(h, date){
+  if(dayStatus(h,date)!=="open") return [];
+  const s = schedOf(h), step = CONFIG.slotMinutes, end = toMin(s.end), out = [];
+  const bs = s.breakStart ? toMin(s.breakStart) : null, be = s.breakEnd ? toMin(s.breakEnd) : null;
+  for(let t = toMin(s.start); t + step <= end; t += step){
+    if(bs!==null && be!==null && t < be && t + step > bs) continue;
+    out.push(fromMin(t));
+  }
+  return out;
+}
+function isTaken(healerId,date,time,ignoreId){
+  return bookingsAll().some(b => b.id!==ignoreId && b.healerId===healerId && b.date===date && b.time===time && b.status!=="cancelled");
+}
+function freeSlots(h, date, ignoreId){ return healerSlots(h,date).filter(sl => !isTaken(h.id,date,sl,ignoreId) && whenOf(date,sl) > new Date()); }
+function bookingDates(){
+  const out = [], d = new Date(); d.setHours(0,0,0,0);
+  for(let i=0;i<centre().daysAhead;i++){ const x = new Date(d); x.setDate(d.getDate()+i); out.push(ymd(x)); }
+  return out;
+}
+
+/* ---------- WhatsApp ---------- */
+function fillTemplate(kind, b){
+  const t = therapy(b.therapyId), h = healer(b.healerId), c = centre();
+  const vals = { name:(b.name||"").split(" ")[0], therapy:t?.full||"", healer:h?.name||"", date:niceDate(b.date), time:niceTime(b.time),
+    mins:b.mins||t?.mins||MINS, price:rupees(b.price ?? t?.price ?? PRICE), id:b.id, centre:c.centreName, address:c.centreAddress,
+    prep:(t?.prep||[]).map(x=>"• "+x).join("\n") };
+  return templates()[kind].replace(/\{(\w+)\}/g, (m,k) => vals[k] !== undefined ? vals[k] : m);
+}
+function waLink(phone, text){
+  let p = digits(phone); if(p.length===10) p = "91" + p;
+  return `https://wa.me/${p}?text=${encodeURIComponent(text)}`;
+}
+
+/* ---------- toast, petals ---------- */
+let toastTimer;
+function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),2600); }
+const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+function petals(){
+  if(reduceMotion()) return;
+  const box = document.createElement("div"); box.className = "petals";
+  const colors = ["#D99A24","#E9B7A6","#7FC3B4","#F2D48A","#F4A9A0"];
+  for(let i=0;i<26;i++){
+    const p = document.createElement("i"); p.className = "petal";
+    p.style.left = Math.random()*100 + "%";
+    p.style.background = colors[i%colors.length];
+    p.style.animationDuration = (2.2 + Math.random()*1.8) + "s";
+    p.style.animationDelay = (Math.random()*.6) + "s";
+    p.style.transform = `rotate(${Math.random()*360}deg)`;
+    box.appendChild(p);
+  }
+  document.body.appendChild(box); setTimeout(()=>box.remove(), 4800);
+}
+
+const I = {
+  clock:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  rupee:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 5h11M7 9h11M7 5c6 0 8 2 8 4.5S13 14 7 14l8 6"/></svg>',
+  people:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M16 11a3 3 0 1 0 0-6M21 20a6 6 0 0 0-4-5.6"/></svg>',
+  chev:'<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>',
+  back:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 6l-6 6 6 6"/></svg>',
+  check:'<svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12l5 5 9-10"/></svg>',
+  moon:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>',
+  lotus:'<svg class="lotus" viewBox="0 0 40 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M20 8c3.5 4 3.5 12 0 18-3.5-6-3.5-14 0-18z"/><path d="M20 26c-5-1-9-5-10-11 5 0 9 4 10 11z"/><path d="M20 26c5-1 9-5 10-11-5 0-9 4-10 11z"/><path d="M8 30c4 2 8 2 12 2s8 0 12-2"/></svg>',
+  cal:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+  leaf:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4c2.5 3 2.5 9 0 13-2.5-4-2.5-10 0-13z"/><path d="M12 17c-4-.5-7-4-7.5-8.5 4 0 7 3.5 7.5 8.5zM12 17c4-.5 7-4 7.5-8.5-4 0-7 3.5-7.5 8.5z"/></svg>',
+  user:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6.5 6.5 0 0 1 3.5 6"/></svg>',
+  info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg>',
+  lock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>',
+  out:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 16l-4-4 4-4M6 12h10"/></svg>',
+  edit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
+  key:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg>',
+  file:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 13h6M9 17h6"/></svg>'
+};
+
+/* =========================================================
+   SESSION + PERMISSIONS
+   ========================================================= */
+const SESSION_KEY = "sadhna_session_v4", LOCK_KEY = "sadhna_admin_lock";
+let session = null;
+function loadSession(){ try{ session = JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); }catch(_){ session = null; } }
+function saveSession(){ try{ session ? localStorage.setItem(SESSION_KEY, JSON.stringify(session)) : localStorage.removeItem(SESSION_KEY); }catch(_){} }
+function currentUser(){ if(session?.kind!=="user") return null; const u = Data.get("users", session.id); return u && u.active!==false ? u : null; }
+function currentStaff(){ if(session?.kind!=="staff") return null; const s = Data.get("staff", session.id); return s && s.active!==false ? s : null; }
+const isStaff = () => !!currentStaff();
+function can(p){ const s = currentStaff(); if(!s) return false; if(s.role==="superadmin") return true; return (rolesCfg()[s.role]||[]).includes(p); }
+function scopeBookings(list){ const s = currentStaff(); return s && s.role==="healer" && s.healerId ? list.filter(b=>b.healerId===s.healerId) : list; }
+function actor(){ const s = currentStaff(); if(s) return `${s.name} (${ROLES[s.role]})`; const u = currentUser(); return u ? `${u.name} (patient)` : "Visitor"; }
+
+function log(action, detail=""){
+  const day = today(), doc = Data.get("activity", day);
+  const entries = (doc?.entries || []).concat([{ at:new Date().toISOString(), by:actor(), action, detail }]).slice(-400);
+  Data.put("activity", day, { day, entries });
+}
+
+let otp = null; // { phone, code, exp, purpose, tries }
+function sendOtp(phone, purpose){ otp = { phone, purpose, code:String(Math.floor(100000 + Math.random()*900000)), exp:Date.now() + 5*60*1000, tries:0 }; }
+function checkOtp(phone, code, purpose){
+  if(!otp || otp.phone!==phone || otp.purpose!==purpose) return "Send a new code first.";
+  if(Date.now() > otp.exp) return "This code has expired. Send a new one.";
+  if(++otp.tries > 5) return "Too many wrong tries. Send a new code.";
+  if(digits(code)!==otp.code) return "That code is wrong. Check and try again.";
+  otp = null; return "";
+}
+function lockState(){ try{ return JSON.parse(localStorage.getItem(LOCK_KEY) || '{"n":0,"until":0}'); }catch(_){ return {n:0,until:0}; } }
+function setLock(v){ try{ localStorage.setItem(LOCK_KEY, JSON.stringify(v)); }catch(_){} }
+
+/* =========================================================
+   STATE + ROUTER
+   ========================================================= */
+const state = {
+  route:{ name:"home" }, history:[], anim:"view",
+  draft:null, step:1, errors:{}, lastBookingId:null, bookingsTab:"upcoming",
+  afterLogin:null, authErr:"", authInfo:"", showPw:false, loginMode:"password", otpSent:false, form:{},
+  admin:{ section:"dash", id:null }, filter:{ q:"", date:"", healer:"", status:"", therapy:"" },
+  pq:"", aq:"", cal:{ month:today().slice(0,7), day:today() }, rep:{ from:today(), to:today() },
+  modal:null, stale:false, firstHome:true
+};
+function freshDraft(){
+  const u = currentUser();
+  return { therapyId:null, healerId:null, date:null, time:null, name:u?.name||"", phone:u?.phone||"", email:u?.email||"", age:"", notes:"", rescheduleId:null };
+}
+state.draft = freshDraft();
+
+const TOP_LEVEL = ["home","therapies","book","bookings","profile"];
+function navigate(name, params={}, opts={}){
+  const next = { name, ...params };
+  if(opts.replace){ /* no history */ }
+  else if(TOP_LEVEL.includes(name) && !opts.push) state.history = [];
+  else state.history.push(state.route);
+  state.anim = opts.anim || (TOP_LEVEL.includes(name) && !opts.push ? "view" : "from-right");
+  state.route = next; state.modal = null;
+  render(true);
+}
+function goBack(){
+  const prev = state.history.pop();
+  state.anim = "from-left"; state.route = prev || { name:"home" }; state.modal = null;
+  render(true);
+}
+function requireLogin(then){
+  if(currentUser() || isStaff()) return true;
+  state.afterLogin = then; state.authErr = "";
+  navigate("login", {}, { push:true });
+  toast("Please log in to continue");
+  return false;
+}
+const canBookForOthers = () => can("bookings.create");
+function startBooking(pre={}){
+  state.draft = Object.assign(freshDraft(), pre);
+  state.step = state.draft.therapyId ? (state.draft.healerId ? 3 : 2) : 1;
+  state.errors = {};
+  if(!requireLogin({ name:"book" })) return;
+  if(isStaff() && !canBookForOthers() && !pre.rescheduleId){ toast("Your role can't make bookings."); return; }
+  navigate("book");
+}
+function goAdmin(section, id=null){
+  state.admin = { section, id };
+  if(state.route.name==="admin"){ state.anim = "view"; state.modal = null; render(true); }
+  else navigate("admin", {}, { push: state.route.name!=="profile" ? true : false, anim:"from-right" });
+}
+
+/* =========================================================
+   PATIENT-FACING VIEWS
+   ========================================================= */
+function header(){
+  const r = state.route.name;
+  const titles = { therapy:"Therapy", healer:"Healer", healers:"Our healers", login:"Log in", register:"Create account", forgot:"Reset password", about:"About the centre", admin:"Admin panel", adminLogin:"Staff login", editProfile:"My details", changePassword:"Change password" };
+  const theme = `<button class="icon-btn" data-theme-toggle aria-label="Switch light or dark mode">${I.moon}</button>`;
+  const sync = { db:"Synced", supabase:"Synced", sheets:"Google Sheet", sheetError:"Not saving", local:"This device", connecting:"Connecting…", needsAllow:"Not connected" }[Data.mode];
+  const syncPill = isStaff() ? `<span class="sync" title="Where data is saved">${sync}</span>` : "";
+  if(state.history.length && !TOP_LEVEL.includes(r)){
+    return `<div class="top-row"><button class="back-btn" data-back-nav>${I.back}Back</button><strong style="font-size:17px">${titles[r]||""}</strong><div class="top-actions">${syncPill}${theme}</div></div>`;
+  }
+  const u = currentUser(), s = currentStaff();
+  const sub = u ? `Namaste, ${esc(u.name.split(" ")[0])}` : s ? `${esc(s.name)} · ${ROLES[s.role]}` : "Therapy sessions with our healers";
+  return `<div class="top-row"><div class="brand">${I.lotus}<div><h1>Sadhna Healing</h1><p>${sub}</p></div></div><div class="top-actions">${syncPill}${theme}</div></div>`;
+}
+const avatar = (h, size) => `<div class="avatar"${size?` style="width:${size}px;height:${size}px;font-size:${Math.round(size/3)}px"`:""}>${h.photo ? `<img src="${esc(h.photo)}" alt="">` : initials(h.name)}</div>`;
+const healerLine = h => [h.specialization, h.experience ? `${h.experience} yrs experience` : ""].filter(Boolean).join(" · ") || `${h.therapies.length} therapies`;
+
+function therapyCard(t, attr){
+  const n = activeHealers().filter(x=>x.therapies.includes(t.id)).length;
+  return `<button class="card-btn" ${attr}>
+    <div class="mark">${esc(t.code)}</div>
+    <div class="body"><h3>${esc(t.full)}</h3><p>${esc(t.desc)}</p>
+    <div class="meta"><span class="price">${rupees(t.price)}</span><span>${I.clock}${t.mins} min</span><span>${I.people}${n} healers</span></div></div>${I.chev}</button>`;
+}
+
+function homeView(){
+  const u = currentUser();
+  const next = u ? bookingsAll().filter(b=>b.phone===u.phone && isUpcoming(b)).sort(sortByWhen)[0] : null;
+  const cls = state.firstHome ? "stagger" : ""; state.firstHome = false;
+  const T = activeTherapies(), H = activeHealers();
+  return `<div class="${cls}">
+  <section class="hero">
+    <span class="ring r1"></span><span class="ring r2"></span>
+    <small>${u ? `Welcome back, ${esc(u.name.split(" ")[0])}` : "Welcome"}</small>
+    <h2>Book your healing session</h2>
+    <p>${T.length} therapies · ${H.length} healers · 60 minutes · ${rupees(PRICE)} per session</p>
+    <button class="btn btn-block" data-start-book>Book a session</button>
+  </section>
+
+  <div class="quick">
+    <button data-go="therapies">${I.leaf}Therapies</button>
+    <button data-nav="healers">${I.user}Healers</button>
+    <button data-go="bookings">${I.cal}My bookings</button>
+  </div>
+
+  ${isStaff() ? `<div class="note warn" style="margin-top:14px">You're logged in as staff. <button class="link" data-admin="dash">Open the admin panel</button></div>` : ""}
+  ${next ? `<section class="section"><div class="section-head"><h3>Your next session</h3><button class="link" data-go="bookings">See all</button></div>${bookingCard(next,false)}</section>` : ""}
+
+  <section class="section">
+    <div class="section-head"><h3>Therapies</h3><button class="link" data-go="therapies">See all</button></div>
+    ${T.slice(0,3).map(t=>therapyCard(t,`data-nav="therapy" data-id="${t.id}"`)).join("")}
+  </section>
+
+  <section class="section">
+    <div class="section-head"><h3>Our healers</h3><button class="link" data-nav="healers">See all</button></div>
+    <div class="teachers">${H.map(h=>`
+      <button class="teacher" data-nav="healer" data-id="${h.id}">
+        ${avatar(h)}<h3>${esc(h.name)}</h3><p>${esc(healerLine(h))}</p>
+      </button>`).join("")}</div>
+  </section>
+
+  <section class="section">
+    <div class="block"><h3>Before any session</h3><ul class="ticks"><li>Arrive 10 minutes before your slot</li><li>Wear loose, comfortable clothes</li><li>Each therapy has its own preparation steps. Open a therapy to read them.</li><li>Bring any recent medical reports</li></ul></div>
+  </section>
+  </div>`;
+}
+
+function therapiesView(){
+  return `<h2>Therapies</h2><p class="sub">Every session is one-to-one, 60 minutes, ${rupees(PRICE)}.</p>
+  <div class="stagger">${activeTherapies().map(t=>therapyCard(t,`data-nav="therapy" data-id="${t.id}"`)).join("")}</div>
+  <p class="disclaimer">These therapies support wellbeing and don't replace medical treatment.</p>`;
+}
+
+function therapyView(){
+  const t = therapy(state.route.id);
+  if(!t) return `<div class="empty"><h3>Therapy not found</h3><button class="btn btn-primary" data-go="therapies">See all therapies</button></div>`;
+  const hs = activeHealers().filter(x=>x.therapies.includes(t.id));
+  return `
+  <section class="detail-hero">
+    <div class="mark">${esc(t.code)}</div>
+    <h2>${esc(t.full)}</h2>
+    <p style="margin:0;color:var(--muted)">${esc(t.desc)}</p>
+    <div class="fee"><div><small>Fee</small><b>${rupees(t.price)}</b></div><div><small>Duration</small><b>${t.mins} min</b></div><div><small>Healers</small><b>${hs.length}</b></div></div>
+  </section>
+  <div class="block prep"><h3>How to prepare</h3><ol class="steps-list">${(t.prep||[]).map(x=>`<li>${esc(x)}</li>`).join("")}</ol></div>
+  <div class="block"><h3>About</h3><p>${esc(t.about)}</p></div>
+  <div class="block"><h3>Benefits</h3><ul class="ticks">${(t.benefits||[]).map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>
+  <div class="block"><h3>Who it's for</h3><p>${esc(t.who)}</p></div>
+  <div class="block"><h3>Healers</h3><div class="people">${hs.map(h=>`
+    <button class="person" data-start-book data-therapy-id="${t.id}" data-healer-id="${h.id}">
+      ${avatar(h)}<div class="body"><h3 style="font-size:16px">${esc(h.name)}</h3><p>${esc(healerLine(h))}</p></div>${I.chev}
+    </button>`).join("") || `<p>No healer offers this therapy right now.</p>`}</div></div>
+  <p class="disclaimer">This therapy supports wellbeing and doesn't replace medical treatment.</p>
+  <div class="sticky-cta"><button class="btn btn-primary btn-block" data-start-book data-therapy-id="${t.id}">Book ${esc(t.name)} · ${rupees(t.price)}</button></div>`;
+}
+
+function healersView(){
+  return `<h2>Our healers</h2><p class="sub">Tap a healer to see their profile and availability.</p>
+  <div class="stagger">${activeHealers().map(h=>`
+    <button class="card-btn" data-nav="healer" data-id="${h.id}">
+      ${avatar(h)}
+      <div class="body"><h3>${esc(h.name)}</h3><p>${esc(healerLine(h))}</p><p>${h.therapies.map(id=>therapy(id)?.name).filter(Boolean).join(", ")}</p></div>${I.chev}
+    </button>`).join("")}</div>`;
+}
+
+function availabilityText(h){
+  const s = schedOf(h);
+  const days = [1,2,3,4,5,6,0].map(d=>`<span class="daypill ${s.days.includes(d)?"on":""}">${DAY[d]}</span>`).join("");
+  const brk = s.breakStart && s.breakEnd ? ` · Break ${niceTime(s.breakStart)} – ${niceTime(s.breakEnd)}` : "";
+  const leave = (s.leave||[]).filter(l=>(l.to||l.from) >= today()).sort((a,b)=>a.from.localeCompare(b.from));
+  return `<div class="dayrow">${days}</div><p style="margin-top:8px">${niceTime(s.start)} – ${niceTime(s.end)}${brk}</p>
+    ${leave.length ? `<p style="margin-top:6px"><b style="color:var(--ink)">On leave:</b> ${leave.map(l=>l.to && l.to!==l.from ? `${niceDate(l.from)} – ${niceDate(l.to)}` : niceDate(l.from)).join("; ")}</p>` : ""}`;
+}
+
+function healerView(){
+  const h = healer(state.route.id);
+  if(!h || h.active===false) return `<div class="empty"><h3>Healer not available</h3><button class="btn btn-primary" data-nav="healers">See all healers</button></div>`;
+  const nextFree = bookingDates().map(d=>({ d, n:freeSlots(h,d).length })).find(x=>x.n>0);
+  return `
+  <section class="detail-hero" style="text-align:center">
+    <div style="display:flex;justify-content:center;margin-bottom:12px">${avatar(h,96)}</div>
+    <h2>${esc(h.name)}</h2>
+    <p style="margin:0;color:var(--muted)">${esc(h.specialization || h.bio || "")}</p>
+  </section>
+  <div class="block"><h3>Profile</h3><dl class="kv">
+    <dt>Qualifications</dt><dd>${esc(h.qualifications || "Not added yet")}</dd>
+    <dt>Experience</dt><dd>${h.experience ? esc(h.experience) + " years" : "Not added yet"}</dd>
+    <dt>Specialization</dt><dd>${esc(h.specialization || "Not added yet")}</dd>
+  </dl>${h.bio ? `<p style="margin-top:10px">${esc(h.bio)}</p>` : ""}</div>
+  <div class="block"><h3>Availability</h3>${availabilityText(h)}
+    <p style="margin-top:8px">${nextFree ? `Next free slot: <b style="color:var(--ink)">${niceDate(nextFree.d)}</b> (${nextFree.n} open)` : "No free slots in the coming weeks."}</p></div>
+  <div class="block"><h3>Therapies offered</h3>
+    <div class="people">${h.therapies.map(id=>therapy(id)).filter(t=>t && t.active!==false).map(t=>`
+      <button class="person" data-start-book data-therapy-id="${t.id}" data-healer-id="${h.id}">
+        <div class="mark" style="width:40px;height:40px;font-size:15px;border-radius:12px">${esc(t.code)}</div>
+        <div class="body"><h3 style="font-size:16px">${esc(t.full)}</h3><p>${t.mins} min · ${rupees(t.price)}</p></div>${I.chev}
+      </button>`).join("")}</div>
+  </div>
+  <div class="sticky-cta"><button class="btn btn-primary btn-block" data-start-book data-healer-id="${h.id}">Book with ${esc(h.name)}</button></div>`;
+}
+
+function bookView(){
+  const staff = isStaff();
+  if(!currentUser() && !staff){
+    return `<div class="empty"><h3>Log in to book</h3><p>You need an account so you can see and manage your bookings.</p><button class="btn btn-primary" data-nav="login">Log in</button></div>`;
+  }
+  const d = state.draft, s = state.step;
+  const bar = `<div class="steps" aria-hidden="true">${[1,2,3,4].map(i=>`<i class="${i<=s?"on":""}"></i>`).join("")}</div>`;
+  const title = d.rescheduleId ? `<p class="step-label">Rescheduling ${esc(d.rescheduleId)}</p>` : staff ? `<p class="step-label">Booking on behalf of a patient</p>` : "";
+
+  if(s===1){
+    const list = d.healerId ? activeTherapies().filter(t=>healer(d.healerId)?.therapies.includes(t.id)) : activeTherapies();
+    return `${bar}${title}<p class="step-label">Step 1 of 4</p><h2>Choose a therapy</h2>
+    <p class="sub">${d.healerId ? `Therapies offered by ${esc(healer(d.healerId).name)}.` : `All sessions are one-to-one, 60 minutes, ${rupees(PRICE)}.`}</p>
+    ${list.map(t=>`<button class="card-btn pick" aria-pressed="${d.therapyId===t.id}" data-pick-therapy="${t.id}">
+      <div class="mark">${esc(t.code)}</div><div class="body"><h3>${esc(t.full)}</h3><p>${esc(t.desc)}</p><div class="meta"><span class="price">${rupees(t.price)}</span><span>${I.clock}${t.mins} min</span></div></div></button>`).join("")}
+    <div class="actions"><button class="btn btn-primary" data-next ${d.therapyId?"":"disabled"}>Continue</button></div>`;
+  }
+  if(s===2){
+    const t = therapy(d.therapyId);
+    const list = activeHealers().filter(x=>x.therapies.includes(d.therapyId));
+    return `${bar}${title}<p class="step-label">Step 2 of 4 · ${esc(t.name)}</p><h2>Choose your healer</h2>
+    <p class="sub">Everyone here offers ${esc(t.full)}.</p>
+    ${list.map(h=>{ const nf = bookingDates().find(x=>freeSlots(h,x).length); return `<button class="card-btn pick" aria-pressed="${d.healerId===h.id}" data-pick-healer="${h.id}">
+      ${avatar(h)}<div class="body"><h3>${esc(h.name)}</h3><p>${esc(healerLine(h))}</p><p>${nf ? `Next free: ${niceDate(nf)}` : "Fully booked"}</p></div></button>`; }).join("")}
+    <div class="actions"><button class="btn btn-ghost" data-prev>Back</button><button class="btn btn-primary" data-next ${d.healerId?"":"disabled"}>Continue</button></div>`;
+  }
+  if(s===3){
+    const h = healer(d.healerId), t = therapy(d.therapyId);
+    const dates = bookingDates();
+    if(!d.date || !dates.includes(d.date) || dayStatus(h,d.date)!=="open") d.date = dates.find(x=>dayStatus(h,x)==="open") || dates[0];
+    const all = healerSlots(h, d.date), free = freeSlots(h, d.date, d.rescheduleId);
+    const st = dayStatus(h, d.date);
+    return `${bar}${title}<p class="step-label">Step 3 of 4 · ${esc(h.name)}</p><h2>Pick a date and time</h2>
+    <p class="sub">${esc(t.full)}, ${t.mins} min, ${rupees(t.price)}</p>
+    <div class="dates" role="group" aria-label="Date">${dates.map(ds=>{ const x=parseYmd(ds), ds2=dayStatus(h,ds); const off = ds2!=="open"; return `
+      <button class="date" aria-pressed="${d.date===ds}" data-pick-date="${ds}" ${off?"disabled":""}><small>${DAY[x.getDay()]}</small><b>${x.getDate()}</b><small>${off ? (ds2==="leave"?"Leave":"Off") : MON[x.getMonth()]}</small></button>`;}).join("")}</div>
+    <p style="margin:6px 0 10px;font-weight:600">${niceDate(d.date)} <span style="color:var(--muted);font-weight:400">· ${free.length} of ${all.length} free</span></p>
+    ${st!=="open" ? `<div class="note">${esc(h.name)} isn't working on this day. Pick another date.</div>` : `
+    <div class="slots" role="group" aria-label="Time">${all.map(sl=>{
+      const off = !free.includes(sl);
+      return `<button class="slot" data-pick-time="${sl}" aria-pressed="${d.time===sl}" ${off?"disabled":""}>${niceTime(sl)}</button>`;}).join("")}</div>
+    <p class="legend"><span>Crossed out = booked or passed</span></p>
+    ${free.length===0?`<div class="note">No free slots on this day. Pick another date.</div>`:""}`}
+    <div class="actions"><button class="btn btn-ghost" data-prev>Back</button><button class="btn btn-primary" data-next ${d.time && free.includes(d.time)?"":"disabled"}>Continue</button></div>`;
+  }
+  if(s===4){
+    const e = state.errors, t = therapy(d.therapyId);
+    return `${bar}${title}<p class="step-label">Step 4 of 4</p><h2>Confirm details</h2>
+    <p class="sub">Check everything before you confirm.</p>
+    <div class="summary">
+      <div class="row"><span>Therapy</span><b>${esc(t.full)}</b></div>
+      <div class="row"><span>Healer</span><b>${esc(healer(d.healerId).name)}</b></div>
+      <div class="row"><span>Date</span><b>${niceDate(d.date)}</b></div>
+      <div class="row"><span>Time</span><b>${niceTime(d.time)} (${t.mins} min)</b></div>
+      <div class="row total"><span>Fee (pay at the centre)</span><b>${rupees(t.price)}</b></div>
+    </div>
+    <div class="block prep"><h3>How to prepare</h3><ol class="steps-list">${(t.prep||[]).map(x=>`<li>${esc(x)}</li>`).join("")}</ol></div>
+    <label class="field"><span>Patient name</span><input id="f-name" autocomplete="name" value="${esc(d.name)}">${e.name?`<div class="err">${e.name}</div>`:""}</label>
+    <label class="field"><span>Mobile number${staff?" (patient's WhatsApp number)":""}</span><input id="f-phone" type="tel" inputmode="numeric" maxlength="10" value="${esc(d.phone)}" ${d.rescheduleId && staff ? "readonly" : ""}>${e.phone?`<div class="err">${e.phone}</div>`:""}</label>
+    <label class="field"><span>Email for confirmation (optional)</span><input id="f-email" type="email" autocomplete="email" value="${esc(d.email||"")}" placeholder="name@example.com">${e.email?`<div class="err">${e.email}</div>`:""}<small>We email the booking details and a reminder the day before.</small></label>
+    <label class="field"><span>Age (optional)</span><input id="f-age" type="number" inputmode="numeric" min="1" max="120" value="${esc(d.age)}"></label>
+    <label class="field"><span>Health concern or note (optional)</span><textarea id="f-notes" placeholder="e.g. lower back pain for 2 months">${esc(d.notes)}</textarea></label>
+    <div class="actions"><button class="btn btn-ghost" data-prev>Back</button><button class="btn btn-primary" data-confirm>${d.rescheduleId?"Save new time":"Confirm booking"}</button></div>`;
+  }
+  if(s===5){
+    const b = Data.get("bookings", state.lastBookingId);
+    if(!b){ state.step=1; return bookView(); }
+    const c = centre();
+    const waBtn = staff && can("notify.send")
+      ? `<a class="btn btn-wa btn-block" style="margin-top:12px" target="_blank" rel="noopener" href="${esc(waLink(b.contact||b.phone, fillTemplate(d.rescheduleId?"reschedule":"confirm", b)))}" data-wa="${d.rescheduleId?"reschedule":"confirm"}" data-id="${b.id}">Send WhatsApp ${d.rescheduleId?"update":"confirmation"} to patient</a>`
+      : (c.centreWhatsApp ? `<a class="btn btn-wa btn-block" style="margin-top:12px" target="_blank" rel="noopener" href="${esc(waLink(c.centreWhatsApp, `Namaste, I have booked ${therapy(b.therapyId).full} on ${niceDate(b.date)} at ${niceTime(b.time)}. Booking ID ${b.id}. Name: ${b.name}`))}">Send booking details to the centre on WhatsApp</a>` : "");
+    return `<div class="success">
+      <div class="tick">${I.check}</div>
+      <h2>${d.rescheduleId?"Booking rescheduled":"Booking confirmed"}</h2>
+      <p class="sub">Please arrive 10 minutes early and show this booking ID.</p>
+      <div class="code">${b.id}</div></div>
+    <div class="summary" style="margin-top:18px">
+      <div class="row"><span>Name</span><b>${esc(b.name)}</b></div>
+      <div class="row"><span>Therapy</span><b>${esc(therapy(b.therapyId).full)}</b></div>
+      <div class="row"><span>Healer</span><b>${esc(healer(b.healerId).name)}</b></div>
+      <div class="row"><span>When</span><b>${niceDate(b.date)}, ${niceTime(b.time)}</b></div>
+      <div class="row total"><span>Fee</span><b>${rupees(b.price)}</b></div>
+    </div>
+    ${waBtn}
+    <div class="actions">${staff ? `<button class="btn btn-ghost" data-admin="bookings">All bookings</button>` : `<button class="btn btn-ghost" data-go="bookings">My bookings</button>`}<button class="btn btn-primary" data-start-book>Book another</button></div>`;
+  }
+}
+
+function waRow(b){
+  if(!can("notify.send")) return "";
+  const kinds = b.status==="cancelled" ? ["cancel"] : ["confirm","reminder","reschedule"];
+  return `<div class="wa-row"><span class="label">WhatsApp</span>${kinds.map(k=>`<a class="wa ${b.notified?.[k]?"sent":""}" target="_blank" rel="noopener" href="${esc(waLink(b.contact||b.phone, fillTemplate(k,b)))}" data-wa="${k}" data-id="${b.id}" title="${b.notified?.[k]?"Last opened "+fmtStamp(b.notified[k]):"Opens WhatsApp with the message filled in"}">${TEMPLATE_NAMES[k]}</a>`).join("")}</div>`;
+}
+
+function bookingCard(b, withActions, admin=false){
+  const t = therapy(b.therapyId), h = healer(b.healerId);
+  const upcoming = isUpcoming(b);
+  const missed = b.status==="confirmed" && !upcoming;
+  const label = missed && !admin ? "Awaiting update" : STATUS[b.status];
+  let acts = "";
+  if(withActions && !admin && upcoming) acts = `<button class="btn btn-ghost btn-sm" data-reschedule="${b.id}">Reschedule</button><button class="btn btn-danger btn-sm" data-cancel="${b.id}">Cancel</button>`;
+  if(withActions && admin){
+    const m = can("bookings.manage");
+    if(b.status==="confirmed"){
+      if(m) acts += `<button class="btn btn-accent btn-sm" data-status="checkedin" data-id="${b.id}">Check in</button><button class="btn btn-ghost btn-sm" data-status="noshow" data-id="${b.id}">No-show</button>`;
+      if(can("bookings.reschedule")) acts += `<button class="btn btn-ghost btn-sm" data-reschedule="${b.id}">Reschedule</button>`;
+      if(m) acts += `<button class="btn btn-danger btn-sm" data-cancel="${b.id}">Cancel</button>`;
+    } else if(b.status==="checkedin"){
+      if(m) acts += `<button class="btn btn-ok btn-sm" data-status="completed" data-id="${b.id}">Mark completed</button><button class="btn btn-ghost btn-sm" data-status="confirmed" data-id="${b.id}">Undo check-in</button>`;
+    } else if(m){
+      acts += `<button class="btn btn-ghost btn-sm" data-restore="${b.id}">Restore</button>`;
+    }
+    if(can("bookings.notes")) acts += `<button class="btn btn-ghost btn-sm" data-notes="${b.id}">${b.staffNotes?"Edit":"Add"} session note</button>`;
+    if(can("patients.view") && Data.get("users", b.phone)) acts += `<button class="btn btn-ghost btn-sm" data-patient="${esc(b.phone)}">Patient record</button>`;
+  }
+  return `<article class="bk st-${b.status}">
+    <div class="bk-top"><div style="min-width:0">
+      <div class="bk-when">${niceDate(b.date)} · ${niceTime(b.time)}</div>
+      <p>${esc(t?.full||b.therapyId)} with ${esc(h?.name||b.healerId)} · ${rupees(b.price)}</p>
+      ${admin?`<p><b style="color:var(--ink)">${esc(b.name)}</b> · ${esc(b.contact||b.phone)}${b.age?` · ${esc(b.age)} yrs`:""}</p>`:""}
+      ${b.notes?`<p>Concern: ${esc(b.notes)}</p>`:""}
+      ${admin && b.staffNotes?`<div class="snote"><span class="label">Session note</span><br>${esc(b.staffNotes)}</div>`:""}
+      ${admin && b.checkedInAt?`<p>Checked in ${fmtStamp(b.checkedInAt)}</p>`:""}
+    </div><span class="badge b-${b.status}">${label}</span></div>
+    <div class="bk-id">Booking ID ${b.id}${admin && b.createdBy ? ` · booked by ${esc(b.createdBy)}` : ""}</div>
+    ${acts?`<div class="bk-actions">${acts}</div>`:""}
+    ${withActions && admin ? waRow(b) : ""}
+  </article>`;
+}
+
+function bookingsView(){
+  const u = currentUser();
+  if(isStaff()) return `<h2>Bookings</h2><div class="empty"><h3>You're logged in as staff</h3><p>Staff see bookings in the admin panel.</p><button class="btn btn-primary" data-admin="bookings">Open bookings</button></div>`;
+  if(!u) return `<h2>My bookings</h2><div class="empty"><h3>Log in to see your bookings</h3><p>Your upcoming and past sessions show up here.</p><button class="btn btn-primary" data-nav="login">Log in</button></div>`;
+  const mine = bookingsAll().filter(b=>b.phone===u.phone);
+  const up = mine.filter(isUpcoming).sort(sortByWhen);
+  const past = mine.filter(b=>!isUpcoming(b)).sort(sortByWhen).reverse();
+  const list = state.bookingsTab==="upcoming" ? up : past;
+  return `<h2>My bookings</h2><p class="sub">${mine.length} total booking${mine.length===1?"":"s"}</p>
+  <div class="seg"><button aria-pressed="${state.bookingsTab==="upcoming"}" data-btab="upcoming">Upcoming (${up.length})</button><button aria-pressed="${state.bookingsTab==="past"}" data-btab="past">History (${past.length})</button></div>
+  <div class="stagger">${list.length ? list.map(b=>bookingCard(b,true)).join("") : `<div class="empty"><h3>${state.bookingsTab==="upcoming"?"No upcoming sessions":"Nothing here yet"}</h3><p>${state.bookingsTab==="upcoming"?"Book a therapy and it will show here.":"Completed and cancelled sessions appear here."}</p>${state.bookingsTab==="upcoming"?`<button class="btn btn-primary" data-start-book>Book a session</button>`:""}</div>`}</div>`;
+}
+
+/* ---------- auth views ---------- */
+const otpNotice = () => otp ? `<div class="otp-box">SMS sending isn't connected yet, so your code is shown here: <b>${otp.code}</b><br><small>Valid for 5 minutes. Connect an SMS provider to send it by text.</small></div>` : "";
+function loginView(){
+  const f = state.form, pw = state.showPw ? "text" : "password", mode = state.loginMode;
+  const demo = centre().demoMode && Data.get("users","9999999999") ? `<div class="demo-box"><b>Test account</b><br>Mobile: 9999999999 · Password: demo123
+  <br><button class="btn btn-accent btn-sm" data-demo-login>Log in with test account</button></div>` : "";
+  return `<h2>Log in</h2><p class="sub">Use your mobile number with a password or a one-time code.</p>
+  <div class="seg-mini"><button aria-pressed="${mode==="password"}" data-login-mode="password">Password</button><button aria-pressed="${mode==="otp"}" data-login-mode="otp">One-time code</button></div>
+  ${mode==="password" ? demo : ""}
+  <label class="field"><span>Mobile number</span><input id="l-phone" type="tel" inputmode="numeric" maxlength="10" autocomplete="username" value="${esc(f.phone||"")}"></label>
+  ${mode==="password" ? `
+  <label class="field"><span>Password</span><div class="pw"><input id="l-pass" type="${pw}" autocomplete="current-password"><button type="button" data-toggle-pw>${state.showPw?"Hide":"Show"}</button></div></label>
+  ${state.authErr?`<div class="err" style="margin:-6px 0 12px">${esc(state.authErr)}</div>`:""}
+  <button class="btn btn-primary btn-block" data-login>Log in</button>
+  <p style="text-align:center;margin:12px 0 0"><button class="link" data-nav="forgot">Forgot password?</button></p>` : `
+  ${state.otpSent && otp?.purpose==="login" ? `${otpNotice()}<label class="field"><span>6-digit code</span><input id="l-otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label>` : ""}
+  ${state.authErr?`<div class="err" style="margin:-6px 0 12px">${esc(state.authErr)}</div>`:""}
+  ${state.otpSent && otp?.purpose==="login" ? `<button class="btn btn-primary btn-block" data-otp-login>Verify and log in</button><p style="text-align:center;margin:12px 0 0"><button class="link" data-send-otp="login">Send a new code</button></p>` : `<button class="btn btn-primary btn-block" data-send-otp="login">Send code</button>`}`}
+  <p style="text-align:center;margin-top:18px">New here? <button class="link" data-nav="register">Create an account</button></p>
+  <p style="text-align:center;margin:4px 0 0"><button class="link" data-nav="adminLogin" style="color:var(--muted);font-weight:500">Staff and admin login</button></p>`;
+}
+function registerView(){
+  const e = state.errors, f = state.form, verifying = state.otpSent && otp?.purpose==="register";
+  return `<h2>Create account</h2><p class="sub">We'll check your mobile number with a one-time code.</p>
+  <label class="field"><span>Full name</span><input id="r-name" autocomplete="name" value="${esc(f.name||"")}">${e.name?`<div class="err">${e.name}</div>`:""}</label>
+  <label class="field"><span>Mobile number</span><input id="r-phone" type="tel" inputmode="numeric" maxlength="10" autocomplete="tel" value="${esc(f.phone||"")}">${e.phone?`<div class="err">${e.phone}</div>`:""}</label>
+  <label class="field"><span>Email (recommended)</span><input id="r-email" type="email" autocomplete="email" value="${esc(f.email||"")}"></label>
+  <label class="field"><span>Password</span><input id="r-pass" type="password" autocomplete="new-password" placeholder="At least 6 characters" value="${esc(f.pass||"")}">${e.pass?`<div class="err">${e.pass}</div>`:""}</label>
+  ${verifying ? `${otpNotice()}<label class="field"><span>6-digit code</span><input id="r-otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code">${e.otp?`<div class="err">${e.otp}</div>`:""}</label>
+  <button class="btn btn-primary btn-block" data-register>Verify and create account</button>` : `<button class="btn btn-primary btn-block" data-register-start>Send verification code</button>`}
+  <p style="text-align:center;margin-top:18px">Already have an account? <button class="link" data-nav="login">Log in</button></p>`;
+}
+function forgotView(){
+  const e = state.errors, f = state.form, sent = state.otpSent && otp?.purpose==="reset";
+  return `<h2>Reset password</h2><p class="sub">We'll send a one-time code to your mobile number.</p>
+  <label class="field"><span>Mobile number</span><input id="fp-phone" type="tel" inputmode="numeric" maxlength="10" value="${esc(f.phone||"")}">${e.phone?`<div class="err">${e.phone}</div>`:""}</label>
+  ${sent ? `${otpNotice()}
+  <label class="field"><span>6-digit code</span><input id="fp-otp" inputmode="numeric" maxlength="6" autocomplete="one-time-code">${e.otp?`<div class="err">${e.otp}</div>`:""}</label>
+  <label class="field"><span>New password</span><input id="fp-pass" type="password" autocomplete="new-password" placeholder="At least 6 characters">${e.pass?`<div class="err">${e.pass}</div>`:""}</label>
+  <button class="btn btn-primary btn-block" data-reset-pw>Set new password</button>` : `<button class="btn btn-primary btn-block" data-send-otp="reset">Send code</button>`}`;
+}
+function adminLoginView(){
+  const c = centre(), lk = lockState(), locked = lk.until > Date.now();
+  const firstRun = !Data.all("staff").length;
+  const recover = state.form.recover;
+  if(recover){
+    return `<h2>Recover admin access</h2><p class="sub">Enter the recovery code from the app settings to set a new super admin password.</p>
+    <label class="field"><span>Super admin username</span><input id="rc-user" autocomplete="username"></label>
+    <label class="field"><span>Recovery code</span><input id="rc-code"></label>
+    <label class="field"><span>New password</span><input id="rc-pass" type="password" autocomplete="new-password" placeholder="At least 8 characters"></label>
+    ${state.authErr?`<div class="err" style="margin:-6px 0 12px">${esc(state.authErr)}</div>`:""}
+    <button class="btn btn-primary btn-block" data-recover>Set new password</button>
+    <p style="text-align:center;margin-top:14px"><button class="link" data-recover-toggle>Back to login</button></p>`;
+  }
+  return `<h2>Staff login</h2><p class="sub">For the centre's admins, reception and healers.</p>
+  ${c.demoMode && firstRun ? `<div class="demo-box"><b>First-time admin login</b><br>Username: ${esc(c.bootstrapAdmin.username)} · Password: ${esc(c.bootstrapAdmin.password)}<br><small>You'll be asked to set your own password straight away.</small>
+  <br><button class="btn btn-accent btn-sm" data-demo-admin>Log in as admin</button></div>` : ""}
+  <label class="field"><span>Username</span><input id="a-user" autocomplete="username" value="${esc(state.form.user||"")}"></label>
+  <label class="field"><span>Password</span><input id="a-pass" type="password" autocomplete="current-password"></label>
+  ${locked ? `<div class="err" style="margin:-6px 0 12px">Too many wrong tries. Try again after ${niceTime(fromMin(new Date(lk.until).getHours()*60+new Date(lk.until).getMinutes()))}.</div>` : state.authErr?`<div class="err" style="margin:-6px 0 12px">${esc(state.authErr)}</div>`:""}
+  <button class="btn btn-primary btn-block" data-admin-login ${locked?"disabled":""}>Log in</button>
+  <p style="text-align:center;margin-top:14px"><button class="link" data-recover-toggle style="color:var(--muted);font-weight:500">Forgot admin password?</button></p>
+  <div class="note">Staff are logged out after ${c.sessionTimeoutMin} minutes without activity. Five wrong passwords lock this device for 5 minutes.</div>`;
+}
+function changePasswordView(){
+  const s = currentStaff(), u = currentUser();
+  if(!s && !u) return loginView();
+  const forced = s && s.mustChange;
+  return `<h2>Change password</h2><p class="sub">${forced ? "Set your own password before you continue. The starting password is printed in the app, so anyone could use it." : "Use at least 8 characters for staff, 6 for patients."}</p>
+  ${forced ? "" : `<label class="field"><span>Current password</span><input id="cp-old" type="password" autocomplete="current-password"></label>`}
+  <label class="field"><span>New password</span><input id="cp-new" type="password" autocomplete="new-password"></label>
+  <label class="field"><span>Type it again</span><input id="cp-new2" type="password" autocomplete="new-password"></label>
+  ${state.authErr?`<div class="err" style="margin:-6px 0 12px">${esc(state.authErr)}</div>`:""}
+  <button class="btn btn-primary btn-block" data-change-pw>Save new password</button>`;
+}
+
+function profileView(){
+  const u = currentUser(), s = currentStaff();
+  if(s){
+    return `<h2>Profile</h2>
+    <div class="profile-card"><div class="avatar">${initials(s.name)}</div><div><h3>${esc(s.name)}</h3><p style="margin:0;color:var(--muted)">${ROLES[s.role]} · ${esc(s.username)}</p></div></div>
+    <div class="menu">
+      <button data-admin="dash">${I.lock}<span class="grow">Admin panel</span>${I.chev}</button>
+      <button data-nav="changePassword">${I.key}<span class="grow">Change password</span>${I.chev}</button>
+      <button data-nav="about">${I.info}<span class="grow">About the centre</span>${I.chev}</button>
+      <button data-logout>${I.out}<span class="grow">Log out</span></button>
+    </div>`;
+  }
+  if(!u){
+    return `<h2>Profile</h2>
+    <div class="empty" style="margin-bottom:14px"><h3>You're not logged in</h3><p>Log in to book sessions and manage your bookings.</p>
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><button class="btn btn-primary" data-nav="login">Log in</button><button class="btn btn-ghost" data-nav="register">Create account</button></div></div>
+    <div class="menu">
+      <button data-nav="about">${I.info}<span class="grow">About the centre</span>${I.chev}</button>
+      <button data-nav="adminLogin">${I.lock}<span class="grow">Staff and admin login</span>${I.chev}</button>
+    </div>`;
+  }
+  const mine = bookingsAll().filter(b=>b.phone===u.phone);
+  return `<h2>Profile</h2>
+  <div class="profile-card"><div class="avatar">${initials(u.name)}</div><div><h3>${esc(u.name)}</h3><p style="margin:0;color:var(--muted)">${esc(u.phone)}${u.email?` · ${esc(u.email)}`:""}</p></div></div>
+  <div class="stats">
+    <div class="stat"><b>${mine.filter(isUpcoming).length}</b><small>Upcoming</small></div>
+    <div class="stat"><b>${mine.filter(b=>b.status==="completed").length}</b><small>Completed</small></div>
+  </div>
+  <div class="menu">
+    <button data-nav="editProfile">${I.edit}<span class="grow">My details</span>${I.chev}</button>
+    <button data-nav="changePassword">${I.key}<span class="grow">Change password</span>${I.chev}</button>
+    <button data-go="bookings">${I.cal}<span class="grow">My bookings and history</span>${I.chev}</button>
+    <button data-nav="about">${I.info}<span class="grow">About the centre</span>${I.chev}</button>
+    <button data-logout>${I.out}<span class="grow">Log out</span></button>
+  </div>`;
+}
+function editProfileView(){
+  const u = currentUser(); if(!u) return loginView();
+  return `<h2>My details</h2><p class="sub">Your name is filled in when you book.</p>
+  <label class="field"><span>Full name</span><input id="e-name" value="${esc(u.name)}"></label>
+  <label class="field"><span>Email (optional)</span><input id="e-email" type="email" value="${esc(u.email||"")}"></label>
+  <label class="field"><span>Mobile number</span><input value="${esc(u.phone)}" readonly><small>Your mobile number is your login, so it can't be changed here. Ask the centre if it changes.</small></label>
+  <button class="btn btn-primary btn-block" data-save-profile>Save changes</button>`;
+}
+function aboutView(){
+  const c = centre();
+  return `<section class="detail-hero"><div class="mark" style="background:var(--surface)">${I.lotus.replace('class="lotus"','style="width:34px;height:34px;color:var(--primary)"')}</div><h2>${esc(c.centreName)}</h2><p style="margin:0;color:var(--muted)">One-to-one healing therapies with trained healers.</p></section>
+  <div class="block"><h3>Fees</h3><p>Every therapy is 60 minutes and costs ${rupees(PRICE)}. Pay at the centre.</p></div>
+  <div class="block"><h3>Timings</h3><p>${esc(c.centreHours)}</p></div>
+  <div class="block"><h3>Address</h3><p>${esc(c.centreAddress)}</p></div>
+  <div class="block"><h3>Contact</h3><p>${esc(c.centrePhone)}${c.centreWhatsApp?`<br>WhatsApp: ${esc(c.centreWhatsApp)}`:""}</p></div>
+  <div class="block"><h3>Booking rules</h3><ul class="ticks"><li>Arrive 10 minutes before your slot</li><li>Cancel or reschedule from My bookings if you can't come</li><li>Show your booking ID at the centre</li></ul></div>`;
+}
+
+/* =========================================================
+   ADMIN PANEL
+   ========================================================= */
+const ADMIN_SECTIONS = [
+  ["dash","Today",()=>can("dashboard.view")],
+  ["calendar","Calendar",()=>can("calendar.view")],
+  ["bookings","Bookings",()=>can("bookings.view")],
+  ["patients","Patients",()=>can("patients.view")],
+  ["healers","Healers",()=>can("healers.manage")||can("schedules.manage")],
+  ["therapies","Therapies & prices",()=>can("therapies.manage")],
+  ["reports","Reports",()=>can("reports.view")],
+  ["staff","Staff & permissions",()=>can("staff.manage")],
+  ["activity","Activity",()=>can("activity.view")],
+  ["settings","Settings",()=>true]
+];
+function adminView(){
+  const s = currentStaff();
+  if(!s) return adminLoginView();
+  if(s.mustChange) return changePasswordView();
+  const allowed = ADMIN_SECTIONS.filter(x=>x[2]());
+  let sec = state.admin.section;
+  if(sec==="patient") { if(!can("patients.view")) sec = allowed[0][0]; }
+  else if(!allowed.some(x=>x[0]===sec)) sec = allowed[0][0];
+  state.admin.section = sec;
+  const chips = `<nav class="chips" aria-label="Admin sections">${allowed.map(([k,l])=>`<button class="chip" data-admin="${k}" aria-current="${sec===k || (sec==="patient"&&k==="patients")}">${l}</button>`).join("")}</nav>`;
+  const body = { dash:adminDash, calendar:adminCalendar, bookings:adminBookings, patients:adminPatients, patient:adminPatient, healers:adminHealers, therapies:adminTherapies, reports:adminReports, staff:adminStaff, activity:adminActivity, settings:adminSettings }[sec]();
+  return `<div class="admin-head"><div><h2 style="margin:0">Admin panel</h2><p>${esc(s.name)} · ${ROLES[s.role]}${s.role==="healer"&&s.healerId?` · showing ${esc(healer(s.healerId)?.name||"")}'s sessions`:""}</p></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">${canBookForOthers()?`<button class="btn btn-primary btn-sm" data-start-book>New booking</button>`:""}<button class="btn btn-ghost btn-sm" data-logout>Log out</button></div></div>
+    ${chips}${Data.readOnly?`<div class="note warn">You can look but not change data here. Ask the owner for edit access.</div>`:""}${body}`;
+}
+
+function statusCounts(list){
+  const c = { total:list.length, confirmed:0, checkedin:0, completed:0, noshow:0, cancelled:0 };
+  list.forEach(b=>{ c[b.status] = (c[b.status]||0) + 1; }); return c;
+}
+
+function adminDash(){
+  const t = today(), tm = addDays(t,1);
+  const day = scopeBookings(bookingsAll().filter(b=>b.date===t)).sort(sortByWhen);
+  const c = statusCounts(day);
+  const collected = day.filter(b=>b.status==="completed").reduce((s,b)=>s+(b.price||0),0);
+  const expected = day.filter(b=>["confirmed","checkedin","completed"].includes(b.status)).reduce((s,b)=>s+(b.price||0),0);
+  const tomorrow = scopeBookings(bookingsAll().filter(b=>b.date===tm && b.status==="confirmed")).sort(sortByWhen);
+  return `<p class="sub">${DAYFULL[new Date().getDay()]}, ${new Date().getDate()} ${MONFULL[new Date().getMonth()]}</p>
+  <div class="stats">
+    <div class="stat hl"><b>${c.total - c.cancelled}</b><small>Sessions today</small></div>
+    <div class="stat"><b>${c.checkedin}</b><small>Checked in</small></div>
+    <div class="stat"><b>${c.completed}</b><small>Completed</small></div>
+    <div class="stat"><b>${c.noshow}</b><small>No-show</small></div>
+    <div class="stat"><b>${c.cancelled}</b><small>Cancelled</small></div>
+    ${can("reports.view")?`<div class="stat"><b class="num">${rupees(collected)}</b><small>Collected of ${rupees(expected)}</small></div>`:""}
+  </div>
+  <div class="cols">
+    <section><div class="section-head"><h3>Today's list</h3>${can("calendar.view")?`<button class="link" data-admin="calendar">Calendar</button>`:""}</div>
+      ${day.length ? day.map(b=>bookingCard(b,true,true)).join("") : `<div class="empty"><h3>No sessions today</h3><p>Bookings for today show up here with check-in buttons.</p></div>`}</section>
+    <section><div class="section-head"><h3>Tomorrow's reminders</h3><span class="label">${tomorrow.length} to send</span></div>
+      ${tomorrow.length ? tomorrow.map(b=>`<div class="list-row"><div class="body"><h3>${niceTime(b.time)} · ${esc(b.name)}</h3><p>${esc(therapy(b.therapyId)?.name||"")} with ${esc(healer(b.healerId)?.name||"")} · ${esc(b.contact||b.phone)}</p></div>
+        ${can("notify.send")?`<div class="btns"><a class="wa ${b.notified?.reminder?"sent":""}" target="_blank" rel="noopener" href="${esc(waLink(b.contact||b.phone, fillTemplate("reminder",b)))}" data-wa="reminder" data-id="${b.id}">Send reminder</a></div>`:""}</div>`).join("")
+        : `<div class="empty"><h3>Nothing for tomorrow yet</h3><p>Confirmed bookings for tomorrow appear here so you can send WhatsApp reminders.</p></div>`}
+      <div class="note">WhatsApp buttons open WhatsApp with the message filled in. Press send in WhatsApp to deliver it. A tick shows it was opened from here.</div>
+    </section>
+  </div>`;
+}
+
+function adminCalendar(){
+  const [y,m] = state.cal.month.split("-").map(Number);
+  const first = new Date(y, m-1, 1), startDow = (first.getDay()+6)%7; // Monday first
+  const gridStart = new Date(y, m-1, 1 - startDow);
+  const scoped = scopeBookings(bookingsAll().filter(isActive));
+  const counts = {}; scoped.forEach(b=>{ counts[b.date] = (counts[b.date]||0) + 1; });
+  const cells = [];
+  for(let i=0;i<42;i++){ const d = new Date(gridStart); d.setDate(gridStart.getDate()+i); cells.push(d); }
+  const sel = state.cal.day, t = today();
+  const month = `<div class="cal-head"><button class="btn btn-ghost btn-sm" data-cal-month="-1" aria-label="Previous month">‹</button><h3>${MONFULL[m-1]} ${y}</h3><button class="btn btn-ghost btn-sm" data-cal-month="1" aria-label="Next month">›</button></div>
+  <div class="month">${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>`<div class="dow">${d}</div>`).join("")}
+  ${cells.map(d=>{ const s = ymd(d), n = counts[s]||0; return `<button class="mday ${d.getMonth()!==m-1?"out":""} ${s===t?"today":""}" aria-pressed="${s===sel}" data-cal-day="${s}"><span>${d.getDate()}</span>${n?`<span class="cnt">${n}</span>`:""}</button>`; }).join("")}</div>`;
+  const s = currentStaff();
+  const hs = (s.role==="healer" && s.healerId ? healers().filter(h=>h.id===s.healerId) : activeHealers());
+  const times = [...new Set(hs.flatMap(h=>{ const sc = schedOf(h); const out=[]; for(let x=toMin(sc.start); x+CONFIG.slotMinutes<=toMin(sc.end); x+=CONFIG.slotMinutes) out.push(fromMin(x)); return out; }).concat(scoped.filter(b=>b.date===sel).map(b=>b.time)))].sort();
+  const dayList = scoped.filter(b=>b.date===sel);
+  const grid = `<div class="section-head"><h3>${niceDate(sel)}</h3><span class="label">${dayList.length} session${dayList.length===1?"":"s"}</span></div>
+  <div class="tbl-wrap"><table class="tbl dgrid"><thead><tr><th>Time</th>${hs.map(h=>`<th>${esc(h.name)}<br><span style="text-transform:none;letter-spacing:0;font-weight:500">${{open:"Working",off:"Day off",leave:"On leave",inactive:"Inactive"}[dayStatus(h,sel)]}</span></th>`).join("")}</tr></thead><tbody>
+  ${times.map(tm=>`<tr><td class="t">${niceTime(tm)}</td>${hs.map(h=>{
+    const b = dayList.find(x=>x.healerId===h.id && x.time===tm);
+    if(b) return `<td><button class="slotchip st-${b.status}" data-open-booking="${b.id}">${esc(b.name)}<small>${esc(therapy(b.therapyId)?.name||"")} · ${STATUS[b.status]}</small></button></td>`;
+    const st = dayStatus(h, sel);
+    if(st!=="open") return `<td class="cell-off">${st==="leave"?"Leave":"Off"}</td>`;
+    if(!healerSlots(h, sel).includes(tm)) return `<td class="cell-off">Break / closed</td>`;
+    return `<td class="cell-free">Free</td>`;
+  }).join("")}</tr>`).join("") || `<tr><td colspan="${hs.length+1}">No working hours set.</td></tr>`}
+  </tbody></table></div>`;
+  return `<div class="cols"><section>${month}</section><section>${grid}</section></div>`;
+}
+
+function filteredBookings(){
+  const f = state.filter, q = f.q.trim().toLowerCase();
+  return scopeBookings(bookingsAll()).filter(b=>
+    (!f.date || b.date===f.date) && (!f.healer || b.healerId===f.healer) && (!f.status || b.status===f.status) && (!f.therapy || b.therapyId===f.therapy) &&
+    (!q || b.id.toLowerCase().includes(q) || (b.name||"").toLowerCase().includes(q) || (b.phone||"").includes(q) || (b.contact||"").includes(q))
+  ).sort(sortByWhen);
+}
+function adminBookings(){
+  const f = state.filter, list = filteredBookings();
+  const showList = (f.date||f.healer||f.status||f.therapy||f.q) ? list : list.filter(b=>b.date>=addDays(today(),-7));
+  return `<input class="search" id="q-bookings" type="search" placeholder="Search by name, mobile number or booking ID" value="${esc(f.q)}">
+  <div class="filters">
+    <input type="date" id="flt-date" value="${f.date}" aria-label="Filter by date">
+    <select id="flt-healer" aria-label="Filter by healer"><option value="">All healers</option>${healers().map(h=>`<option value="${h.id}" ${f.healer===h.id?"selected":""}>${esc(h.name)}</option>`).join("")}</select>
+    <select id="flt-therapy" aria-label="Filter by therapy"><option value="">All therapies</option>${therapies().map(t=>`<option value="${t.id}" ${f.therapy===t.id?"selected":""}>${esc(t.name)}</option>`).join("")}</select>
+    <select id="flt-status" aria-label="Filter by status"><option value="">All statuses</option>${Object.entries(STATUS).map(([k,v])=>`<option value="${k}" ${f.status===k?"selected":""}>${v}</option>`).join("")}</select>
+  </div>
+  <div class="row-inline" style="margin-bottom:8px"><span style="color:var(--muted);font-size:14px">${showList.length} booking${showList.length===1?"":"s"}${(f.date||f.healer||f.status||f.therapy||f.q)?"":" from the last 7 days onward"}</span>
+    <span>${(f.date||f.healer||f.status||f.therapy||f.q)?`<button class="link" data-clear-filters>Clear filters</button>`:""}${can("reports.export")?`<button class="link" data-export="filtered">Export CSV</button>`:""}</span></div>
+  ${showList.length?showList.map(b=>bookingCard(b,true,true)).join(""):`<div class="empty"><h3>No bookings match</h3><p>Try clearing the filters.</p></div>`}`;
+}
+
+function patientStats(phone){
+  const l = bookingsAll().filter(b=>b.phone===phone);
+  const last = l.filter(b=>b.status==="completed").sort(sortByWhen).pop();
+  return { n:l.length, done:l.filter(b=>b.status==="completed").length, last };
+}
+function adminPatients(){
+  const q = state.pq.trim().toLowerCase();
+  const ids = new Set(bookingsAll().filter(b=>q && b.id.toLowerCase().includes(q)).map(b=>b.phone));
+  const list = Data.all("users").filter(u=>!q || u.name.toLowerCase().includes(q) || u.phone.includes(q) || (u.email||"").toLowerCase().includes(q) || ids.has(u.phone))
+    .sort((a,b)=>a.name.localeCompare(b.name));
+  return `<input class="search" id="q-patients" type="search" placeholder="Search patients by name, mobile, email or booking ID" value="${esc(state.pq)}">
+  <div class="row-inline" style="margin-bottom:8px"><span style="color:var(--muted);font-size:14px">${list.length} of ${Data.all("users").length} patients</span>${can("reports.export")?`<button class="link" data-export="patients">Export patients CSV</button>`:""}</div>
+  ${list.length ? list.map(u=>{ const s = patientStats(u.phone); return `<div class="list-row ${u.active===false?"inactive":""}"><div class="avatar">${initials(u.name)}</div>
+    <div class="body"><h3>${esc(u.name)} ${u.active===false?`<span class="badge b-off">Deactivated</span>`:""}</h3><p>${esc(u.phone)}${u.email?` · ${esc(u.email)}`:""} · ${s.n} booking${s.n===1?"":"s"}, ${s.done} completed${s.last?` · last visit ${niceDate(s.last.date)}`:""}</p></div>
+    <div class="btns"><button class="btn btn-ghost btn-sm" data-patient="${esc(u.phone)}">Open record</button></div></div>`; }).join("")
+    : `<div class="empty"><h3>${Data.all("users").length?"No patients match":"No patients yet"}</h3><p>${Data.all("users").length?"Try another name or number.":"Patients appear here when they create an account or you book for them."}</p></div>`}`;
+}
+function adminPatient(){
+  const u = Data.get("users", state.admin.id);
+  if(!u) return `<div class="empty"><h3>Patient not found</h3><button class="btn btn-primary" data-admin="patients">All patients</button></div>`;
+  const l = scopeBookings(bookingsAll().filter(b=>b.phone===u.phone)).sort(sortByWhen).reverse();
+  const c = statusCounts(l), spent = l.filter(b=>b.status==="completed").reduce((s,b)=>s+(b.price||0),0);
+  const m = can("patients.manage");
+  return `<button class="link" data-admin="patients">‹ All patients</button>
+  <div class="profile-card" style="margin-top:8px"><div class="avatar">${initials(u.name)}</div><div style="flex:1;min-width:0"><h3>${esc(u.name)} ${u.active===false?`<span class="badge b-off">Deactivated</span>`:""}</h3>
+    <p style="margin:0;color:var(--muted)">${esc(u.phone)}${u.email?` · ${esc(u.email)}`:""} · joined ${u.createdAt?fmtStamp(u.createdAt):"—"}${u.lastLogin?` · last login ${fmtStamp(u.lastLogin)}`:""}</p></div></div>
+  ${m?`<div class="actions" style="margin:0 0 14px"><button class="btn btn-ghost btn-sm" data-edit-patient="${esc(u.phone)}">Edit details</button>
+    <button class="btn btn-ghost btn-sm" data-reset-patient="${esc(u.phone)}">Reset password</button>
+    <button class="btn btn-ghost btn-sm" data-toggle-patient="${esc(u.phone)}">${u.active===false?"Activate":"Deactivate"}</button>
+    <button class="btn btn-danger btn-sm" data-delete-patient="${esc(u.phone)}">Delete</button></div>`:""}
+  ${canBookForOthers()?`<button class="btn btn-primary btn-sm" data-book-for="${esc(u.phone)}" style="margin-bottom:14px">Book a session for ${esc(u.name.split(" ")[0])}</button>`:""}
+  <div class="stats"><div class="stat"><b>${c.total}</b><small>Bookings</small></div><div class="stat"><b>${c.completed}</b><small>Completed</small></div><div class="stat"><b>${c.noshow}</b><small>No-shows</small></div><div class="stat"><b>${c.cancelled}</b><small>Cancelled</small></div><div class="stat"><b class="num">${rupees(spent)}</b><small>Paid for completed</small></div></div>
+  <div class="section-head"><h3>Session history</h3></div>
+  ${l.length ? l.map(b=>bookingCard(b,true,true)).join("") : `<div class="empty"><h3>No bookings yet</h3></div>`}`;
+}
+
+function adminHealers(){
+  return `<div class="row-inline" style="margin-bottom:12px"><p class="sub" style="margin:0">Photos, profiles, working hours, breaks and leave.</p>${can("healers.manage")?`<button class="btn btn-primary btn-sm" data-edit-healer="">Add healer</button>`:""}</div>
+  ${healers().map(h=>{ const s = schedOf(h), up = bookingsAll().filter(b=>b.healerId===h.id && isUpcoming(b)).length;
+    return `<div class="list-row ${h.active===false?"inactive":""}">${avatar(h,56)}
+    <div class="body"><h3>${esc(h.name)} ${h.active===false?`<span class="badge b-off">Inactive</span>`:""}</h3>
+      <p>${esc(healerLine(h))}</p>
+      <p>${s.days.map(d=>DAY[d]).join(", ") || "No working days"} · ${niceTime(s.start)}–${niceTime(s.end)}${s.breakStart?` · break ${niceTime(s.breakStart)}`:""}${(s.leave||[]).filter(l=>(l.to||l.from)>=today()).length?` · ${(s.leave||[]).filter(l=>(l.to||l.from)>=today()).length} leave period(s)`:""} · ${up} upcoming</p></div>
+    <div class="btns">
+      ${can("healers.manage")?`<button class="btn btn-ghost btn-sm" data-edit-healer="${h.id}">Edit profile</button>`:""}
+      ${can("schedules.manage")?`<button class="btn btn-ghost btn-sm" data-edit-schedule="${h.id}">Schedule & leave</button>`:""}
+      ${can("healers.manage")?`<button class="btn btn-ghost btn-sm" data-toggle-healer="${h.id}">${h.active===false?"Activate":"Deactivate"}</button><button class="btn btn-danger btn-sm" data-delete-healer="${h.id}">Delete</button>`:""}
+    </div></div>`; }).join("")}`;
+}
+
+function adminTherapies(){
+  return `<div class="row-inline" style="margin-bottom:12px"><p class="sub" style="margin:0">Price, duration and preparation instructions patients see before booking.</p><button class="btn btn-primary btn-sm" data-edit-therapy="">Add therapy</button></div>
+  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Therapy</th><th class="n">Price</th><th class="n">Duration</th><th>Preparation</th><th>Status</th><th></th></tr></thead><tbody>
+  ${therapies().map(t=>`<tr class="${t.active===false?"inactive":""}"><td><b>${esc(t.full)}</b><br><span style="color:var(--muted)">${esc(t.desc)}</span></td><td class="n">${rupees(t.price)}</td><td class="n">${t.mins} min</td>
+    <td>${(t.prep||[]).length} step${(t.prep||[]).length===1?"":"s"}</td><td><span class="badge ${t.active===false?"b-off":"b-completed"}">${t.active===false?"Hidden":"Shown"}</span></td>
+    <td style="white-space:nowrap"><button class="btn btn-ghost btn-sm" data-edit-therapy="${t.id}">Edit</button> <button class="btn btn-ghost btn-sm" data-toggle-therapy="${t.id}">${t.active===false?"Show":"Hide"}</button> <button class="btn btn-danger btn-sm" data-delete-therapy="${t.id}">Delete</button></td></tr>`).join("")}
+  </tbody></table></div>
+  <button class="btn btn-ghost btn-sm" data-set-all-prices>Set every therapy to ${rupees(PRICE)} and 60 min</button>`;
+}
+
+function rangeBookings(){ const r = state.rep; return scopeBookings(bookingsAll().filter(b=>b.date>=r.from && b.date<=r.to)); }
+function adminReports(){
+  const r = state.rep, list = rangeBookings(), c = statusCounts(list);
+  const done = list.filter(b=>b.status==="completed");
+  const revenue = done.reduce((s,b)=>s+(b.price||0),0);
+  const expected = list.filter(b=>["confirmed","checkedin","completed"].includes(b.status)).reduce((s,b)=>s+(b.price||0),0);
+  const lost = list.filter(b=>b.status==="noshow").reduce((s,b)=>s+(b.price||0),0);
+  const per = (key, items, name) => { const rows = items.map(x=>{ const l = list.filter(b=>b[key]===x.id); const cc = statusCounts(l); return { name:name(x), n:cc.total-cc.cancelled, done:cc.completed, ns:cc.noshow, rev:l.filter(b=>b.status==="completed").reduce((s,b)=>s+(b.price||0),0) }; }).filter(x=>x.n||x.rev);
+    const max = Math.max(1, ...rows.map(x=>x.n));
+    return rows.length ? rows.map(x=>`<div class="bar-row"><span>${esc(x.name)}</span><div class="bar"><i style="width:${x.n/max*100}%"></i></div><b class="num">${x.n} · ${rupees(x.rev)}</b></div>`).join("") : `<p style="color:var(--muted);margin:0">No sessions in this period.</p>`; };
+  const quick = [["Today",today(),today()],["Yesterday",addDays(today(),-1),addDays(today(),-1)],["Last 7 days",addDays(today(),-6),today()],["This month",today().slice(0,8)+"01",today()]];
+  return `<div class="filters"><label class="field" style="margin:0"><span>From</span><input type="date" id="rep-from" value="${r.from}"></label><label class="field" style="margin:0"><span>To</span><input type="date" id="rep-to" value="${r.to}"></label></div>
+  <div class="checks">${quick.map(([l,a,b])=>`<button class="check" data-rep="${a}|${b}" ${r.from===a&&r.to===b?'style="border-color:var(--primary);color:var(--primary);font-weight:600"':""}>${l}</button>`).join("")}</div>
+  <div class="stats">
+    <div class="stat hl"><b class="num">${rupees(revenue)}</b><small>Collected (completed)</small></div>
+    <div class="stat"><b class="num">${rupees(expected)}</b><small>Expected (not cancelled)</small></div>
+    <div class="stat"><b>${c.total - c.cancelled}</b><small>Sessions booked</small></div>
+    <div class="stat"><b>${c.completed}</b><small>Completed</small></div>
+    <div class="stat"><b>${c.checkedin}</b><small>Checked in, not closed</small></div>
+    <div class="stat"><b>${c.noshow}</b><small>No-shows (${rupees(lost)})</small></div>
+    <div class="stat"><b>${c.cancelled}</b><small>Cancelled</small></div>
+    <div class="stat"><b>${c.total ? Math.round(c.noshow / Math.max(1, c.total - c.cancelled) * 100) : 0}%</b><small>No-show rate</small></div>
+  </div>
+  <div class="cols">
+    <div class="bars"><h3 style="font-family:var(--display);font-size:20px;margin-bottom:6px">By healer</h3>${per("healerId", healers(), h=>h.name)}</div>
+    <div class="bars"><h3 style="font-family:var(--display);font-size:20px;margin-bottom:6px">By therapy</h3>${per("therapyId", therapies(), t=>t.name)}</div>
+  </div>
+  ${can("reports.export")?`<div class="actions"><button class="btn btn-ghost" data-export="range">Export this report (CSV)</button></div>`:""}
+  <div class="section-head" style="margin-top:18px"><h3>Sessions in this period</h3></div>
+  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Date</th><th>Time</th><th>Patient</th><th>Therapy</th><th>Healer</th><th class="n">Fee</th><th>Status</th></tr></thead><tbody>
+  ${list.sort(sortByWhen).map(b=>`<tr><td>${niceDate(b.date)}</td><td>${niceTime(b.time)}</td><td>${esc(b.name)}<br><span style="color:var(--muted)">${esc(b.contact||b.phone)}</span></td><td>${esc(therapy(b.therapyId)?.name||"")}</td><td>${esc(healer(b.healerId)?.name||"")}</td><td class="n">${rupees(b.price)}</td><td><span class="badge b-${b.status}">${STATUS[b.status]}</span></td></tr>`).join("") || `<tr><td colspan="7" style="color:var(--muted)">No sessions in this period.</td></tr>`}
+  </tbody></table></div>`;
+}
+
+function adminStaff(){
+  const me = currentStaff(), roles = rolesCfg();
+  const staff = Data.all("staff").sort((a,b)=>a.name.localeCompare(b.name));
+  let lastGroup = "";
+  const rows = PERMS.map(([k,label,group])=>{
+    const g = group!==lastGroup ? `<tr class="grp"><td colspan="5">${group}</td></tr>` : ""; lastGroup = group;
+    return `${g}<tr><td>${label}</td><td class="c"><input type="checkbox" checked disabled aria-label="Super admin: ${label}"></td>${["admin","reception","healer"].map(r=>`<td class="c"><input type="checkbox" data-perm="${r}|${k}" ${(roles[r]||[]).includes(k)?"checked":""} aria-label="${ROLES[r]}: ${label}"></td>`).join("")}</tr>`;
+  }).join("");
+  return `<div class="section-head"><h3>Staff accounts</h3><button class="btn btn-primary btn-sm" data-edit-staff="">Add staff member</button></div>
+  ${staff.map(s=>`<div class="list-row ${s.active===false?"inactive":""}"><div class="avatar">${initials(s.name)}</div>
+    <div class="body"><h3>${esc(s.name)} ${s.username===me.username?`<span class="badge b-confirmed">You</span>`:""} ${s.active===false?`<span class="badge b-off">Deactivated</span>`:""}</h3>
+      <p>${esc(s.username)} · ${ROLES[s.role]}${s.role==="healer"&&s.healerId?` · linked to ${esc(healer(s.healerId)?.name||"")}`:""}${s.lastLogin?` · last login ${fmtStamp(s.lastLogin)}`:""}${s.mustChange?" · must set own password":""}</p></div>
+    <div class="btns"><button class="btn btn-ghost btn-sm" data-edit-staff="${esc(s.username)}">Edit / assign role</button>
+      ${s.username!==me.username?`<button class="btn btn-ghost btn-sm" data-toggle-staff="${esc(s.username)}">${s.active===false?"Activate":"Deactivate"}</button><button class="btn btn-danger btn-sm" data-delete-staff="${esc(s.username)}">Delete</button>`:""}</div></div>`).join("")}
+  <div class="section-head" style="margin-top:22px"><h3>Assign permissions</h3><button class="link" data-reset-roles>Restore defaults</button></div>
+  <p class="sub">Tick what each role may do. Changes save straight away and apply on everyone's next tap. Super admin can always do everything. Healers who are linked to a healer profile only see their own sessions.</p>
+  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Permission</th><th class="c">Super admin</th><th class="c">Admin</th><th class="c">Reception</th><th class="c">Healer</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function adminActivity(){
+  if(Data.mode==="sheets" && !state.activityLoaded) setTimeout(loadOlderActivity, 0);
+  const q = state.aq.trim().toLowerCase();
+  const entries = Data.all("activity").flatMap(d=>d.entries||[]).filter(e=>!q || (e.action+" "+e.detail+" "+e.by).toLowerCase().includes(q)).sort((a,b)=>b.at.localeCompare(a.at)).slice(0,300);
+  return `<input class="search" id="q-activity" type="search" placeholder="Search activity, e.g. a booking ID or a name" value="${esc(state.aq)}">
+  <div class="tbl-wrap"><table class="tbl"><thead><tr><th>When</th><th>Who</th><th>What</th><th>Details</th></tr></thead><tbody>
+  ${Data.mode==="sheets" && !state.activityLoaded ? `<tr><td colspan="4" style="color:var(--muted)">Showing the last 2 days. Loading the last 30 days…</td></tr>` : ""}
+  ${entries.map(e=>`<tr><td style="white-space:nowrap">${fmtStamp(e.at)}</td><td>${esc(e.by)}</td><td>${esc(e.action)}</td><td>${esc(e.detail)}</td></tr>`).join("") || `<tr><td colspan="4" style="color:var(--muted)">No activity recorded yet. Logins, bookings and admin changes appear here.</td></tr>`}
+  </tbody></table></div>${can("settings.manage")?`<button class="btn btn-ghost btn-sm" data-prune-activity>Delete activity older than 90 days</button>`:""}`;
+}
+
+function storageInfo(){
+  const counts = COLS.filter(c=>c!=="config").map(c=>`${c} ${Data.all(c).length}`).join(" · ");
+  const where = {
+    db:`<b>Shared storage inside Claude.</b> Everyone who opens this artifact link and has edit access sees the same patients and bookings, live, on every device. It is stored with the artifact on claude.ai, not on any one phone.`,
+    sheets:`<b>Your Google Sheet.</b> Every booking, patient, healer, therapy, staff account and activity entry is a row in its own tab. Everyone using the app link sees the same data.${Data.sheetUrl?` <a href="${esc(Data.sheetUrl)}" target="_blank" rel="noopener">Open the Google Sheet</a>`:""}<br><small>Make changes in the app. The sheet is the record the app reads back, so typing in it directly can be overwritten.</small>`,
+    supabase:`<b>Your Supabase project</b> (${esc(CONFIG.supabase.url)}). Every phone and computer that opens your hosted app sees the same data.`,
+    local:`<b>This browser only.</b> Bookings made on another phone won't appear here. Use this for testing, or connect Supabase (below) before you invite 100 people.`
+  }[Data.mode];
+  return `<div class="block"><h3>Where your data is saved</h3><p>${where}</p><p style="margin-top:8px" class="num">${counts}</p>
+  <details style="margin-top:10px"><summary style="cursor:pointer;font-weight:600">Set up free shared storage for 100+ people (Supabase)</summary>
+  <ol class="steps-list" style="color:var(--muted);margin-top:8px">
+    <li>Create a free project at supabase.com.</li>
+    <li>Open SQL Editor and run:<pre class="mono">create table records (
+  collection text not null,
+  id text not null,
+  data jsonb not null,
+  updated_at timestamptz default now(),
+  primary key (collection, id)
+);
+alter table records enable row level security;
+create policy "app" on records for all
+  using (true) with check (true);</pre></li>
+    <li>Copy the Project URL and anon key from Project Settings → API into <span class="mono">CONFIG.supabase</span> at the top of this file.</li>
+    <li>Upload the file to free hosting (Netlify Drop, GitHub Pages or Vercel) and share that link.</li>
+  </ol></details></div>`;
+}
+function adminSettings(){
+  const c = centre(), tp = templates(), m = can("settings.manage");
+  const me = currentStaff();
+  return `<div class="cols"><section>
+  ${m ? `<div class="block"><h3>Centre details</h3>
+    <label class="field"><span>Centre name</span><input id="st-name" value="${esc(c.centreName)}"></label>
+    <label class="field"><span>Address</span><input id="st-address" value="${esc(c.centreAddress)}"></label>
+    <div class="grid2"><label class="field"><span>Phone</span><input id="st-phone" value="${esc(c.centrePhone)}"></label>
+    <label class="field"><span>WhatsApp number</span><input id="st-wa" inputmode="numeric" maxlength="10" value="${esc(c.centreWhatsApp)}" placeholder="10 digits"></label></div>
+    <label class="field"><span>Opening hours text</span><input id="st-hours" value="${esc(c.centreHours)}"></label>
+    <div class="grid2"><label class="field"><span>Days patients can book ahead</span><input id="st-days" type="number" min="1" max="90" value="${c.daysAhead}"></label>
+    <label class="field"><span>Show test logins</span><select id="st-demo"><option value="1" ${c.demoMode?"selected":""}>Yes (testing)</option><option value="0" ${!c.demoMode?"selected":""}>No (live)</option></select></label></div>
+    <button class="btn btn-primary btn-block" data-save-settings>Save centre details</button></div>
+  <div class="block"><h3>WhatsApp messages</h3><p style="margin-bottom:10px">Words in braces are filled in for each booking: {name} {therapy} {healer} {date} {time} {mins} {price} {id} {centre} {address} {prep}</p>
+    ${Object.keys(DEFAULT_TEMPLATES).map(k=>`<label class="field"><span>${TEMPLATE_NAMES[k]}</span><textarea id="tp-${k}" rows="5">${esc(tp[k])}</textarea></label>`).join("")}
+    <button class="btn btn-primary btn-block" data-save-templates>Save messages</button></div>` : `<div class="block"><h3>Centre settings</h3><p>Your role can't change centre settings.</p></div>`}
+  </section><section>
+  <div class="block"><h3>My account</h3><p>${esc(me.name)} · ${esc(me.username)} · ${ROLES[me.role]}</p><button class="btn btn-ghost btn-sm" style="margin-top:10px" data-nav="changePassword">Change my password</button></div>
+  ${storageInfo()}
+  ${can("reports.export") ? `<div class="block"><h3>Backup</h3><p>Download everything (patients, bookings, healers, therapies, staff, permissions) as one file. Keep a copy every week.</p>
+    <div class="actions"><button class="btn btn-ghost" data-backup>Download backup</button>
+    ${m?`<label class="btn btn-ghost file-btn">Restore from backup<input type="file" id="restore-file" accept=".json,application/json"></label>`:""}</div></div>` : ""}
+  ${m && Data.mode==="local" ? `<div class="block"><h3>Reset this device</h3><p>Deletes all data saved in this browser.</p><button class="btn btn-danger btn-sm" style="margin-top:10px" data-reset>Reset app data</button></div>` : ""}
+  <div class="note"><b>Security note.</b> Passwords are stored as salted SHA-256 hashes and staff sessions time out, but this app has no server of its own, so it is suited to a small centre, not to hospital-grade medical records. Real SMS codes and automatic WhatsApp sending need a paid provider (for example MSG91 for SMS and the WhatsApp Business API).</div>
+  </section></div>`;
+}
+
+/* =========================================================
+   MODALS
+   ========================================================= */
+function captureModal(){
+  if(!state.modal) return;
+  const vals = state.modal.vals = state.modal.vals || {};
+  document.querySelectorAll("#modal-root [data-f]").forEach(el=>{ vals[el.dataset.f] = el.type==="checkbox" ? el.checked : el.value; });
+}
+const mv = (k, fallback) => { const v = state.modal?.vals; return v && k in v ? v[k] : fallback; };
+const mInput = (k, label, val, attrs="") => `<label class="field"><span>${label}</span><input data-f="${k}" value="${esc(mv(k,val??""))}" ${attrs}></label>`;
+const mText = (k, label, val, hint="") => `<label class="field"><span>${label}</span><textarea data-f="${k}" rows="4">${esc(mv(k,val??""))}</textarea>${hint?`<small>${hint}</small>`:""}</label>`;
+const mCheck = (k, label, val) => `<label class="check"><input type="checkbox" data-f="${k}" ${mv(k,val)?"checked":""}>${label}</label>`;
+const sheet = (title, body, foot) => `<div class="modal" data-modal-bg><div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="sheet-head"><h2>${esc(title)}</h2><button class="icon-btn" style="background:var(--surface-2)" data-close-modal aria-label="Close">✕</button></div>${body}${foot?`<div class="actions">${foot}</div>`:""}</div></div>`;
+
+function modalView(){
+  const md = state.modal;
+  if(md.type==="confirm") return sheet(md.title||"Are you sure?", `<p>${esc(md.message)}</p>`, `<button class="btn btn-ghost" data-close-modal>Keep it</button><button class="btn ${md.danger?"btn-danger":"btn-primary"}" data-confirm-yes>${esc(md.yes||"Yes")}</button>`);
+  if(md.type==="info") return sheet(md.title, md.html, `<button class="btn btn-primary" data-close-modal>Done</button>`);
+  if(md.type==="booking"){ const b = Data.get("bookings", md.id); return sheet("Booking", b ? bookingCard(b,true,true) : "<p>This booking no longer exists.</p>", ""); }
+  if(md.type==="notes"){ const b = Data.get("bookings", md.id); return sheet("Session note", `<p class="sub">${esc(b?.name||"")} · ${b?niceDate(b.date)+", "+niceTime(b.time):""}</p>${mText("notes","Visible to staff only",b?.staffNotes||"","What was done, how the patient responded, what to do next time.")}`, `<button class="btn btn-ghost" data-close-modal>Cancel</button><button class="btn btn-primary" data-save-notes>Save note</button>`); }
+  if(md.type==="patient"){ const u = Data.get("users", md.id); return sheet("Edit patient", `${mInput("name","Full name",u?.name)}${mInput("email","Email",u?.email,'type="email"')}<label class="field"><span>Mobile number</span><input value="${esc(u?.phone||"")}" readonly><small>The mobile number is the login and links all past bookings.</small></label>`, `<button class="btn btn-ghost" data-close-modal>Cancel</button><button class="btn btn-primary" data-save-patient>Save</button>`); }
+  if(md.type==="healer"){
+    const h = md.id ? healer(md.id) : { name:"", photo:"", qualifications:"", experience:"", specialization:"", bio:"", therapies:therapies().map(t=>t.id), active:true };
+    const photo = md.photo !== undefined ? md.photo : (h.photo||"");
+    return sheet(md.id ? "Edit healer" : "Add healer", `
+      <div class="photo-pick"><div class="avatar" id="photo-prev">${photo?`<img src="${esc(photo)}" alt="">`:initials(mv("name",h.name)||"?")}</div>
+        <div><label class="btn btn-ghost btn-sm file-btn">Upload photo<input type="file" id="h-photo" accept="image/*"></label>${photo?` <button class="btn btn-ghost btn-sm" data-remove-photo>Remove</button>`:""}<br><small style="color:var(--muted)">Square photos look best. It's resized to save space.</small></div></div>
+      ${mInput("name","Full name",h.name)}
+      ${mInput("qualifications","Qualifications",h.qualifications,'placeholder="e.g. BAMS, Certified CST practitioner"')}
+      <div class="grid2">${mInput("experience","Experience (years)",h.experience,'type="number" min="0" max="70"')}${mInput("specialization","Specialization",h.specialization,'placeholder="e.g. Back pain, stress"')}</div>
+      ${mText("bio","Short introduction",h.bio)}
+      <div class="field"><span>Therapies offered</span></div><div class="checks">${therapies().map(t=>mCheck("th:"+t.id, esc(t.name), h.therapies.includes(t.id))).join("")}</div>
+      <div class="checks">${mCheck("active","Active (shown to patients)", h.active!==false)}</div>`,
+      `<button class="btn btn-ghost" data-close-modal>Cancel</button><button class="btn btn-primary" data-save-healer>Save healer</button>`);
+  }
+  if(md.type==="schedule"){
+    const h = healer(md.id), s = schedOf(h);
+    const leave = md.leave || (s.leave||[]);
+    return sheet(`Schedule · ${h.name}`, `
+      <div class="field"><span>Working days</span></div><div class="checks">${[1,2,3,4,5,6,0].map(d=>mCheck("d:"+d, DAY[d], s.days.includes(d))).join("")}</div>
+      <div class="grid2">${mInput("start","Starts",s.start,'type="time" step="900"')}${mInput("end","Ends",s.end,'type="time" step="900"')}</div>
+      <div class="grid2">${mInput("breakStart","Break from",s.breakStart,'type="time" step="900"')}${mInput("breakEnd","Break until",s.breakEnd,'type="time" step="900"')}</div>
+      <p class="disclaimer" style="margin-top:-6px">Sessions are ${CONFIG.slotMinutes} minutes. Leave the break empty for no break. Slots: ${healerSlots(Object.assign({},h,{active:true,schedule:Object.assign({},s,{days:[0,1,2,3,4,5,6],leave:[]})}), today()).map(niceTime).join(", ")||"none"}</p>
+      <div class="field" style="margin-top:14px"><span>Leave dates</span></div>
+      ${leave.length ? leave.slice().sort((a,b)=>a.from.localeCompare(b.from)).map(l=>`<div class="leave-row"><span>${niceDate(l.from)}${l.to&&l.to!==l.from?` – ${niceDate(l.to)}`:""}${l.note?` · ${esc(l.note)}`:""}</span><button class="link" data-remove-leave="${esc(l.from)}|${esc(l.to||"")}">Remove</button></div>`).join("") : `<p class="disclaimer">No leave added.</p>`}
+      <div class="grid2" style="margin-top:10px">${mInput("lfrom","From",today(),'type="date"')}${mInput("lto","To",today(),'type="date"')}</div>
+      ${mInput("lnote","Reason (optional)","")}
+      <button class="btn btn-ghost btn-sm" data-add-leave>Add leave</button>
+      <div class="note">Existing bookings stay when you change hours or add leave. Check the calendar and reschedule them if needed.</div>`,
+      `<button class="btn btn-ghost" data-close-modal>Cancel</button><button class="btn btn-primary" data-save-schedule>Save schedule</button>`);
+  }
+  if(md.type==="therapy"){
+    const t = md.id ? therapy(md.id) : { name:"", full:"", code:"", mins:MINS, price:PRICE, desc:"", about:"", benefits:[], who:"", prep:[], active:true };
+    return sheet(md.id ? `Edit ${t.full}` : "Add therapy", `
+      <div class="grid2">${mInput("full","Full name",t.full)}${mInput("name","Short name",t.name)}</div>
+      <div class="grid2">${mInput("price","Price (₹)",t.price,'type="number" min="0" step="50"')}${mInput("mins","Duration (minutes)",t.mins,'type="number" min="15" step="15"')}</div>
+      ${mInput("code","Two-letter mark",t.code,'maxlength="3"')}
+      ${mInput("desc","One-line description",t.desc)}
+      ${mText("prep","Preparation instructions",(t.prep||[]).join("\n"),"One instruction per line. Patients see these before they book and in WhatsApp messages.")}
+      ${mText("about","About",t.about)}
+      ${mText("benefits","Benefits",(t.benefits||[]).join("\n"),"One per line.")}
+      ${mText("who","Who it's for",t.who)}
+      <div class="checks">${mCheck("active","Shown to patients", t.active!==false)}</div>`,
+      `<button class="btn btn-ghost" data-close-modal>Cancel</button><button class="btn btn-primary" data-save-therapy>Save therapy</button>`);
+  }
+  if(md.type==="staff"){
+    const s = md.id ? Data.get("staff", md.id) : { name:"", username:"", role:"reception", healerId:"", active:true };
+    const role = mv("role", s.role), me = currentStaff();
+    return sheet(md.id ? `Edit ${s.name}` : "Add staff member", `
+      ${mInput("name","Full name",s.name)}
+      ${md.id ? `<label class="field"><span>Username</span><input value="${esc(s.username)}" readonly></label>` : mInput("username","Username (for login)",s.username,'autocomplete="off" autocapitalize="none"')}
+      <label class="field"><span>Role</span><select data-f="role" id="staff-role" ${md.id===me.username?"disabled":""}>${Object.entries(ROLES).map(([k,v])=>`<option value="${k}" ${role===k?"selected":""}>${v}</option>`).join("")}</select>${md.id===me.username?"<small>You can't change your own role.</small>":""}</label>
+      ${role==="healer" ? `<label class="field"><span>Linked healer profile</span><select data-f="healerId"><option value="">Not linked (sees all sessions)</option>${healers().map(h=>`<option value="${h.id}" ${mv("healerId",s.healerId)===h.id?"selected":""}>${esc(h.name)}</option>`).join("")}</select><small>A linked healer sees only their own sessions.</small></label>` : ""}
+      ${mInput("password", md.id ? "New password (leave empty to keep)" : "Starting password", "", 'type="text" autocomplete="off" placeholder="At least 8 characters"')}
+      <p class="disclaimer" style="margin-top:-6px">They'll be asked to choose their own password at first login.</p>
+      <p class="disclaimer">${role==="superadmin" ? "Super admin can do everything, including managing staff." : `This role can: ${PERMS.filter(p=>(rolesCfg()[role]||[]).includes(p[0])).map(p=>p[1].toLowerCase()).join("; ") || "nothing yet"}.`}</p>`,
+      `<button class="btn btn-ghost" data-close-modal>Cancel</button><button class="btn btn-primary" data-save-staff>Save</button>`);
+  }
+  return "";
+}
+function askConfirm(message, onYes, opts={}){ state.modal = { type:"confirm", message, onYes, ...opts }; render(false); }
+function closeModal(){ state.modal = null; render(false); }
+
+/* =========================================================
+   RENDER
+   ========================================================= */
+const VIEWS = { home:homeView, therapies:therapiesView, therapy:therapyView, healers:healersView, healer:healerView, book:bookView,
+  bookings:bookingsView, profile:profileView, login:loginView, register:registerView, forgot:forgotView, adminLogin:adminLoginView, admin:adminView,
+  about:aboutView, editProfile:editProfileView, changePassword:changePasswordView };
+function render(scrollTop=false){
+  if(!Data.loaded) return;
+  state.stale = false;
+  const wide = state.route.name==="admin" && isStaff();
+  document.body.classList.toggle("is-wide", wide);
+  $("#top").innerHTML = header();
+  const banner = Data.mode==="needsAllow"
+    ? `<div class="conn"><div><b>Connect shared data</b><p>Bookings and accounts are shared across every phone. Allow this page to use its shared storage once.</p></div><button class="btn btn-primary btn-sm" data-allow-db>Allow</button></div>`
+    : Data.mode==="sheetError" ? `<div class="conn" style="background:var(--danger-soft)"><div><b>Can't reach the Google Sheet</b><p>Nothing can be saved until this is fixed. Reason: ${esc(Data.sheetError)}</p></div><button class="btn btn-primary btn-sm" data-retry-sheet>Try again</button></div>`
+    : Data.mode==="connecting" && !Data.cached ? `<div class="conn"><div><b>Loading…</b><p>Getting the latest bookings. This takes a few seconds the first time.</p></div></div>` : "";
+  $("#main").innerHTML = `${banner}<div class="view ${state.anim}">${VIEWS[state.route.name]()}</div>`;
+  $("#modal-root").innerHTML = state.modal ? modalView() : "";
+  state.anim = "";
+  const tabFor = { home:"home", therapies:"therapies", therapy:"therapies", healers:"home", healer:"home", book:"book", bookings:"bookings", profile:"profile", login:"profile", register:"profile", forgot:"profile", adminLogin:"profile", admin:"profile", about:"profile", editProfile:"profile", changePassword:"profile" };
+  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-current", t.dataset.go===tabFor[state.route.name] ? "page" : "false"));
+  $("#tab-profile-label").textContent = isStaff() ? "Admin" : "Profile";
+  if(scrollTop){ window.scrollTo(0,0); $("#main").focus({preventScroll:true}); }
+}
+function readBookingForm(){
+  const d = state.draft;
+  if(!$("#f-name")) return;
+  d.name = ($("#f-name").value||"").trim();
+  d.phone = digits($("#f-phone").value);
+  d.age = ($("#f-age").value||"").trim();
+  d.email = ($("#f-email").value||"").trim();
+  d.notes = ($("#f-notes").value||"").trim();
+}
+function rerender(){
+  captureModal();
+  if(state.route.name==="book" && state.step===4) readBookingForm();
+  render(false);
+}
+const FORM_ROUTES = ["login","register","forgot","adminLogin","editProfile","changePassword"];
+let rrTimer;
+function rerenderSoon(){
+  clearTimeout(rrTimer);
+  rrTimer = setTimeout(()=>{
+    const a = document.activeElement;
+    const typing = a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
+    const formy = FORM_ROUTES.includes(state.route.name) || (state.route.name==="book" && state.step===4) || (state.route.name==="admin" && state.admin.section==="settings");
+    if(state.modal || typing || formy){ state.stale = true; return; }
+    const y = window.scrollY; render(false); window.scrollTo(0,y);
+  }, 200);
+}
+
+/* =========================================================
+   ACTIONS
+   ========================================================= */
+function setStep(n){ state.anim = n > state.step ? "from-right" : "from-left"; state.step = n; render(true); }
+function afterAuth(){
+  const t = state.afterLogin; state.afterLogin = null; state.authErr = ""; state.history = []; state.form = {}; state.otpSent = false;
+  const s = currentStaff();
+  if(s){ state.admin = { section:"dash", id:null }; state.history = [{name:"profile"}]; navigate("admin", {}, { replace:true }); return; }
+  if(t && t.name==="book"){ state.anim="from-right"; state.route={name:"book"}; state.draft.name = state.draft.name || currentUser()?.name || ""; state.draft.phone = state.draft.phone || currentUser()?.phone || ""; render(true); }
+  else navigate("home");
+}
+async function loginUser(u){
+  session = { kind:"user", id:u.phone, last:Date.now() }; saveSession();
+  Data.put("users", u.phone, Object.assign({}, u, { lastLogin:new Date().toISOString() }));
+  log("Patient logged in", u.phone);
+  toast(`Welcome, ${u.name.split(" ")[0]}`); afterAuth();
+}
+async function doLogin(phone, pass){
+  const u = Data.get("users", phone);
+  if(!u || !(await checkPassword(u, pass))){ state.authErr = "Mobile number or password is incorrect."; state.form.phone = phone; rerender(); return; }
+  if(u.active===false){ state.authErr = "This account is deactivated. Please contact the centre."; rerender(); return; }
+  loginUser(u);
+}
+async function doAdminLogin(username, pass){
+  username = username.toLowerCase();
+  const lk = lockState();
+  if(lk.until > Date.now()){ rerender(); return; }
+  let s = Data.get("staff", username);
+  const c = centre();
+  if(!Data.all("staff").length && username===c.bootstrapAdmin.username && pass===c.bootstrapAdmin.password){
+    s = await withPassword({ username, name:"Administrator", role:"superadmin", healerId:"", active:true, mustChange:true, createdAt:new Date().toISOString() }, pass);
+    await Data.put("staff", username, s);
+  } else if(!s || !(await checkPassword(s, pass))){
+    const n = lk.n + 1; setLock(n>=5 ? { n:0, until:Date.now()+5*60*1000 } : { n, until:0 });
+    state.authErr = n>=5 ? "" : `Username or password is incorrect. ${5-n} tries left.`; state.form.user = username; rerender(); return;
+  }
+  if(s.active===false){ state.authErr = "This staff account is deactivated."; rerender(); return; }
+  setLock({ n:0, until:0 });
+  session = { kind:"staff", id:username, last:Date.now() }; saveSession();
+  // First admin login: save the starting therapies, healers and permissions so they show up as rows in storage.
+  if(["superadmin","admin"].includes(s.role)){
+    ensureCatalog();
+    if(!Data.get("config","roles")) Data.put("config","roles",{ roles:DEFAULT_ROLES });
+  }
+  Data.put("staff", username, Object.assign({}, s, { lastLogin:new Date().toISOString() }));
+  log("Staff logged in", username);
+  toast(`Logged in as ${ROLES[s.role]}`); afterAuth();
+}
+function logout(msg="Logged out"){
+  if(session) log(session.kind==="staff"?"Staff logged out":"Patient logged out", session.id);
+  session = null; saveSession(); state.history = []; state.modal = null; toast(msg); navigate("home");
+}
+function touchSession(){
+  if(session?.kind!=="staff") return;
+  const idle = Date.now() - (session.last||0);
+  if(idle > centre().sessionTimeoutMin*60*1000){ logout(`Logged out after ${centre().sessionTimeoutMin} minutes without activity`); return true; }
+  if(idle > 30*1000){ session.last = Date.now(); saveSession(); }
+}
+
+async function confirmBooking(){
+  readBookingForm(); const d = state.draft, errs = {}, staff = currentStaff();
+  if(d.name.length<2) errs.name = "Enter the patient's full name.";
+  if(!validPhone(d.phone)) errs.phone = "Enter a valid 10-digit mobile number.";
+  if(d.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) errs.email = "Check the email address, or leave it empty.";
+  state.errors = errs; if(Object.keys(errs).length){ rerender(); return; }
+  const h = healer(d.healerId);
+  if(isTaken(d.healerId,d.date,d.time,d.rescheduleId) || !healerSlots(h,d.date).includes(d.time)){ toast("That slot was just taken. Pick another time."); d.time=null; setStep(3); return; }
+  const t = therapy(d.therapyId), now = new Date().toISOString();
+  let b;
+  if(d.rescheduleId){
+    const old = Data.get("bookings", d.rescheduleId);
+    b = Object.assign({}, old, { therapyId:d.therapyId, healerId:d.healerId, date:d.date, time:d.time, name:d.name, email:d.email, age:d.age, notes:d.notes, status:"confirmed",
+      history:(old.history||[]).concat([{ at:now, by:actor(), action:`Moved from ${niceDate(old.date)} ${niceTime(old.time)}` }]) });
+    log("Booking rescheduled", `${b.id} · ${b.name} · now ${niceDate(b.date)} ${niceTime(b.time)}`);
+  } else {
+    const owner = staff ? d.phone : currentUser().phone;
+    if(staff && !Data.get("users", owner)) await Data.put("users", owner, { phone:owner, name:d.name, email:d.email, active:true, createdAt:now, createdBy:actor() });
+    b = { id:newId(), therapyId:d.therapyId, healerId:d.healerId, date:d.date, time:d.time, mins:t.mins, price:t.price, name:d.name, phone:owner, contact:d.phone,
+      email:d.email, age:d.age, notes:d.notes, status:"confirmed", createdAt:now, createdBy:actor(), notified:{}, history:[{ at:now, by:actor(), action:"Booked" }] };
+    log("Booking confirmed", `${b.id} · ${b.name} · ${t.name} with ${h.name} · ${niceDate(b.date)} ${niceTime(b.time)}`);
+  }
+  await Data.put("bookings", b.id, b);
+  state.lastBookingId = b.id; state.bookingsTab = "upcoming"; state.anim = "view"; state.step = 5; render(true); petals();
+}
+
+function setStatus(id, status){
+  const b = Data.get("bookings", id); if(!b) return;
+  const now = new Date().toISOString(), extra = {};
+  if(status==="checkedin") extra.checkedInAt = now;
+  if(status==="completed") extra.completedAt = now;
+  if(status==="confirmed") extra.checkedInAt = null;
+  Data.put("bookings", id, Object.assign({}, b, extra, { status, history:(b.history||[]).concat([{ at:now, by:actor(), action:STATUS[status] }]) }));
+  log(`Booking ${STATUS[status].toLowerCase()}`, `${b.id} · ${b.name}`);
+  toast({ checkedin:"Checked in", completed:"Marked completed", noshow:"Marked as no-show", confirmed:"Back to confirmed", cancelled:"Booking cancelled" }[status]);
+  if(state.modal?.type==="booking") render(false); else rerender();
+}
+
+function resizeImage(file, size=240){
+  return new Promise((resolve, reject)=>{
+    const r = new FileReader();
+    r.onerror = reject;
+    r.onload = () => { const img = new Image(); img.onerror = reject; img.onload = () => {
+      const s = Math.min(img.width, img.height), cv = document.createElement("canvas"); cv.width = cv.height = size;
+      cv.getContext("2d").drawImage(img, (img.width-s)/2, (img.height-s)/2, s, s, 0, 0, size, size);
+      // Keep the photo small: a Google Sheet cell holds at most 50,000 characters.
+      let q = .8, url = cv.toDataURL("image/jpeg", q);
+      while(url.length > 30000 && q > .3){ q -= .1; url = cv.toDataURL("image/jpeg", q); }
+      resolve(url);
+    }; img.src = r.result; };
+    r.readAsDataURL(file);
+  });
+}
+
+async function saveFile(filename, data, type){
+  try{ const dl = window.claude?.use ? await window.claude.use("downloads") : null; if(dl){ await dl.save({ filename, data }); toast("File ready"); return; } }
+  catch(err){ if(err && err.code==="declined") return; }
+  try{ const url = URL.createObjectURL(new Blob([data],{type})); const a = document.createElement("a"); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),2000); }
+  catch(_){ toast("Downloads aren't available here."); }
+}
+function exportCsv(kind){
+  const q = v => `"${String(v??"").replace(/"/g,'""')}"`;
+  let head, rows, name;
+  if(kind==="patients"){
+    head = ["Name","Mobile","Email","Status","Bookings","Completed","Joined","Last login"];
+    rows = Data.all("users").map(u=>{ const s = patientStats(u.phone); return [u.name,u.phone,u.email,u.active===false?"Deactivated":"Active",s.n,s.done,(u.createdAt||"").slice(0,10),(u.lastLogin||"").slice(0,10)]; });
+    name = `sadhna-patients-${today()}.csv`;
+  } else {
+    const list = (kind==="range" ? rangeBookings() : filteredBookings()).sort(sortByWhen);
+    if(!list.length){ toast("No bookings to export."); return; }
+    head = ["Booking ID","Date","Time","Therapy","Healer","Patient","Mobile","Age","Fee","Status","Checked in","Concern","Session note","Booked on","Booked by"];
+    rows = list.map(b=>[b.id,b.date,niceTime(b.time),therapy(b.therapyId)?.full,healer(b.healerId)?.name,b.name,b.contact||b.phone,b.age,b.price,STATUS[b.status],b.checkedInAt?fmtStamp(b.checkedInAt):"",b.notes,b.staffNotes,(b.createdAt||"").slice(0,10),b.createdBy]);
+    name = kind==="range" ? `sadhna-report-${state.rep.from}-to-${state.rep.to}.csv` : `sadhna-bookings-${today()}.csv`;
+  }
+  const csv = "﻿" + [head.map(q).join(","), ...rows.map(r=>r.map(q).join(","))].join("\r\n");
+  log("Exported CSV", name);
+  saveFile(name, csv, "text/csv");
+}
+function backup(){
+  const out = { app:"sadhna-healing", version:4, exportedAt:new Date().toISOString(), data:{} };
+  COLS.forEach(c=>{ out.data[c] = Data.c[c] || {}; });
+  log("Downloaded backup");
+  saveFile(`sadhna-backup-${today()}.json`, JSON.stringify(out, null, 1), "application/json");
+}
+async function restore(file){
+  try{
+    const j = JSON.parse(await file.text());
+    if(j.app!=="sadhna-healing" || !j.data) throw new Error("bad");
+    const n = COLS.reduce((s,c)=>s+Object.keys(j.data[c]||{}).length, 0);
+    askConfirm(`Restore ${n} records from ${file.name}? Records with the same ID are replaced. Nothing else is deleted.`, async()=>{
+      for(const c of COLS) for(const [id,doc] of Object.entries(j.data[c]||{})) await Data.put(c, id, doc);
+      log("Restored backup", file.name); toast("Backup restored"); render(false);
+    }, { yes:"Restore" });
+  }catch(_){ toast("That file isn't a Sadhna Healing backup."); }
+}
+
+/* ---------- click handling ---------- */
+document.addEventListener("click", async e => {
+  const el = e.target.closest("button, a[data-wa], [data-modal-bg]"); if(!el) return;
+  if(el.matches("[data-modal-bg]")){ if(e.target===el) closeModal(); return; }
+  if(touchSession()) return;
+  const ds = el.dataset;
+
+  if(ds.wa){
+    const b = Data.get("bookings", ds.id);
+    if(b){ Data.put("bookings", b.id, Object.assign({}, b, { notified:Object.assign({}, b.notified, { [ds.wa]:new Date().toISOString() }) })); log(`WhatsApp ${TEMPLATE_NAMES[ds.wa].toLowerCase()} opened`, `${b.id} · ${b.name}`); }
+    return; // the link itself opens WhatsApp
+  }
+  if(ds.themeToggle !== undefined){
+    const cur = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");
+    const next = cur==="dark"?"light":"dark"; document.documentElement.dataset.theme = next;
+    try{ localStorage.setItem("sadhna_theme", next); }catch(_){}
+    return;
+  }
+  if(ds.retrySheet !== undefined){ el.disabled = true; startConnecting("Connecting to the Google Sheet…"); try{ await connectSheets(); finishConnecting(); toast("Connected to the Google Sheet"); }catch(err){ Data.mode = "sheetError"; Data.sheetError = String(err && err.message || err); render(); } return; }
+  if(ds.allowDb !== undefined){ el.disabled = true; await allowSharedData(); return; }
+  if(ds.closeModal !== undefined){ closeModal(); return; }
+  if(ds.confirmYes !== undefined){ const fn = state.modal?.onYes; state.modal = null; render(false); if(fn) await fn(); return; }
+  if(ds.backNav !== undefined){ goBack(); return; }
+  if(ds.go){
+    if(ds.go==="book"){ startBooking(); return; }
+    if(isStaff() && ds.go==="bookings"){ goAdmin("bookings"); return; }
+    if(isStaff() && ds.go==="profile"){ goAdmin(state.admin.section||"dash"); return; }
+    navigate(ds.go); return;
+  }
+  if(ds.admin){ state.admin = { section:ds.admin, id:null }; if(state.route.name!=="admin"){ navigate("admin",{}, { push:true }); } else { state.modal=null; state.anim="view"; render(true); } return; }
+  if(ds.nav){
+    state.authErr=""; state.errors={}; state.form={}; state.otpSent=false;
+    navigate(ds.nav, ds.id ? { id:ds.id } : {}, { push:true }); return;
+  }
+  if(ds.startBook !== undefined){
+    const pre = {}; if(ds.therapyId) pre.therapyId = ds.therapyId; if(ds.healerId) pre.healerId = ds.healerId;
+    if(pre.healerId && !pre.therapyId && healer(pre.healerId).therapies.length===1) pre.therapyId = healer(pre.healerId).therapies[0];
+    startBooking(pre); return;
+  }
+  if(ds.bookFor){ const u = Data.get("users", ds.bookFor); startBooking({ name:u.name, phone:u.phone }); return; }
+
+  /* booking steps */
+  if(ds.pickTherapy){ state.draft.therapyId = ds.pickTherapy; if(state.draft.healerId && !healer(state.draft.healerId).therapies.includes(ds.pickTherapy)) state.draft.healerId = null; rerender(); return; }
+  if(ds.pickHealer){ state.draft.healerId = ds.pickHealer; state.draft.time = null; rerender(); return; }
+  if(ds.pickDate){ state.draft.date = ds.pickDate; state.draft.time = null; rerender(); return; }
+  if(ds.pickTime){ state.draft.time = ds.pickTime; rerender(); return; }
+  if(ds.next !== undefined){
+    let n = state.step + 1;
+    if(n===2 && state.draft.healerId && healer(state.draft.healerId).therapies.includes(state.draft.therapyId)) n = 3;
+    setStep(n); return;
+  }
+  if(ds.prev !== undefined){ if(state.step===4) readBookingForm(); setStep(Math.max(1,state.step-1)); return; }
+  if(ds.confirm !== undefined){ await confirmBooking(); return; }
+  if(ds.reschedule){
+    const b = Data.get("bookings", ds.reschedule); if(!b) return;
+    state.draft = Object.assign(freshDraft(), { therapyId:b.therapyId, healerId:b.healerId, date:b.date, time:null, name:b.name, phone:b.contact||b.phone, email:b.email||"", age:b.age, notes:b.notes, rescheduleId:b.id });
+    state.step = 3; state.errors = {}; navigate("book", {}, { push:isStaff() }); return;
+  }
+  if(ds.btab){ state.bookingsTab = ds.btab; rerender(); return; }
+
+  /* booking status */
+  if(ds.cancel){
+    const b = Data.get("bookings", ds.cancel); if(!b) return;
+    askConfirm(`Cancel ${therapy(b.therapyId)?.name} for ${b.name} on ${niceDate(b.date)} at ${niceTime(b.time)}?`, ()=>{
+      if(isStaff()) setStatus(b.id, "cancelled");
+      else { Data.put("bookings", b.id, Object.assign({}, b, { status:"cancelled", history:(b.history||[]).concat([{ at:new Date().toISOString(), by:actor(), action:"Cancelled by patient" }]) })); log("Booking cancelled by patient", `${b.id} · ${b.name}`); toast("Booking cancelled"); render(false); }
+    }, { yes:"Cancel booking", danger:true, title:"Cancel this booking?" });
+    return;
+  }
+  if(ds.status){ setStatus(ds.id, ds.status); return; }
+  if(ds.restore){
+    const b = Data.get("bookings", ds.restore); if(!b) return;
+    if(isTaken(b.healerId,b.date,b.time,b.id)){ toast("That slot is now booked by someone else."); return; }
+    setStatus(b.id, "confirmed"); return;
+  }
+  if(ds.notes){ state.modal = { type:"notes", id:ds.notes }; render(false); return; }
+  if(ds.saveNotes !== undefined){ captureModal(); const b = Data.get("bookings", state.modal.id); Data.put("bookings", b.id, Object.assign({}, b, { staffNotes:(state.modal.vals.notes||"").trim() })); log("Session note saved", `${b.id} · ${b.name}`); toast("Note saved"); closeModal(); return; }
+  if(ds.openBooking){ state.modal = { type:"booking", id:ds.openBooking }; render(false); return; }
+
+  /* auth */
+  if(ds.loginMode){ state.loginMode = ds.loginMode; state.authErr = ""; state.form.phone = digits($("#l-phone")?.value); rerender(); return; }
+  if(ds.togglePw !== undefined){ const v=$("#l-pass").value; state.form.phone = digits($("#l-phone").value); state.showPw=!state.showPw; rerender(); $("#l-pass").value=v; return; }
+  if(ds.demoLogin !== undefined){ doLogin("9999999999", "demo123"); return; }
+  if(ds.login !== undefined){ doLogin(digits($("#l-phone").value), $("#l-pass").value||""); return; }
+  if(ds.sendOtp){
+    const purpose = ds.sendOtp, phone = digits(($("#l-phone")||$("#fp-phone")).value);
+    state.form.phone = phone; state.errors = {}; state.authErr = "";
+    if(!validPhone(phone)){ if(purpose==="reset") state.errors.phone = "Enter a valid 10-digit mobile number."; else state.authErr = "Enter a valid 10-digit mobile number."; rerender(); return; }
+    const u = Data.get("users", phone);
+    if(!u){ const m = "No account uses this number. Create an account first."; if(purpose==="reset") state.errors.phone = m; else state.authErr = m; rerender(); return; }
+    sendOtp(phone, purpose); state.otpSent = true; toast("Code sent"); rerender(); return;
+  }
+  if(ds.otpLogin !== undefined){
+    const phone = state.form.phone, err = checkOtp(phone, $("#l-otp").value, "login");
+    if(err){ state.authErr = err; rerender(); return; }
+    const u = Data.get("users", phone);
+    if(u.active===false){ state.authErr = "This account is deactivated. Please contact the centre."; rerender(); return; }
+    loginUser(u); return;
+  }
+  if(ds.registerStart !== undefined || ds.register !== undefined){
+    const f = state.form; f.name=($("#r-name").value||"").trim(); f.phone=digits($("#r-phone").value); f.email=($("#r-email").value||"").trim(); f.pass=$("#r-pass").value||"";
+    const errs = {}, existing = Data.get("users", f.phone);
+    if(f.name.length<2) errs.name="Enter your full name.";
+    if(!validPhone(f.phone)) errs.phone="Enter a valid 10-digit mobile number.";
+    else if(existing && existing.passHash) errs.phone="This number already has an account. Log in instead, or use Forgot password.";
+    if(f.pass.length<6) errs.pass="Use at least 6 characters.";
+    if(ds.register !== undefined && !Object.keys(errs).length){ const er = checkOtp(f.phone, $("#r-otp").value, "register"); if(er) errs.otp = er; }
+    state.errors = errs;
+    if(Object.keys(errs).length){ rerender(); return; }
+    if(ds.registerStart !== undefined){ sendOtp(f.phone, "register"); state.otpSent = true; toast("Code sent"); rerender(); return; }
+    const u = await withPassword(Object.assign({ phone:f.phone, name:f.name, email:f.email, active:true, createdAt:new Date().toISOString() }, existing ? { createdAt:existing.createdAt||new Date().toISOString() } : {}), f.pass);
+    u.verified = true;
+    await Data.put("users", f.phone, u);
+    log("Patient registered", `${u.name} · ${u.phone}`);
+    session = { kind:"user", id:f.phone, last:Date.now() }; saveSession(); state.errors={}; toast("Account created"); afterAuth(); return;
+  }
+  if(ds.resetPw !== undefined){
+    const phone = state.form.phone, errs = {}, pass = $("#fp-pass").value||"";
+    const er = checkOtp(phone, $("#fp-otp").value, "reset"); if(er) errs.otp = er;
+    if(pass.length<6) errs.pass = "Use at least 6 characters.";
+    state.errors = errs; if(Object.keys(errs).length){ rerender(); return; }
+    const u = await withPassword(Data.get("users", phone), pass);
+    await Data.put("users", phone, u); log("Password reset by OTP", phone);
+    state.form = {}; state.otpSent = false; toast("Password changed. Log in with it now."); navigate("login", {}, { replace:true }); return;
+  }
+  if(ds.demoAdmin !== undefined){ doAdminLogin(centre().bootstrapAdmin.username, centre().bootstrapAdmin.password); return; }
+  if(ds.adminLogin !== undefined){ doAdminLogin(($("#a-user").value||"").trim(), $("#a-pass").value||""); return; }
+  if(ds.recoverToggle !== undefined){ state.form = { recover:!state.form.recover }; state.authErr = ""; rerender(); return; }
+  if(ds.recover !== undefined){
+    const user = ($("#rc-user").value||"").trim().toLowerCase(), code = ($("#rc-code").value||"").trim(), pass = $("#rc-pass").value||"";
+    const s = Data.get("staff", user);
+    if(code !== centre().recoveryCode){ state.authErr = "The recovery code is wrong."; rerender(); return; }
+    if(!s || s.role!=="superadmin"){ state.authErr = "No super admin has that username."; rerender(); return; }
+    if(pass.length<8){ state.authErr = "Use at least 8 characters."; rerender(); return; }
+    await Data.put("staff", user, Object.assign(await withPassword(s, pass), { mustChange:false, active:true }));
+    log("Super admin password recovered", user); state.form = {}; state.authErr = ""; toast("Password set. Log in now."); rerender(); return;
+  }
+  if(ds.changePw !== undefined){
+    const s = currentStaff(), u = currentUser(), acct = s || u, col = s ? "staff" : "users", id = s ? s.username : u.phone;
+    const old = $("#cp-old")?.value || "", n1 = $("#cp-new").value||"", n2 = $("#cp-new2").value||"";
+    if(!(s && s.mustChange) && !(await checkPassword(acct, old))){ state.authErr = "Your current password is wrong."; rerender(); return; }
+    if(n1.length < (s?8:6)){ state.authErr = `Use at least ${s?8:6} characters.`; rerender(); return; }
+    if(n1!==n2){ state.authErr = "The two new passwords don't match."; rerender(); return; }
+    if(s && n1===centre().bootstrapAdmin.password){ state.authErr = "Choose a password different from the starting one."; rerender(); return; }
+    await Data.put(col, id, Object.assign(await withPassword(acct, n1), { mustChange:false }));
+    log("Password changed", id); state.authErr = ""; toast("Password changed");
+    if(s){ state.admin = { section:"dash", id:null }; state.history=[{name:"profile"}]; navigate("admin", {}, { replace:true }); } else goBack();
+    return;
+  }
+  if(ds.logout !== undefined){ logout(); return; }
+  if(ds.saveProfile !== undefined){
+    const n = ($("#e-name").value||"").trim(); if(n.length<2){ toast("Enter your full name."); return; }
+    const u = currentUser(); Data.put("users", u.phone, Object.assign({}, u, { name:n, email:($("#e-email").value||"").trim() })); log("Patient updated own details", u.phone); toast("Saved"); goBack(); return;
+  }
+
+  /* admin: filters, calendar, reports */
+  if(ds.clearFilters !== undefined){ state.filter={ q:"", date:"", healer:"", status:"", therapy:"" }; rerender(); return; }
+  if(ds.export){ exportCsv(ds.export); return; }
+  if(ds.calMonth){ const [y,m] = state.cal.month.split("-").map(Number); const d = new Date(y, m-1+Number(ds.calMonth), 1); state.cal.month = ymd(d).slice(0,7); rerender(); return; }
+  if(ds.calDay){ state.cal.day = ds.calDay; if(ds.calDay.slice(0,7)!==state.cal.month) state.cal.month = ds.calDay.slice(0,7); rerender(); return; }
+  if(ds.rep){ const [a,b] = ds.rep.split("|"); state.rep = { from:a, to:b }; rerender(); return; }
+
+  /* admin: patients */
+  if(ds.patient){ state.admin = { section:"patient", id:ds.patient }; if(state.route.name!=="admin") navigate("admin",{}, {push:true}); else { state.modal=null; state.anim="from-right"; render(true); } return; }
+  if(ds.editPatient){ state.modal = { type:"patient", id:ds.editPatient }; render(false); return; }
+  if(ds.savePatient !== undefined){
+    captureModal(); const v = state.modal.vals, u = Data.get("users", state.modal.id);
+    if((v.name||"").trim().length<2){ toast("Enter the patient's full name."); return; }
+    Data.put("users", u.phone, Object.assign({}, u, { name:v.name.trim(), email:(v.email||"").trim() })); log("Patient edited", u.phone); toast("Saved"); closeModal(); return;
+  }
+  if(ds.togglePatient){ const u = Data.get("users", ds.togglePatient); const on = u.active===false; Data.put("users", u.phone, Object.assign({}, u, { active:on })); log(on?"Patient activated":"Patient deactivated", u.phone); toast(on?"Patient activated":"Patient deactivated. They can't log in."); rerender(); return; }
+  if(ds.resetPatient){
+    const u = Data.get("users", ds.resetPatient), temp = String(Math.floor(100000 + Math.random()*900000));
+    await Data.put("users", u.phone, await withPassword(u, temp)); log("Patient password reset", u.phone);
+    state.modal = { type:"info", title:"Temporary password", html:`<p>New password for ${esc(u.name)}: <b class="mono" style="font-size:20px">${temp}</b></p><p class="disclaimer">Share it with them. They can change it from Profile → Change password, or reset it themselves with a one-time code.</p>
+      <a class="btn btn-wa btn-sm" style="margin-top:10px" target="_blank" rel="noopener" href="${esc(waLink(u.phone, `Namaste ${u.name.split(" ")[0]}, your new ${centre().centreName} app password is ${temp}. Please change it after you log in.`))}">Send on WhatsApp</a>` };
+    render(false); return;
+  }
+  if(ds.deletePatient){
+    const u = Data.get("users", ds.deletePatient), n = bookingsAll().filter(b=>b.phone===u.phone && isUpcoming(b)).length;
+    askConfirm(`Delete ${u.name}'s account?${n?` They have ${n} upcoming booking${n===1?"":"s"}, which will be cancelled.`:""} Their past session records stay in reports.`, async()=>{
+      for(const b of bookingsAll().filter(b=>b.phone===u.phone && isUpcoming(b))) await Data.put("bookings", b.id, Object.assign({}, b, { status:"cancelled" }));
+      await Data.del("users", u.phone); log("Patient deleted", `${u.name} · ${u.phone}`); toast("Patient deleted"); state.admin = { section:"patients", id:null }; render(true);
+    }, { yes:"Delete patient", danger:true, title:"Delete patient?" });
+    return;
+  }
+
+  /* admin: healers */
+  if(ds.editHealer !== undefined && el.matches("[data-edit-healer]")){ state.modal = { type:"healer", id:ds.editHealer||null }; render(false); return; }
+  if(ds.removePhoto !== undefined){ captureModal(); state.modal.photo = ""; render(false); return; }
+  if(ds.saveHealer !== undefined){
+    captureModal(); const v = state.modal.vals, id = state.modal.id;
+    const name = (v.name||"").trim(); if(name.length<2){ toast("Enter the healer's name."); return; }
+    const th = therapies().filter(t=>v["th:"+t.id]).map(t=>t.id); if(!th.length){ toast("Pick at least one therapy."); return; }
+    await ensureCatalog();
+    const old = id ? healer(id) : { id:slugId(name,"healers"), order:healers().length+1, schedule:DEFAULT_SCHEDULE };
+    const h = Object.assign({}, old, { name, qualifications:(v.qualifications||"").trim(), experience:(v.experience||"").trim(), specialization:(v.specialization||"").trim(), bio:(v.bio||"").trim(), therapies:th, active:!!v.active,
+      photo: state.modal.photo !== undefined ? state.modal.photo : (old.photo||"") });
+    await Data.put("healers", h.id, h); log(id?"Healer edited":"Healer added", h.name); toast("Healer saved"); closeModal(); return;
+  }
+  if(ds.toggleHealer){ await ensureCatalog(); const h = healer(ds.toggleHealer), on = h.active===false; Data.put("healers", h.id, Object.assign({}, h, { active:on })); log(on?"Healer activated":"Healer deactivated", h.name); toast(on?"Healer is visible to patients again":"Healer hidden from patients. Existing bookings stay."); rerender(); return; }
+  if(ds.deleteHealer){
+    const h = healer(ds.deleteHealer), up = bookingsAll().filter(b=>b.healerId===h.id && isUpcoming(b)).length;
+    if(up){ state.modal = { type:"info", title:"Can't delete yet", html:`<p>${esc(h.name)} has ${up} upcoming booking${up===1?"":"s"}. Reschedule or cancel them first, or deactivate the healer instead.</p>` }; render(false); return; }
+    askConfirm(`Delete ${h.name}? Past bookings keep their records. This can't be undone.`, async()=>{ await ensureCatalog(); await Data.del("healers", h.id); log("Healer deleted", h.name); toast("Healer deleted"); render(false); }, { yes:"Delete healer", danger:true, title:"Delete healer?" });
+    return;
+  }
+  if(ds.editSchedule){ state.modal = { type:"schedule", id:ds.editSchedule }; render(false); return; }
+  if(ds.addLeave !== undefined){
+    captureModal(); const v = state.modal.vals, from = v.lfrom, to = v.lto && v.lto >= v.lfrom ? v.lto : v.lfrom;
+    if(!from){ toast("Pick a start date."); return; }
+    const cur = state.modal.leave || (schedOf(healer(state.modal.id)).leave||[]);
+    state.modal.leave = cur.concat([{ from, to, note:(v.lnote||"").trim() }]); v.lnote = "";
+    const clash = bookingsAll().filter(b=>b.healerId===state.modal.id && isUpcoming(b) && b.date>=from && b.date<=to).length;
+    if(clash) toast(`${clash} booking${clash===1?"":"s"} fall in this leave. Reschedule them from the calendar.`);
+    render(false); return;
+  }
+  if(ds.removeLeave){ captureModal(); const [f,t] = ds.removeLeave.split("|"); const cur = state.modal.leave || (schedOf(healer(state.modal.id)).leave||[]); state.modal.leave = cur.filter(l=>!(l.from===f && (l.to||"")===t)); render(false); return; }
+  if(ds.saveSchedule !== undefined){
+    captureModal(); const v = state.modal.vals, h = healer(state.modal.id), s = schedOf(h);
+    const days = [0,1,2,3,4,5,6].filter(d=>v["d:"+d]);
+    if(toMin(v.end) - toMin(v.start) < CONFIG.slotMinutes){ toast("The working day must be at least one session long."); return; }
+    if((v.breakStart && !v.breakEnd) || (!v.breakStart && v.breakEnd) || (v.breakStart && toMin(v.breakEnd) <= toMin(v.breakStart))){ toast("Set both break times, with the end after the start, or leave both empty."); return; }
+    await ensureCatalog();
+    const schedule = { days, start:v.start, end:v.end, breakStart:v.breakStart||"", breakEnd:v.breakEnd||"", leave:state.modal.leave || s.leave || [] };
+    await Data.put("healers", h.id, Object.assign({}, healer(h.id), { schedule })); log("Schedule updated", h.name); toast("Schedule saved"); closeModal(); return;
+  }
+
+  /* admin: therapies */
+  if(ds.editTherapy !== undefined && el.matches("[data-edit-therapy]")){ state.modal = { type:"therapy", id:ds.editTherapy||null }; render(false); return; }
+  if(ds.saveTherapy !== undefined){
+    captureModal(); const v = state.modal.vals, id = state.modal.id;
+    const full = (v.full||"").trim(), price = Number(v.price), mins = Number(v.mins);
+    if(full.length<2){ toast("Enter the therapy name."); return; }
+    if(!(price>=0)){ toast("Enter a valid price."); return; }
+    if(!(mins>=15)){ toast("Enter a duration of at least 15 minutes."); return; }
+    await ensureCatalog();
+    const lines = s => String(s||"").split("\n").map(x=>x.trim()).filter(Boolean);
+    const old = id ? therapy(id) : { id:slugId(full,"therapies"), order:therapies().length+1 };
+    const t = Object.assign({}, old, { full, name:(v.name||"").trim()||full, code:(v.code||"").trim()||full.slice(0,2), price, mins, desc:(v.desc||"").trim(), about:(v.about||"").trim(), who:(v.who||"").trim(), prep:lines(v.prep), benefits:lines(v.benefits), active:!!v.active });
+    await Data.put("therapies", t.id, t);
+    if(!id){ for(const h of healers()) await Data.put("healers", h.id, Object.assign({}, h, { therapies:h.therapies.concat([t.id]) })); }
+    log(id?"Therapy edited":"Therapy added", `${t.full} · ${rupees(t.price)} · ${t.mins} min`); toast("Therapy saved"); closeModal(); return;
+  }
+  if(ds.toggleTherapy){ await ensureCatalog(); const t = therapy(ds.toggleTherapy), on = t.active===false; Data.put("therapies", t.id, Object.assign({}, t, { active:on })); log(on?"Therapy shown":"Therapy hidden", t.full); rerender(); return; }
+  if(ds.deleteTherapy){
+    const t = therapy(ds.deleteTherapy), up = bookingsAll().filter(b=>b.therapyId===t.id && isUpcoming(b)).length;
+    if(up){ state.modal = { type:"info", title:"Can't delete yet", html:`<p>${esc(t.full)} has ${up} upcoming booking${up===1?"":"s"}. Hide it instead so no new bookings come in.</p>` }; render(false); return; }
+    askConfirm(`Delete ${t.full}? Past bookings keep their records.`, async()=>{ await ensureCatalog(); await Data.del("therapies", t.id); log("Therapy deleted", t.full); toast("Therapy deleted"); render(false); }, { yes:"Delete therapy", danger:true, title:"Delete therapy?" });
+    return;
+  }
+  if(ds.setAllPrices !== undefined){
+    askConfirm(`Set every therapy to ${rupees(PRICE)} and ${MINS} minutes? Existing bookings keep the price they were booked at.`, async()=>{
+      await ensureCatalog(); for(const t of therapies()) await Data.put("therapies", t.id, Object.assign({}, t, { price:PRICE, mins:MINS }));
+      log("All therapy prices set", `${rupees(PRICE)} · ${MINS} min`); toast("Prices updated"); render(false);
+    }, { yes:"Update all" });
+    return;
+  }
+
+  /* admin: staff & permissions */
+  if(ds.editStaff !== undefined && el.matches("[data-edit-staff]")){ state.modal = { type:"staff", id:ds.editStaff||null }; render(false); return; }
+  if(ds.saveStaff !== undefined){
+    captureModal(); const v = state.modal.vals, id = state.modal.id, me = currentStaff();
+    const name = (v.name||"").trim(), username = id || (v.username||"").trim().toLowerCase(), pw = v.password||"";
+    if(name.length<2){ toast("Enter the staff member's name."); return; }
+    if(!id){ if(!/^[a-z0-9._-]{3,30}$/.test(username)){ toast("Username: 3 to 30 letters, numbers, dots or dashes."); return; } if(Data.get("staff", username)){ toast("That username is taken."); return; } }
+    if((!id || pw) && pw.length<8){ toast("Password must be at least 8 characters."); return; }
+    const old = id ? Data.get("staff", id) : { username, active:true, createdAt:new Date().toISOString() };
+    const role = id===me.username ? old.role : (v.role||"reception");
+    if(id && old.role==="superadmin" && role!=="superadmin" && Data.all("staff").filter(s=>s.role==="superadmin" && s.active!==false).length<2){ toast("Keep at least one active super admin."); return; }
+    let s = Object.assign({}, old, { name, role, healerId: role==="healer" ? (v.healerId||"") : "" });
+    if(pw) s = Object.assign(await withPassword(s, pw), { mustChange:true });
+    await Data.put("staff", username, s); log(id?"Staff edited":"Staff added", `${name} · ${ROLES[role]}`); toast("Staff saved"); closeModal(); return;
+  }
+  if(ds.toggleStaff){
+    const s = Data.get("staff", ds.toggleStaff), on = s.active===false;
+    if(!on && s.role==="superadmin" && Data.all("staff").filter(x=>x.role==="superadmin" && x.active!==false).length<2){ toast("Keep at least one active super admin."); return; }
+    Data.put("staff", s.username, Object.assign({}, s, { active:on })); log(on?"Staff activated":"Staff deactivated", s.username); rerender(); return;
+  }
+  if(ds.deleteStaff){
+    const s = Data.get("staff", ds.deleteStaff);
+    if(s.role==="superadmin" && Data.all("staff").filter(x=>x.role==="superadmin").length<2){ toast("Keep at least one super admin."); return; }
+    askConfirm(`Delete the staff account ${s.username} (${s.name})?`, async()=>{ await Data.del("staff", s.username); log("Staff deleted", s.username); toast("Staff deleted"); render(false); }, { yes:"Delete", danger:true, title:"Delete staff account?" });
+    return;
+  }
+  if(ds.resetRoles !== undefined){ askConfirm("Restore the default permissions for Admin, Reception and Healer?", async()=>{ await Data.put("config","roles",{ roles:DEFAULT_ROLES }); log("Permissions restored to defaults"); toast("Defaults restored"); render(false); }, { yes:"Restore" }); return; }
+
+  /* admin: settings */
+  if(ds.saveSettings !== undefined){
+    const cur = Data.get("config","centre") || {};
+    const wa = digits($("#st-wa").value);
+    if(wa && !validPhone(wa)){ toast("Enter a 10-digit WhatsApp number or leave it empty."); return; }
+    Data.put("config","centre", Object.assign({}, cur, { centreName:$("#st-name").value.trim()||CONFIG.centreName, centreAddress:$("#st-address").value.trim(), centrePhone:$("#st-phone").value.trim(), centreWhatsApp:wa, centreHours:$("#st-hours").value.trim(), daysAhead:Math.min(90, Math.max(1, Number($("#st-days").value)||21)), demoMode:$("#st-demo").value==="1" }));
+    log("Centre settings saved"); toast("Settings saved"); return;
+  }
+  if(ds.saveTemplates !== undefined){
+    const cur = Data.get("config","centre") || {}, t = {};
+    Object.keys(DEFAULT_TEMPLATES).forEach(k=>{ t[k] = $("#tp-"+k).value.trim() || DEFAULT_TEMPLATES[k]; });
+    Data.put("config","centre", Object.assign({}, cur, { templates:t })); log("WhatsApp messages saved"); toast("Messages saved"); return;
+  }
+  if(ds.backup !== undefined){ backup(); return; }
+  if(ds.pruneActivity !== undefined){
+    const cut = addDays(today(), -90), old = Data.all("activity").filter(d=>d.day < cut);
+    if(!old.length){ toast("Nothing older than 90 days."); return; }
+    askConfirm(`Delete ${old.length} day${old.length===1?"":"s"} of activity older than 90 days?`, async()=>{ for(const d of old) await Data.del("activity", d.day); toast("Old activity deleted"); render(false); }, { yes:"Delete", danger:true });
+    return;
+  }
+  if(ds.reset !== undefined){
+    askConfirm("Delete all bookings, patients, staff and settings saved in this browser?", ()=>{
+      try{ localStorage.removeItem(CONFIG.storageKey); }catch(_){}
+      loadLocal(); seedLocalDemo().then(()=>{ logout("App data reset"); });
+    }, { yes:"Delete everything", danger:true, title:"Reset this device?" });
+    return;
+  }
+});
+
+document.addEventListener("change", async e => {
+  const id = e.target.id, f = state.filter;
+  if(id==="flt-date"){ f.date=e.target.value; rerender(); }
+  if(id==="flt-healer"){ f.healer=e.target.value; rerender(); }
+  if(id==="flt-status"){ f.status=e.target.value; rerender(); }
+  if(id==="flt-therapy"){ f.therapy=e.target.value; rerender(); }
+  if(id==="rep-from"||id==="rep-to"){ state.rep[id==="rep-from"?"from":"to"] = e.target.value; if(state.rep.to < state.rep.from) state.rep.to = state.rep.from; rerender(); }
+  if(id==="staff-role"){ rerender(); }
+  if(e.target.dataset.perm){
+    const [role, perm] = e.target.dataset.perm.split("|"), roles = JSON.parse(JSON.stringify(rolesCfg()));
+    const set = new Set(roles[role]||[]); e.target.checked ? set.add(perm) : set.delete(perm); roles[role] = [...set];
+    Data.put("config","roles",{ roles }); log("Permission changed", `${ROLES[role]}: ${PERMS.find(p=>p[0]===perm)[1]} ${e.target.checked?"allowed":"removed"}`);
+    toast(`${ROLES[role]} ${e.target.checked?"can now":"can no longer"} ${PERMS.find(p=>p[0]===perm)[1].toLowerCase()}`);
+  }
+  if(id==="h-photo" && e.target.files[0]){
+    try{ captureModal(); state.modal.photo = await resizeImage(e.target.files[0]); render(false); }
+    catch(_){ toast("That image couldn't be read. Try a JPG or PNG."); }
+  }
+  if(id==="restore-file" && e.target.files[0]){ restore(e.target.files[0]); e.target.value = ""; }
+});
+document.addEventListener("input", e => {
+  const id = e.target.id; if(!id || !id.startsWith("q-")) return;
+  if(id==="q-bookings") state.filter.q = e.target.value;
+  if(id==="q-patients") state.pq = e.target.value;
+  if(id==="q-activity") state.aq = e.target.value;
+  const pos = e.target.selectionStart; render(false);
+  const el = $("#"+id); if(el){ el.focus(); try{ el.setSelectionRange(pos,pos); }catch(_){} }
+});
+document.addEventListener("keydown", e => {
+  if(e.key==="Escape" && state.modal){ closeModal(); return; }
+  if(e.key!=="Enter") return;
+  const id = e.target.id;
+  if(id==="l-pass"||id==="l-phone") ($("[data-login]")||$("[data-send-otp]"))?.click();
+  if(id==="l-otp") $("[data-otp-login]")?.click();
+  if(id==="a-pass"||id==="a-user") $("[data-admin-login]")?.click();
+  if(id==="r-pass"||id==="r-otp") ($("[data-register]")||$("[data-register-start]"))?.click();
+  if(id==="cp-new2") $("[data-change-pw]")?.click();
+});
+
+/* ---------- local test data (only when data lives in this browser) ---------- */
+async function seedLocalDemo(){
+  if(!centre().demoMode || Data.all("users").length) return;
+  const now = new Date().toISOString();
+  const demo = await withPassword({ phone:"9999999999", name:"Demo Devotee", email:"", active:true, createdAt:now, example:true }, "demo123");
+  const priya = await withPassword({ phone:"9812345678", name:"Priya Sharma (example)", email:"", active:true, createdAt:now, example:true }, "priya123");
+  Data.put("users", demo.phone, demo); Data.put("users", priya.phone, priya);
+  const mk = (id,t,h,d,time,u,status,notes="") => ({ id, therapyId:t, healerId:h, date:addDays(today(),d), time, mins:MINS, price:PRICE, name:u.name, phone:u.phone, contact:u.phone, age:"", notes, status, createdAt:now, createdBy:"Example data", notified:{}, history:[] });
+  [ mk("SH-DEMO1","cst","rashmi",1,"10:00",demo,"confirmed","Neck stiffness"),
+    mk("SH-DEMO2","meru","aparna",3,"15:00",demo,"confirmed"),
+    mk("SH-DEMO3","marma","suprita",-4,"12:00",demo,"completed"),
+    mk("SH-DEMO4","osteo","suvidha",1,"09:00",priya,"confirmed","Lower back pain"),
+    mk("SH-DEMO5","cst","rashmi",-2,"14:00",priya,"noshow"),
+    mk("SH-DEMO6","rekhno","aparna",0,"17:00",priya,"confirmed")
+  ].forEach(b=>Data.put("bookings", b.id, b));
+}
+
+/* ---------- start ---------- */
+async function boot(){
+  window.__sadhnaStarted = true;
+  let t=null; try{ t=localStorage.getItem("sadhna_theme"); }catch(_){}
+  if(t) document.documentElement.dataset.theme=t;
+  // The page never waits for storage: it renders at once and fills in when data arrives.
+  const sp = $("#splash");
+  setTimeout(()=>sp.classList.add("hide"), reduceMotion()?100:500);
+  setTimeout(()=>sp.remove(), reduceMotion()?400:1000);
+  loadSession();
+  if(session?.kind==="staff" && Date.now() - (session.last||0) > CONFIG.sessionTimeoutMin*60*1000){ session = null; saveSession(); }
+  if(hasGS() || CONFIG.sheetsUrl){
+    Data.cached = loadCatalogCache();
+    startConnecting("Connecting to the Google Sheet…");
+    try{ await connectSheets(); finishConnecting(); }
+    catch(e){
+      // Never fall back to this phone only: data would be split across devices. Show the reason instead.
+      console.error(e);
+      Data.mode = "sheetError"; Data.sheetError = String(e && e.message || e); Data.loaded = true; render();
+    }
+  } else if(CONFIG.supabase.url && CONFIG.supabase.anonKey){
+    startConnecting("Connecting to shared data…");
+    try{ await connectSupabase(); }
+    catch(e){ console.error(e); await useLocal(); Data.note = "Couldn't reach Supabase, so data is being saved on this device only."; }
+    finishConnecting();
+  } else if(window.claude && window.claude.use){
+    startConnecting("Connecting to shared data…");
+    let db = null, perms = null;
+    try{ db = await window.claude.use("db"); }catch(_){ db = null; }
+    try{ perms = await window.claude.use("permissions"); }catch(_){ perms = null; }
+    if(!db){ await useLocal(); finishConnecting(); return; }
+    Data.db = db; Data.perms = perms;
+    let st = "granted";
+    try{ if(perms) st = await perms.state("db"); }catch(_){ st = "granted"; }
+    if(st==="granted") await attachDb();
+    else if(st==="prompt"){ Data.mode = "needsAllow"; Data.loaded = true; render(); }
+    else { await useLocal(); Data.note = "Shared data is turned off for this page, so data is saved on this device only."; finishConnecting(); }
+  } else {
+    await useLocal(); Data.loaded = true; render();
+  }
+}
+function startConnecting(msg){ Data.mode = "connecting"; Data.connectMsg = msg; Data.loaded = true; render(); }
+function finishConnecting(){ render(); if(Data.note){ toast(Data.note); Data.note = ""; } }
+async function useLocal(){ loadLocal(); await seedLocalDemo(); }
+async function attachDb(){
+  Data.mode = "connecting"; render();
+  try{ await connectDb(Data.db); }
+  catch(e){ console.error(e); await useLocal(); Data.note = "Couldn't reach shared data, so data is saved on this device only."; }
+  finishConnecting();
+}
+async function allowSharedData(){
+  let st = "granted";
+  try{ if(Data.perms){ const r = await Data.perms.request(["db"]); st = (r && r.db) || "granted"; } }catch(_){ st = "granted"; }
+  if(st==="granted") await attachDb();
+  else { await useLocal(); Data.note = "Shared data wasn't allowed, so data is saved on this device only. Reload the page to ask again."; finishConnecting(); }
+}
+setInterval(()=>{ if(session?.kind==="staff" && Date.now() - (session.last||0) > centre().sessionTimeoutMin*60*1000) logout(`Logged out after ${centre().sessionTimeoutMin} minutes without activity`); }, 60*1000);
+setInterval(()=>{ if(state.stale && !state.modal && !(document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) && !FORM_ROUTES.includes(state.route.name) && !(state.route.name==="book" && state.step===4) && !(state.route.name==="admin" && state.admin.section==="settings")) { const y = window.scrollY; render(false); window.scrollTo(0,y); } }, 5000);
+boot();
+</script>
+</body>
+</html>
+<!-- ===== END OF index.html. If you can see this line in Apps Script, the whole file was pasted. ===== -->
