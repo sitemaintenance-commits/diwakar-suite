@@ -2,6 +2,7 @@
 // the browser's print dialog saves it as PDF. The same content the old
 // Daily Review CRM printed: headline numbers, then every department.
 import { fmtDate } from '@/lib/format';
+import { DEPARTMENT_HEADS } from '@/features/daily/heads';
 
 interface Metric { label: string; value: string }
 interface Report {
@@ -31,7 +32,20 @@ const HEALTH: Record<string, [string, string]> = {
   needs_attention: ['Needs attention', '#b45309'],
   critical: ['Critical', '#b91c1c'],
 };
-const REMARK: Record<string, string> = { founder_remark: 'Founder', ccm_remark: 'CCM' };
+
+const reviewRemarks = (r: Report, action: string) =>
+  r.reviews?.filter((x) => x.action === action && x.comment).map((x) => x.comment).join('\n') ?? '';
+
+// Keep older issues and plans in the same Department Head's Remarks field used
+// by the Excel export, so historical reports lose no information.
+const departmentHeadRemarks = (r: Report) => [
+  r.work_completed,
+  r.issues ? `Issues: ${r.issues}` : null,
+  r.next_day_plan ? `Plan for tomorrow: ${r.next_day_plan}` : null,
+].filter(Boolean).join('\n\n');
+
+const field = (label: string, value: string | null | undefined, className = '') =>
+  `<div class="field ${className}"><h3>${esc(label)}</h3><div class="field-value">${para(value)}</div></div>`;
 
 export function printDayReview(review: PrintableReview, company: string) {
   // Open first: a tab opened after an await is often blocked.
@@ -52,26 +66,24 @@ export function printDayReview(review: PrintableReview, company: string) {
     }
     const [label, color] = HEALTH[r.health] ?? [r.health, '#475569'];
     const metrics = r.metrics?.filter((m) => m.label)?.length
-      ? `<table class="metrics">${r.metrics.filter((m) => m.label)
-          .map((m) => `<tr><td>${esc(m.label)}</td><td>${para(m.value)}</td></tr>`).join('')}</table>`
-      : '';
-    const remarks = r.reviews?.filter((x) => REMARK[x.action] && x.comment)?.length
-      ? `<div class="remarks">${r.reviews.filter((x) => REMARK[x.action] && x.comment)
-          // Remarks are labelled "Founder" or "CCM" only, without a person's name.
-          .map((x) => `<p><b>${REMARK[x.action]}:</b> ${para(x.comment)}</p>`).join('')}</div>`
-      : '';
+      ? r.metrics.filter((m) => m.label)
+          .map((m) => `<div class="number"><span>${esc(m.label)}</span><b>${para(m.value)}</b></div>`).join('')
+      : '<span class="muted">—</span>';
+    const reportedBy = DEPARTMENT_HEADS[d.name] ?? r.reporter;
     return `<section class="dept">
       <h2>${esc(d.name)} <span class="pill" style="color:${color};border-color:${color}">${esc(label)}</span>
         ${r.status === 'draft' ? '<em class="missing">Draft</em>' : ''}</h2>
-      <p class="muted">Reported by CCM</p>
-      ${metrics}
-      <div class="grid">
-        <div><h3>Department Head's Remarks</h3><p>${para(r.work_completed)}</p></div>
-        <div><h3>Issues / stuck</h3><p>${para(r.issues)}</p></div>
-        <div><h3>Plan for tomorrow</h3><p>${para(r.next_day_plan)}</p></div>
+      <div class="identity-fields">
+        ${field('Review date', fmtDate(review.date))}
+        ${field('Department', d.name)}
+        ${field('Reported by', reportedBy)}
       </div>
-      ${r.remarks ? `<div><h3>Remarks</h3><p>${para(r.remarks)}</p></div>` : ''}
-      ${remarks}
+      <div class="report-fields">
+        <div class="field"><h3>Key numbers</h3><div class="field-value">${metrics}</div></div>
+        ${field("Department Head's Remarks", departmentHeadRemarks(r))}
+        ${field('CCM Remarks', reviewRemarks(r, 'ccm_remark'))}
+        ${field('Founder Remarks', reviewRemarks(r, 'founder_remark'))}
+      </div>
     </section>`;
   }).join('');
 
@@ -91,15 +103,18 @@ export function printDayReview(review: PrintableReview, company: string) {
   .dept h2 { font-size: 14px; margin: 0 0 4px; display: flex; gap: 8px; align-items: center; }
   .pill { font-size: 10px; font-weight: 600; border: 1px solid; border-radius: 999px; padding: 1px 8px; }
   .missing { color: #b91c1c; font-size: 11px; font-style: normal; font-weight: 600; }
-  .muted { color: #64748b; margin: 0 0 6px; }
-  h3 { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: #64748b; margin: 8px 0 2px; }
+  .muted { color: #64748b; margin: 0; }
+  h3 { font-size: 10px; color: #475569; margin: 0 0 4px; }
   p { margin: 0; }
-  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-  table.metrics { border-collapse: collapse; width: 100%; margin: 4px 0; }
-  table.metrics td { border-top: 1px solid #f1f5f9; padding: 3px 6px; vertical-align: top; }
-  table.metrics td:first-child { color: #475569; width: 38%; }
-  .remarks { margin-top: 8px; background: #f8fafc; border-left: 3px solid #ea580c; padding: 6px 10px; }
-  .remarks p + p { margin-top: 4px; }
+  .identity-fields, .report-fields { display: grid; gap: 1px; background: #e2e8f0; border: 1px solid #e2e8f0; }
+  .identity-fields { grid-template-columns: .9fr 1.35fr 1.15fr; margin-top: 8px; }
+  .report-fields { grid-template-columns: 1fr 1fr; margin-top: 1px; }
+  .field { min-width: 0; background: #fff; padding: 7px 9px; }
+  .field-value { color: #0f172a; overflow-wrap: anywhere; }
+  .number { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 2px 0; }
+  .number + .number { border-top: 1px solid #f1f5f9; }
+  .number span { color: #475569; }
+  .number b { font-weight: 500; }
   footer { margin-top: 16px; color: #94a3b8; font-size: 10px; }
   @media print { body { margin: 0; } @page { margin: 12mm; } }
 </style></head><body>

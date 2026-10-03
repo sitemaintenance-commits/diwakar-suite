@@ -339,6 +339,29 @@ function ReportEditor({
   async function save(status: 'draft' | 'submitted') {
     setBusy(true);
     const r = entry!.report;
+    const hasContent = Boolean(
+      work.trim()
+      || metrics.some((m) => m.value.trim())
+      || r?.issues?.trim()
+      || r?.next_day_plan?.trim()
+      || r?.remarks?.trim()
+      || r?.reviews?.length,
+    );
+    if (!hasContent) {
+      if (r) {
+        const { error } = await supabase.rpc('clear_daily_report', { p_id: r.id });
+        setBusy(false);
+        if (error) return toast.error(errorMessage(error));
+        toast.success('Report cleared — it is now not filed');
+        await onSaved();
+        onClose();
+        return;
+      }
+      setBusy(false);
+      toast.info('Nothing entered — the report remains not filed');
+      onClose();
+      return;
+    }
     const { error } = await supabase.rpc('save_daily_report', {
       p_report: {
         report_date: date,
@@ -351,7 +374,8 @@ function ReportEditor({
         remarks: r?.remarks ?? null,
         status,
       },
-      p_items: metrics.filter((m) => m.label.trim()),
+      // A default label without a value is only a prompt, not a filed update.
+      p_items: metrics.filter((m) => m.label.trim() && m.value.trim()),
       p_id: entry!.report?.id ?? null,
     });
     setBusy(false);

@@ -671,6 +671,19 @@ await expectValue('a user with no daily permission at all gets nothing', ADMIN,
 await expectValue('HR can file its own department report', OWNER,
   `select public.save_daily_report(jsonb_build_object('department_id', $1::text, 'work_completed', 'Payroll inputs closed.',
      'status', 'submitted'), '[]'::jsonb) is not null`, true, [deptHr]);
+await expectOk('an editor can clear a submitted report back to not filed', OWNER,
+  `select public.clear_daily_report(public.save_daily_report(
+     jsonb_build_object('report_date', (current_date - 10)::text, 'department_id', $1::text, 'status', 'submitted'),
+     '[{"label":"Staff present","value":""}]'::jsonb))`, [deptHr]);
+await expectValue('the cleared report no longer counts as filed', OWNER,
+  `select (public.get_daily_review(current_date - 10)->'totals'->>'reported')::int`, 0);
+await expectValue('a fresh report can be filed after the empty one is cleared', OWNER,
+  `select public.save_daily_report(jsonb_build_object('report_date', (current_date - 10)::text,
+     'department_id', $1::text, 'work_completed', 'Replacement report', 'status', 'submitted'), '[]'::jsonb) is not null`,
+  true, [deptHr]);
+const replacementDailyReport = await id(`select id from public.daily_reports where report_date = current_date - 10 and deleted_at is null`);
+await expectError('a user without report edit permission cannot clear a report', TECH,
+  `select public.clear_daily_report($1)`, 'permission to edit', [replacementDailyReport]);
 
 console.log('\nField entry — the technician form that replaces the Google Form');
 await expectValue('the real portfolio is loaded with DC and AC capacity', OWNER,
