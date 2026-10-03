@@ -42,7 +42,8 @@ const keyRemarks = (r: Report | null) => [
 ].filter(Boolean).join('\n\n');
 const remarksOf = (r: Report | null, action: string) =>
   (r?.reviews ?? []).filter((x) => x.action === action && x.comment).map((x) => x.comment).join('\n');
-const reportedBy = (name: string, r: Report | null) => DEPARTMENT_HEADS[name] ?? r?.reporter ?? '';
+// Every report is filed and analysed by the CCM's office: Reported by says CCM, not a person.
+const reportedBy = (_name: string, r: Report | null) => (r ? 'CCM' : '');
 const noFormula = (s: string) => (/^[=+\-@\t\r]/.test(s) ? `'${s}` : s);
 
 /** "Daily Review CRM - Mon, 28 Sept 2026", as the old site wrote it. */
