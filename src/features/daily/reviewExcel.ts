@@ -71,9 +71,17 @@ function addSheet(
   opts: { name: string; title: string; summary: string; brand: string; heading: string; headers: string[]; widths: number[];
     rows: Cell[][]; footer?: string[] },
 ): Worksheet {
+  // The same sheet settings as the old site's workbook, which Excel shows correctly:
+  // no gridlines, a brand-coloured tab, A4 landscape on one page width with the
+  // heading rows on every page, and a page-number footer.
   const ws = wb.addWorksheet(opts.name, {
-    views: [{ state: 'frozen', ySplit: 6 }],
-    pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+    properties: { tabColor: { argb: BRAND_RED } },
+    views: [{ state: 'frozen', ySplit: 6, showGridLines: false }],
+    pageSetup: {
+      paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '1:6',
+      margins: { left: 0.25, right: 0.25, top: 0.35, bottom: 0.35, header: 0.15, footer: 0.15 },
+    },
+    headerFooter: { oddFooter: `&L${opts.brand}&RPage &P of &N` },
   });
   const n = opts.headers.length;
   const line = (row: number, text: string, font: Partial<import('exceljs').Font>, height: number) => {
@@ -112,7 +120,7 @@ function addSheet(
     }
   });
   const last = 6 + opts.rows.length;
-  ws.autoFilter = { from: { row: 6, column: 1 }, to: { row: Math.max(6, last), column: n } };
+
 
   (opts.footer ?? []).forEach((text, i) => {
     const r = last + 1 + i;
@@ -123,6 +131,10 @@ function addSheet(
     c.alignment = { horizontal: 'right' };
   });
   opts.widths.forEach((w, i) => (ws.getColumn(i + 1).width = w));
+  // Filter and print ranges run to the sheet's last line, footer included, as in the old workbook.
+  const end = last + (opts.footer?.length ?? 0);
+  ws.autoFilter = { from: { row: 6, column: 1 }, to: { row: Math.max(7, end), column: n } };
+  ws.pageSetup.printArea = `A1:${ws.getColumn(n).letter}${Math.max(7, end)}`;
   return ws;
 }
 
@@ -167,11 +179,11 @@ export async function downloadReviewDay(moduleKey: string, day: ReviewDay, brand
   wb.creator = 'Diwakar Solar Management Suite';
 
   addSheet(wb, { ...base, name: 'Department reports', heading: 'Department reports', headers: REPORT_HEADERS,
-    widths: [17, 31, 23, 34, 48, 44, 40], rows: depts.map(reportRow), footer: ANALYZED_BY });
+    widths: [17, 31, 23, 34, 48, 44, 44], rows: depts.map(reportRow), footer: ANALYZED_BY });
   addSheet(wb, { ...base, name: 'HR Report', heading: 'HR Operations Review', headers: REPORT_HEADERS,
-    widths: [17, 20, 23, 34, 48, 40, 40], rows: deptSheet('HR'), footer: ANALYZED_BY });
+    widths: [17, 20, 23, 34, 48, 44, 44], rows: deptSheet('HR'), footer: ANALYZED_BY });
   addSheet(wb, { ...base, name: 'Admin Report', heading: 'Admin Operations Review', headers: REPORT_HEADERS,
-    widths: [17, 20, 23, 34, 48, 40, 40], rows: deptSheet('Admin'), footer: ANALYZED_BY });
+    widths: [17, 20, 23, 34, 48, 44, 44], rows: deptSheet('Admin'), footer: ANALYZED_BY });
   addSheet(wb, { ...base, name: 'Headline numbers', heading: 'Company headline numbers', headers: ['Review date', 'Metric', 'Value'],
     widths: [19, 48, 27], rows: headlineRows.length ? headlineRows : [[date, '', '']] });
   addSheet(wb, { ...base, name: 'Founder remarks', heading: 'Founder Remarks', headers: ['Review date', 'Remarks and action points'],
