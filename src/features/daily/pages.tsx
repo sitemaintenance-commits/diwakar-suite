@@ -73,19 +73,9 @@ export const DEFAULT_METRICS_BY_DEPARTMENT: Record<string, string[]> = {
   Admin: ['Attendance register status', 'Office housekeeping', 'Facility & asset status', 'Site admin support'],
 };
 
-/** The names the legacy workbook puts on the review: the founder, and the coordinator who writes the day's key remarks. */
-function useReviewNames() {
-  const { setting } = useAccess();
-  return {
-    founder: setting('founder_name', 'Sunil Bansal'),
-    coordinator: setting('review_coordinator_name', 'Jitendra Sharma'),
-  };
-}
-
-/** Under a remark: when, and -- for a Founder remark -- the founder's name, whoever typed it in. */
+/** Under a remark: when. CCM and Founder remarks carry only their badge, no person's name. */
 function RemarkMeta({ action, by, at }: { action: string; by: string | null; at: string }) {
-  const { founder } = useReviewNames();
-  const who = action === 'founder_remark' ? founder : action === 'ccm_remark' ? null : by ?? 'Management';
+  const who = action === 'founder_remark' || action === 'ccm_remark' ? null : by ?? 'Management';
   return (
     <span className="block text-xs text-muted-foreground">
       {who ? `${who} · ` : ''}{fmtDateTime(at)}
@@ -470,7 +460,6 @@ export function ReviewSummaryPage() {
   const monthData = useDailyMonth(month);
   const t = review.data?.totals;
 
-  const names = useReviewNames();
 
   async function onExport() {
     if (!review.data) return;
@@ -484,7 +473,7 @@ export function ReviewSummaryPage() {
   function onPrint() {
     if (!review.data) return;
     try {
-      printDayReview(review.data, setting('company_name', 'Diwakar Renewable & Infra Pvt. Ltd.'), names.founder);
+      printDayReview(review.data, setting('company_name', 'Diwakar Renewable & Infra Pvt. Ltd.'));
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -683,7 +672,6 @@ export function ManagementReviewPage() {
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const reports = useCan('daily.reports');
   const summary = useCan('daily.summary');
-  const names = useReviewNames();
   const { setting } = useAccess();
 
   async function onDownload() {
@@ -697,7 +685,7 @@ export function ManagementReviewPage() {
   function onPrint() {
     if (!review.data) return;
     try {
-      printDayReview(review.data, setting('company_name', 'Diwakar Renewable & Infra Pvt. Ltd.'), names.founder);
+      printDayReview(review.data, setting('company_name', 'Diwakar Renewable & Infra Pvt. Ltd.'));
     } catch (e) {
       toast.error(errorMessage(e));
     }
