@@ -5,9 +5,13 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
-/// The Sadhna Healing web app (Google Apps Script). Change this if you redeploy
-/// to a new link; existing installs pick up any change you publish to the same link.
-const String appUrl =
+/// The Sadhna Healing app page on GitHub Pages: no Google warning bar, and it saves
+/// to the Google Sheet through the Apps Script link below.
+const String appUrl = 'https://sitemaintenance-commits.github.io/diwakar-suite/';
+
+/// The Apps Script web app. Used when the page above isn't available (for example
+/// before GitHub Pages is switched on), so the app always opens.
+const String fallbackUrl =
     'https://script.google.com/macros/s/AKfycbw2f_qA7-79cAV1a6fjQtrwoblaM8Siprp9vEHbTTzgzrtdCwqG-CWVAU_VnIAw5gva/exec';
 
 const Color brand = Color(0xFF1F4D46);
@@ -16,6 +20,7 @@ const Color brandInk = Color(0xFFFFFFFF);
 /// Hosts the app itself runs on. Everything else (WhatsApp, maps, other sites)
 /// opens outside the app.
 bool isAppHost(String host) =>
+    host == 'sitemaintenance-commits.github.io' ||
     host == 'script.google.com' ||
     host.endsWith('.googleusercontent.com') ||
     host == 'accounts.google.com' ||
@@ -67,6 +72,13 @@ class _WebShellState extends State<WebShell> {
   bool _firstLoadDone = false;
   String? _error;
   Timer? _splashTimer;
+  bool _usingFallback = false;
+
+  void _useFallback() {
+    if (_usingFallback) return;
+    _usingFallback = true;
+    _web.loadRequest(Uri.parse(fallbackUrl));
+  }
 
   // Never keep the splash up for long: the web app shows its own loading state.
   void _hideSplash() {
@@ -102,8 +114,18 @@ class _WebShellState extends State<WebShell> {
           if (p >= 60) _hideSplash();
         },
         onPageFinished: (_) => _hideSplash(),
+        // The GitHub page is missing (404 etc.): open the Apps Script version instead.
+        onHttpError: (error) {
+          final url = error.request?.uri.toString() ?? '';
+          if (!_usingFallback && url.startsWith(appUrl) && (error.response?.statusCode ?? 0) >= 400) _useFallback();
+        },
         onWebResourceError: (error) {
-          if (error.isForMainFrame ?? false) setState(() => _error = error.description);
+          if (!(error.isForMainFrame ?? false)) return;
+          if (!_usingFallback && (error.url ?? '').startsWith(appUrl)) {
+            _useFallback();
+            return;
+          }
+          setState(() => _error = error.description);
         },
       ))
       ..loadRequest(Uri.parse(appUrl));
@@ -126,7 +148,7 @@ class _WebShellState extends State<WebShell> {
       _error = null;
       _firstLoadDone = false;
     });
-    await _web.loadRequest(Uri.parse(appUrl));
+    await _web.loadRequest(Uri.parse(_usingFallback ? fallbackUrl : appUrl));
   }
 
   @override

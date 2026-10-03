@@ -3,8 +3,10 @@ import 'package:sadhna_healing/main.dart';
 
 void main() {
   test('app link points at the deployed Sadhna Healing web app', () {
-    expect(appUrl, startsWith('https://script.google.com/macros/s/'));
-    expect(appUrl, endsWith('/exec'));
+    expect(appUrl, 'https://sitemaintenance-commits.github.io/diwakar-suite/');
+    expect(fallbackUrl, startsWith('https://script.google.com/macros/s/'));
+    expect(fallbackUrl, endsWith('/exec'));
+    expect(isAppHost(Uri.parse(appUrl).host), isTrue);
   });
 
   test('app pages stay inside the app; WhatsApp and other sites open outside', () {
