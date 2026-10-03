@@ -14,4 +14,13 @@ void main() {
     expect(isAppHost('api.whatsapp.com'), isFalse);
     expect(isAppHost('docs.google.com'), isFalse);
   });
+
+  test('WhatsApp, phone and email links leave the app', () {
+    expect(shouldOpenOutside(Uri.parse('https://wa.me/919876543210?text=hi')), isTrue);
+    expect(shouldOpenOutside(Uri.parse('tel:9876543210')), isTrue);
+    expect(shouldOpenOutside(Uri.parse('mailto:a@b.com')), isTrue);
+    expect(shouldOpenOutside(Uri.parse('whatsapp://send?phone=91')), isTrue);
+    expect(shouldOpenOutside(Uri.parse('https://script.google.com/macros/s/x/exec')), isFalse);
+    expect(shouldOpenOutside(Uri.parse('about:blank')), isFalse);
+  });
 }

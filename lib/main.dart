@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 /// The Sadhna Healing web app (Google Apps Script). Change this if you redeploy
 /// to a new link; existing installs pick up any change you publish to the same link.
@@ -19,6 +19,14 @@ bool isAppHost(String host) =>
     host == 'accounts.google.com' ||
     host.endsWith('.gstatic.com') ||
     host == 'fonts.googleapis.com';
+
+/// WhatsApp (wa.me), phone, email and any non-app website open in their own apps.
+bool shouldOpenOutside(Uri uri) {
+  const inApp = {'http', 'https', 'about', 'data', 'blob', 'javascript'};
+  if (!inApp.contains(uri.scheme)) return true;
+  if (uri.scheme != 'http' && uri.scheme != 'https') return false;
+  return !isAppHost(uri.host);
+}
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -52,25 +60,39 @@ class WebShell extends StatefulWidget {
 }
 
 class _WebShellState extends State<WebShell> {
-  InAppWebViewController? _web;
-  late final PullToRefreshController _refresh;
-  double _progress = 0;
+  late final WebViewController _web;
+  int _progress = 0;
   bool _firstLoadDone = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _refresh = PullToRefreshController(
-      settings: PullToRefreshSettings(color: brand),
-      onRefresh: () async => _web?.reload(),
-    );
+    _web = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(const Color(0xFFEEF3F1))
+      ..setNavigationDelegate(NavigationDelegate(
+        onNavigationRequest: (request) {
+          final uri = Uri.tryParse(request.url);
+          if (uri != null && shouldOpenOutside(uri)) {
+            _openOutside(uri);
+            return NavigationDecision.prevent;
+          }
+          return NavigationDecision.navigate;
+        },
+        onProgress: (p) => setState(() => _progress = p),
+        onPageFinished: (_) => setState(() => _firstLoadDone = true),
+        onWebResourceError: (error) {
+          if (error.isForMainFrame ?? false) setState(() => _error = error.description);
+        },
+      ))
+      ..loadRequest(Uri.parse(appUrl));
   }
 
   Future<void> _openOutside(Uri uri) async {
     try {
       final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!ok && mounted) _toast('Could not open ${uri.scheme == 'https' ? uri.host : uri.scheme}.');
+      if (!ok && mounted) _toast('Could not open this link.');
     } catch (_) {
       if (mounted) _toast('Could not open this link.');
     }
@@ -79,18 +101,12 @@ class _WebShellState extends State<WebShell> {
   void _toast(String msg) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
 
-  /// WhatsApp (wa.me), phone, email and any non-app website open in their own apps.
-  bool _shouldOpenOutside(Uri? uri) {
-    if (uri == null) return false;
-    if (uri.scheme != 'http' && uri.scheme != 'https') {
-      return uri.scheme != 'about' && uri.scheme != 'data' && uri.scheme != 'blob' && uri.scheme != 'javascript';
-    }
-    return !isAppHost(uri.host);
-  }
-
   Future<void> _retry() async {
-    setState(() => _error = null);
-    await _web?.loadUrl(urlRequest: URLRequest(url: WebUri(appUrl)));
+    setState(() {
+      _error = null;
+      _firstLoadDone = false;
+    });
+    await _web.loadRequest(Uri.parse(appUrl));
   }
 
   @override
@@ -99,8 +115,8 @@ class _WebShellState extends State<WebShell> {
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
-        if (_web != null && await _web!.canGoBack()) {
-          await _web!.goBack();
+        if (await _web.canGoBack()) {
+          await _web.goBack();
         } else {
           await SystemNavigator.pop();
         }
@@ -110,55 +126,9 @@ class _WebShellState extends State<WebShell> {
         body: SafeArea(
           bottom: false,
           child: Stack(children: [
-            InAppWebView(
-              initialUrlRequest: URLRequest(url: WebUri(appUrl)),
-              pullToRefreshController: _refresh,
-              initialSettings: InAppWebViewSettings(
-                javaScriptEnabled: true,
-                domStorageEnabled: true,
-                databaseEnabled: true,
-                useShouldOverrideUrlLoading: true,
-                supportMultipleWindows: true,
-                javaScriptCanOpenWindowsAutomatically: true,
-                thirdPartyCookiesEnabled: true,
-                mediaPlaybackRequiresUserGesture: true,
-                allowsInlineMediaPlayback: true,
-                transparentBackground: false,
-                supportZoom: false,
-                useWideViewPort: true,
-                loadWithOverviewMode: true,
-              ),
-              onWebViewCreated: (c) => _web = c,
-              shouldOverrideUrlLoading: (c, action) async {
-                final uri = action.request.url;
-                if (_shouldOpenOutside(uri)) {
-                  await _openOutside(uri!);
-                  return NavigationActionPolicy.CANCEL;
-                }
-                return NavigationActionPolicy.ALLOW;
-              },
-              // Links with target="_blank" (WhatsApp buttons, "Open the Google Sheet").
-              onCreateWindow: (c, action) async {
-                final uri = action.request.url;
-                if (uri != null) await _openOutside(uri);
-                return true;
-              },
-              onProgressChanged: (c, p) {
-                setState(() => _progress = p / 100);
-                if (p == 100) _refresh.endRefreshing();
-              },
-              onLoadStop: (c, url) {
-                _refresh.endRefreshing();
-                setState(() => _firstLoadDone = true);
-              },
-              onReceivedError: (c, request, error) {
-                _refresh.endRefreshing();
-                if (request.isForMainFrame ?? false) {
-                  setState(() => _error = error.description);
-                }
-              },
-            ),
-            if (_progress < 1) LinearProgressIndicator(value: _progress, minHeight: 3, color: const Color(0xFFD99A24), backgroundColor: Colors.transparent),
+            WebViewWidget(controller: _web),
+            if (_progress < 100)
+              LinearProgressIndicator(value: _progress / 100, minHeight: 3, color: const Color(0xFFD99A24), backgroundColor: Colors.transparent),
             if (!_firstLoadDone && _error == null) const _Splash(),
             if (_error != null) _Offline(onRetry: _retry),
           ]),
