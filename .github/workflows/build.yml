@@ -14,16 +14,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: "17" }
+      - uses: actions/setup-java@v5
+        with: { distribution: temurin, java-version: "21" }
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
       - run: flutter pub get
       - run: flutter test
-      - run: flutter build apk --release
-      - run: cp build/app/outputs/flutter-apk/app-release.apk Sadhna-Healing-Android.apk
-      - uses: actions/upload-artifact@v4
-        with: { name: android, path: Sadhna-Healing-Android.apk }
+      - name: Build APK
+        run: |
+          set -o pipefail
+          flutter build apk --release 2>&1 | tee android-build.log
+          cp build/app/outputs/flutter-apk/app-release.apk Sadhna-Healing-Android.apk
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: android, path: "Sadhna-Healing-Android.apk\nandroid-build.log", if-no-files-found: ignore }
 
   ios:
     runs-on: macos-latest
@@ -33,13 +37,17 @@ jobs:
         with: { channel: stable, cache: true }
       - run: flutter pub get
       # Unsigned: proves the iPhone app builds. Installing on iPhones needs Apple signing (see README).
-      - run: flutter build ios --release --no-codesign
+      - name: Build iPhone app
+        run: |
+          set -o pipefail
+          flutter build ios --release --no-codesign 2>&1 | tee ios-build.log
       - run: |
           cd build/ios/iphoneos
           mkdir Payload && cp -r Runner.app Payload/
           zip -qr "$GITHUB_WORKSPACE/Sadhna-Healing-iPhone-unsigned.ipa" Payload
-      - uses: actions/upload-artifact@v4
-        with: { name: ios, path: Sadhna-Healing-iPhone-unsigned.ipa }
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: ios, path: "Sadhna-Healing-iPhone-unsigned.ipa\nios-build.log", if-no-files-found: ignore }
 
   publish:
     needs: [android, ios]
@@ -53,6 +61,7 @@ jobs:
           mkdir site && cd site
           git init -q -b sadhna-healing-builds
           cp ../out/* . 2>/dev/null || true
+          for f in *.log; do [ -f "$f" ] && tail -n 150 "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
           {
             echo "Built from commit $GITHUB_SHA on $(date -u '+%Y-%m-%d %H:%M UTC')"
             echo "Android job: ${{ needs.android.result }}"
