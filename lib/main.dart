@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -64,15 +66,30 @@ class _WebShellState extends State<WebShell> {
   int _progress = 0;
   bool _firstLoadDone = false;
   String? _error;
+  Timer? _splashTimer;
+
+  // Never keep the splash up for long: the web app shows its own loading state.
+  void _hideSplash() {
+    if (!_firstLoadDone && mounted) setState(() => _firstLoadDone = true);
+  }
+
+  @override
+  void dispose() {
+    _splashTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   void initState() {
     super.initState();
+    _splashTimer = Timer(const Duration(seconds: 4), _hideSplash);
     _web = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFFEEF3F1))
       ..setNavigationDelegate(NavigationDelegate(
         onNavigationRequest: (request) {
+          // Only whole-page navigations can leave the app; frames inside the page always load.
+          if (!request.isMainFrame) return NavigationDecision.navigate;
           final uri = Uri.tryParse(request.url);
           if (uri != null && shouldOpenOutside(uri)) {
             _openOutside(uri);
@@ -80,8 +97,11 @@ class _WebShellState extends State<WebShell> {
           }
           return NavigationDecision.navigate;
         },
-        onProgress: (p) => setState(() => _progress = p),
-        onPageFinished: (_) => setState(() => _firstLoadDone = true),
+        onProgress: (p) {
+          setState(() => _progress = p);
+          if (p >= 60) _hideSplash();
+        },
+        onPageFinished: (_) => _hideSplash(),
         onWebResourceError: (error) {
           if (error.isForMainFrame ?? false) setState(() => _error = error.description);
         },
