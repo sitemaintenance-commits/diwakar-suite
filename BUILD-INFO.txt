@@ -1,0 +1,14 @@
+Built from commit de9afec1a361618fc5185db8bbba93088b7e4348 on 2026-10-03 17:44 UTC
+Android job: success
+iPhone job: success
+total 79512
+drwxr-xr-x 3 runner runner     4096 Oct  3 17:44 .
+drwxr-xr-x 4 runner runner     4096 Oct  3 17:44 ..
+drwxr-xr-x 6 runner runner     4096 Oct  3 17:44 .git
+-rw-r--r-- 1 runner runner      124 Oct  3 17:44 BUILD-INFO.txt
+-rw-r--r-- 1 runner runner 45440809 Oct  3 17:44 Sadhna-Healing-Android-all-phones.apk
+-rw-r--r-- 1 runner runner 13250515 Oct  3 17:44 Sadhna-Healing-Android-older-phones.apk
+-rw-r--r-- 1 runner runner 16005647 Oct  3 17:44 Sadhna-Healing-Android.apk
+-rw-r--r-- 1 runner runner  6694837 Oct  3 17:44 Sadhna-Healing-iPhone-unsigned.ipa
+-rw-r--r-- 1 runner runner     1822 Oct  3 17:44 android-build.log
+-rw-r--r-- 1 runner runner      796 Oct  3 17:44 ios-build.log
