@@ -330,11 +330,52 @@ function ReportEditor({
   useEffect(() => {
     const r = entry?.report;
     setWork(r?.work_completed ?? '');
-    setMetrics(r?.metrics?.length ? r.metrics.map((m) => ({ ...m })) : emptyMetricsFor(entry?.name ?? ''));
+    // A filed report shows exactly what was saved -- rows deleted from it stay deleted;
+    // only a new report starts from the department's usual rows.
+    setMetrics(r
+      ? (r.metrics?.length ? r.metrics.map((m) => ({ ...m })) : [{ label: '', value: '' }])
+      : emptyMetricsFor(entry?.name ?? ''));
   }, [entry]);
 
   if (!entry) return null;
   const locked = entry.report?.status === 'reviewed' && !can.edit;
+
+  /**
+   * The bin on a row. On a report already filed the row is deleted there and
+   * then (with whatever else has been typed), so it does not come back on a
+   * refresh; on a new report it just leaves the form.
+   */
+  async function removeMetric(i: number) {
+    const next = metrics.filter((_, j) => j !== i);
+    setMetrics(next.length ? next : [{ label: '', value: '' }]);
+    const r = entry!.report;
+    const removed = metrics[i];
+    if (!r || locked || !removed.label.trim() || !removed.value.trim()) return;
+    const items = next.filter((m) => m.label.trim() && m.value.trim());
+    if (!items.length && !work.trim() && !r.issues?.trim() && !r.next_day_plan?.trim() && !r.remarks?.trim() && !r.reviews?.length) {
+      toast.info('Row removed. Save to clear the report.');
+      return;
+    }
+    const { error } = await supabase.rpc('save_daily_report', {
+      p_report: {
+        report_date: date,
+        department_id: entry!.departmentId,
+        health: r.health ?? 'on_track',
+        work_completed: work.trim() || null,
+        issues: r.issues ?? null,
+        next_day_plan: r.next_day_plan ?? null,
+        remarks: r.remarks ?? null,
+        status: r.status,
+      },
+      p_items: items,
+      p_id: r.id,
+    });
+    if (error) {
+      setMetrics(metrics);
+      return toast.error(errorMessage(error));
+    }
+    toast.success(`"${removed.label}" removed`);
+  }
 
   async function save(status: 'draft' | 'submitted') {
     setBusy(true);
@@ -419,7 +460,8 @@ function ReportEditor({
                     variant="ghost"
                     size="icon-sm"
                     className="text-destructive"
-                    onClick={() => setMetrics((ms) => (ms.length === 1 ? [{ label: '', value: '' }] : ms.filter((_, j) => j !== i)))}
+                    onClick={() => void removeMetric(i)}
+                    disabled={locked}
                     aria-label="Remove metric"
                   >
                     <Trash2 />
