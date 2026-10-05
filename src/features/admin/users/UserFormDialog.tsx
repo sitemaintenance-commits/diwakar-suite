@@ -299,7 +299,15 @@ export function UserFormDialog({
                 <CheckList
                   items={(roles.data ?? []).filter((r) => r.is_active)}
                   selected={f.role_ids}
-                  onChange={(ids) => set('role_ids', ids)}
+                  onChange={(ids) => {
+                    // A Super Technician works at every plant.
+                    const superTech = (roles.data ?? []).find((r) => r.key === 'super_technician');
+                    setF((s) => ({
+                      ...s,
+                      role_ids: ids,
+                      all_sites: superTech && ids.includes(superTech.id) && !s.role_ids.includes(superTech.id) ? true : s.all_sites,
+                    }));
+                  }}
                   disabled={(r) => r.is_system && !callerIsSuper}
                   render={(r) => (
                     <span className="flex items-center gap-2">

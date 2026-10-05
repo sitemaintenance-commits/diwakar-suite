@@ -1,7 +1,7 @@
 // Approvals — any employee asks the company for something (a purchase, a
 // payment, an advance, travel, time off, equipment); the approvers decide;
 // the employee follows it to the decision. Each request is sent to one
-// approver (a department head or the senior HR); a head sees and decides only
+// approver (a department head, the operation head, management); a head sees and decides only
 // what was sent to them, a Super Admin sees everything.
 import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';

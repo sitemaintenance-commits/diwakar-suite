@@ -1982,6 +1982,20 @@ console.log('\nDepartment Review: the legacy workbook');
     `select public.import_review_excel('[]'::jsonb)`, 'daily.reports');
 }
 
+console.log('\nSuper Technician');
+{
+  const SUPER = await createAuthUser('super.tech@diwakarsolar.test', 'Super Technician');
+  await expectOk('a Super Technician login is created with no plants ticked', OWNER, `select public.admin_save_user($1, $2, true)`,
+    [SUPER, JSON.stringify({ full_name: 'Super Technician', role_ids: [role.super_technician], site_ids: [] })]);
+  await signIn(SUPER);
+  await expectValue('the role opens every plant', SUPER,
+    `select cardinality(app.my_site_ids()) = (select count(*) from public.sites)`, true);
+  await expectOk('and fills the site form of any plant', SUPER,
+    `select public.save_field_entry($1, current_date - 20, '[{"label":"INV-01","kwh":100}]'::jsonb)`, [site.Bassi]);
+  await expectError('a plain technician still cannot', TECH,
+    `select public.save_field_entry($1, current_date - 20, '[{"label":"INV-01","kwh":100}]'::jsonb)`, 'not assigned to this site', [site.Bassi]);
+}
+
 console.log('\nApprovals');
 {
   const ASKER = (await asSystem("select id from auth.users where email = 'ketan.login@diwakarsolar.test'")).rows[0].id;   // Employee role
@@ -1993,7 +2007,7 @@ console.log('\nApprovals');
     [HEAD, JSON.stringify({ full_name: 'Banwari Verma', employee_id: banwariEmp, role_ids: [role.employee] })]);
   await signIn(HEAD);
 
-  await expectValue('the six department heads and the senior HR can be chosen as approvers', ASKER,
+  await expectValue('everyone on the approver list can be chosen', ASKER,
     `select jsonb_array_length(public.list_approvers()->'approvers')`,
     (await asSystem('select count(*)::int n from public.approval_approvers')).rows[0].n);
   await expectValue('an approver filters by their own name only', HEAD,
