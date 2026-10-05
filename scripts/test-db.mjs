@@ -1986,21 +1986,45 @@ console.log('\nApprovals');
 {
   const ASKER = (await asSystem("select id from auth.users where email = 'ketan.login@diwakarsolar.test'")).rows[0].id;   // Employee role
   const OTHER = (await asSystem("select id from auth.users where email = 'coordinator@diwakarsolar.test'")).rows[0].id;  // not an approver
-  const req = JSON.stringify({ category: 'purchase', title: 'Two padlocks for the store', details: 'Old ones are rusted', amount: 850, priority: 'urgent' });
+  const banwariEmp = (await asSystem("select id from public.employees where employee_code = 'DRIPL_1101'")).rows[0].id;
+  const rajpalEmp = (await asSystem('select employee_id id from public.approval_approvers where employee_id <> $1 order by sort_order limit 1', [banwariEmp])).rows[0].id; // another approver
+  const HEAD = await createAuthUser('banwari.head@diwakarsolar.test', 'Banwari Verma');
+  await expectOk('the HR head gets a login', OWNER, `select public.admin_save_user($1, $2, true)`,
+    [HEAD, JSON.stringify({ full_name: 'Banwari Verma', employee_id: banwariEmp, role_ids: [role.employee] })]);
+  await signIn(HEAD);
+
+  await expectValue('the six department heads and the senior HR can be chosen as approvers', ASKER,
+    `select jsonb_array_length(public.list_approvers()->'approvers')`,
+    (await asSystem('select count(*)::int n from public.approval_approvers')).rows[0].n);
+  await expectValue('an approver filters by their own name only', HEAD,
+    `select (public.list_approvers()->>'all')::boolean = false and public.list_approvers()->>'me' = $1::text`, true, [banwariEmp]);
+  await expectValue('a Super Admin filters by anyone', OWNER, `select (public.list_approvers()->>'all')::boolean`, true);
+
+  await expectError('a request must say who it goes to', ASKER,
+    `select public.save_approval_request($1::jsonb)`, 'Choose who', [JSON.stringify({ category: 'purchase', title: 'No approver chosen' })]);
+  await expectError('and an approver cannot send one to themselves', HEAD,
+    `select public.save_approval_request($1::jsonb)`, 'cannot approve your own',
+    [JSON.stringify({ category: 'travel', title: 'Visit to Sadas', approver_id: banwariEmp })]);
+
+  const req = JSON.stringify({ category: 'purchase', title: 'Two padlocks for the store', details: 'Old ones are rusted', amount: 850, priority: 'urgent', approver_id: banwariEmp });
   const id = (await as(ASKER, `select public.save_approval_request($1::jsonb) id`, [req])).rows[0].id;
-  id ? ok('an employee raises a purchase request') : bad('raise request', 'no id');
-  await expectValue('it gets a number and waits for approval', ASKER,
-    `select (r->>'request_no') like 'APR-%' and r->>'status' = 'pending' and (r->>'can_edit')::boolean
+  id ? ok('an employee sends a purchase request to the HR head') : bad('raise request', 'no id');
+  await expectValue('it gets a number, waits, and says who it went to', ASKER,
+    `select (r->>'request_no') like 'APR-%' and r->>'status' = 'pending' and r->>'approver' = 'Banwari Verma'
      from jsonb_array_elements(public.list_approvals('mine')->'rows') r where r->>'id' = $1`, true, [id]);
+  await expectValue('the head sees it waiting for him', HEAD,
+    `select (public.list_approvals('to_approve')->>'waiting')::int = 1
+        and exists (select 1 from jsonb_array_elements(public.list_approvals('to_approve')->'rows') r where r->>'id' = $1 and (r->>'can_decide')::boolean)`, true, [id]);
   await expectValue('a colleague does not see it', OTHER,
     `select count(*)::int from jsonb_array_elements(public.list_approvals('all')->'rows') r where r->>'id' = $1`, 0, [id]);
-  await expectError('nor can a colleague decide it', OTHER, `select public.decide_approval($1, 'approved')`, 'only approvers', [id]);
-  await expectError('nor can the employee approve their own', ASKER, `select public.decide_approval($1, 'approved')`, 'only approvers', [id]);
-  await expectValue('the Super Admin sees it waiting', OWNER,
-    `select (public.list_approvals('to_approve')->>'waiting')::int >= 1
-        and exists (select 1 from jsonb_array_elements(public.list_approvals('to_approve')->'rows') r where r->>'id' = $1)`, true, [id]);
-  await expectError('sending it back needs a reason', OWNER, `select public.decide_approval($1, 'needs_info')`, 'Say why', [id]);
-  await expectOk('the Super Admin asks for the quotation', OWNER,
+  await expectError('nor can a colleague decide it', OTHER, `select public.decide_approval($1, 'approved')`, 'only the approver', [id]);
+  await expectError('nor can the employee approve their own', ASKER, `select public.decide_approval($1, 'approved')`, 'only the approver', [id]);
+  await expectValue("the head cannot look at another approver's requests by changing the filter", HEAD,
+    `select count(*)::int from jsonb_array_elements(public.list_approvals('all', null, null, 100, $1)->'rows') r where r->>'id' = $2`, 1, [rajpalEmp, id]);
+  await expectValue('the Super Admin sees it too, and can filter by the head', OWNER,
+    `select exists (select 1 from jsonb_array_elements(public.list_approvals('all', null, null, 100, $1)->'rows') r where r->>'id' = $2)`, true, [banwariEmp, id]);
+  await expectError('sending it back needs a reason', HEAD, `select public.decide_approval($1, 'needs_info')`, 'Say why', [id]);
+  await expectOk('the head asks for the quotation', HEAD,
     `select public.decide_approval($1, 'needs_info', 'Attach the shop quotation')`, [id]);
   await expectValue('the employee sees what is asked', ASKER,
     `select r->>'status' || ' / ' || (r->>'decision_note') from jsonb_array_elements(public.list_approvals('mine')->'rows') r where r->>'id' = $1`,
@@ -2008,21 +2032,24 @@ console.log('\nApprovals');
   await expectOk('the employee attaches the quotation to their request', ASKER,
     `insert into public.documents (module_key, entity_type, entity_id, category, file_name, storage_path)
      values ('approvals', 'approval', $1::uuid, 'Quotation', 'quotation.pdf', 'approvals/' || $1::text || '/quotation.pdf')`, [id]);
-  await expectRows('which a colleague cannot see', OTHER, `select 1 from public.documents where entity_type = 'approval'`, 0);
+  await expectRows('which the head it was sent to can see', HEAD, `select 1 from public.documents where entity_type = 'approval'`, 1);
+  await expectRows('and a colleague cannot', OTHER, `select 1 from public.documents where entity_type = 'approval'`, 0);
   await expectError('nor attach to', OTHER,
     `insert into public.documents (module_key, entity_type, entity_id, file_name, storage_path)
      values ('approvals', 'approval', $1::uuid, 'x.pdf', 'approvals/' || $1::text || '/x.pdf')`, 'row-level security', [id]);
   await expectOk('and resubmits', ASKER, `select public.save_approval_request($1::jsonb, $2)`,
-    [JSON.stringify({ category: 'purchase', title: 'Two padlocks for the store', amount: 850, note: 'Quotation attached' }), id]);
-  await expectOk('the Super Admin approves', OWNER, `select public.decide_approval($1, 'approved', 'Buy from the usual shop')`, [id]);
-  await expectValue('the employee sees it approved, by whom, with the whole history', ASKER,
+    [JSON.stringify({ category: 'purchase', title: 'Two padlocks for the store', amount: 850, note: 'Quotation attached', approver_id: banwariEmp }), id]);
+  await expectOk('the head approves', HEAD, `select public.decide_approval($1, 'approved', 'Buy from the usual shop')`, [id]);
+  await expectValue('the employee sees it approved by the head, with the whole history', ASKER,
     `select r->>'status' || ' / ' || (r->>'decided_by') || ' / ' || (select string_agg(e->>'action', ',') from jsonb_array_elements(r->'events') e)
      from jsonb_array_elements(public.list_approvals('mine')->'rows') r where r->>'id' = $1`,
-    'approved / Owner / submitted,needs_info,resubmitted,approved', [id]);
+    'approved / Banwari Verma / submitted,needs_info,resubmitted,approved', [id]);
   await expectError('a decided request can no longer be changed', ASKER,
-    `select public.save_approval_request($1::jsonb, $2)`, 'no longer be changed', [JSON.stringify({ title: 'Changed' }), id]);
+    `select public.save_approval_request($1::jsonb, $2)`, 'no longer be changed', [JSON.stringify({ title: 'Changed', approver_id: banwariEmp }), id]);
   const id2 = (await as(ASKER, `select public.save_approval_request($1::jsonb) id`,
-    [JSON.stringify({ category: 'advance', title: 'Travel advance for Jaipur visit', amount: 3000 })])).rows[0].id;
+    [JSON.stringify({ category: 'advance', title: 'Travel advance for Jaipur visit', amount: 3000, approver_id: rajpalEmp })])).rows[0].id;
+  await expectValue("a request sent to another head is not the HR head's to see", HEAD,
+    `select count(*)::int from jsonb_array_elements(public.list_approvals('all')->'rows') r where r->>'id' = $1`, 0, [id2]);
   await expectOk('the employee withdraws a request they no longer need', ASKER, `select public.cancel_approval($1)`, [id2]);
   await expectValue('it shows as cancelled', ASKER,
     `select r->>'status' from jsonb_array_elements(public.list_approvals('mine')->'rows') r where r->>'id' = $1`, 'cancelled', [id2]);

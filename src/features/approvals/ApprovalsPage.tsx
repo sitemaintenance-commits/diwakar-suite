@@ -1,6 +1,8 @@
 // Approvals — any employee asks the company for something (a purchase, a
 // payment, an advance, travel, time off, equipment); the approvers decide;
-// the employee follows it to the decision.
+// the employee follows it to the decision. Each request is sent to one
+// approver (a department head or the senior HR); a head sees and decides only
+// what was sent to them, a Super Admin sees everything.
 import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -22,8 +24,8 @@ import { ConfirmDialog, EmptyState, ErrorState, Field, PageHeader, SearchInput, 
 import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { downloadDocument, uploadDocument, useDocuments } from '@/features/crm/api';
 import {
-  CATEGORIES, EVENT_LABEL, STATUS, cancelRequest, decide, saveRequest, useApprovals,
-  type ApprovalRequest, type ApprovalView, type RequestInput,
+  CATEGORIES, EVENT_LABEL, STATUS, cancelRequest, decide, saveRequest, useApprovals, useApprovers,
+  type ApprovalRequest, type ApprovalView, type Approver, type RequestInput,
 } from '@/features/approvals/api';
 
 const ALL = '__all__';
@@ -37,12 +39,22 @@ export function ApprovalsPage() {
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<ApprovalRequest | 'new' | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [approverPick, setApproverPick] = useState(ALL);
+
+  // A Super Admin can look at any approver's requests; a head only at their own.
+  const approvers = useApprovers();
+  const seesAll = approvers.data?.all ?? false;
+  const myApprover = approvers.data?.me ?? null;
+  const filterOptions: [string, string][] = seesAll
+    ? [[ALL, 'All approvers'], ...(approvers.data?.approvers ?? []).map((a) => [a.employee_id, approverLabel(a)] as [string, string])]
+    : (approvers.data?.approvers ?? []).filter((a) => a.employee_id === myApprover).map((a) => [a.employee_id, approverLabel(a)] as [string, string]);
+  const approverFilter = seesAll ? (approverPick === ALL ? null : approverPick) : myApprover;
 
   // Approvers start on what is waiting for them; everyone else on their own requests.
-  const probe = useApprovals('to_approve', null, '');
+  const probe = useApprovals('to_approve', null, '', approverFilter);
   const approver = probe.data?.approver ?? false;
   const current: ApprovalView = view ?? (approver ? 'to_approve' : 'mine');
-  const list = useApprovals(current, status === ALL ? null : status, search);
+  const list = useApprovals(current, status === ALL ? null : status, search, current === 'mine' ? null : approverFilter);
   const rows = list.data?.rows ?? [];
   const open = rows.find((r) => r.id === openId) ?? null;
   const refresh = () => qc.invalidateQueries({ queryKey: ['approvals'] });
@@ -60,6 +72,7 @@ export function ApprovalsPage() {
         { header: 'Amount (₹)', value: (r) => (r.amount == null ? '' : Number(r.amount)), numFmt: '#,##0.00', width: 13 },
         { header: 'Needed by', value: (r) => (r.needed_by ? fmtDate(r.needed_by) : ''), width: 12 },
         { header: 'Priority', value: (r) => (r.priority === 'urgent' ? 'Urgent' : 'Normal'), width: 9 },
+        { header: 'Sent to', value: (r) => r.approver ?? '', width: 20 },
         { header: 'Status', value: (r) => STATUS[r.status].label, width: 20 },
         { header: 'Decided by', value: (r) => r.decided_by ?? '', width: 20 },
         { header: 'Note', value: (r) => r.decision_note ?? '', width: 40 },
@@ -100,8 +113,13 @@ export function ApprovalsPage() {
               {approver && <TabsTrigger value="all">All requests</TabsTrigger>}
             </TabsList>
           </Tabs>
-          <div className="flex flex-1 flex-col gap-2 sm:flex-row lg:justify-end">
+          <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap lg:justify-end">
             <SearchInput value={search} onChange={setSearch} placeholder="Search title, number, person…" />
+            {current !== 'mine' && approver && filterOptions.length > 0 && (
+              <div className="sm:w-64">
+                <FilterSelect value={seesAll ? approverPick : (myApprover ?? '')} onChange={setApproverPick} options={filterOptions} />
+              </div>
+            )}
             {current !== 'to_approve' && (
               <div className="sm:w-52">
                 <FilterSelect value={status} onChange={setStatus}
@@ -136,6 +154,7 @@ export function ApprovalsPage() {
                     <p className="text-xs text-muted-foreground">
                       {CATEGORIES[r.category] ?? r.category}
                       {!r.mine && ` · ${r.requested_by}${r.department ? ` (${r.department})` : ''}`}
+                      {r.approver && ` · to ${r.approver}`}
                       {` · ${fmtDate(r.created_at)}`}
                       {r.needed_by && ` · needed by ${fmtDate(r.needed_by)}`}
                     </p>
@@ -162,7 +181,10 @@ function RequestForm({ request, onClose, onSaved }: {
   onSaved: (id: string) => Promise<void>;
 }) {
   const existing = request && request !== 'new' ? request : null;
-  const blank: RequestInput = { category: 'purchase', title: '', details: '', amount: '', needed_by: '', priority: 'normal', note: '' };
+  const blank: RequestInput = { category: 'purchase', title: '', details: '', amount: '', needed_by: '', priority: 'normal', approver_id: '', note: '' };
+  const approvers = useApprovers();
+  // Nobody sends a request to themselves.
+  const choices = (approvers.data?.approvers ?? []).filter((a) => !a.me);
   const [f, setF] = useState<RequestInput>(blank);
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
@@ -174,7 +196,7 @@ function RequestForm({ request, onClose, onSaved }: {
     setF(existing ? {
       category: existing.category, title: existing.title, details: existing.details ?? '',
       amount: existing.amount == null ? '' : String(existing.amount), needed_by: existing.needed_by ?? '',
-      priority: existing.priority, note: '',
+      priority: existing.priority, approver_id: existing.approver_id ?? '', note: '',
     } : blank);
   }
   const set = <K extends keyof RequestInput>(k: K, v: RequestInput[K]) => setF((s) => ({ ...s, [k]: v }));
@@ -182,6 +204,7 @@ function RequestForm({ request, onClose, onSaved }: {
 
   async function submit() {
     if (f.title.trim().length < 3) return toast.error('Give the request a short title.');
+    if (choices.length && !f.approver_id) return toast.error('Choose who should approve it.');
     if (f.amount && Number.isNaN(Number(f.amount.replace(/[,\s₹]/g, '')))) return toast.error('The amount should be a number.');
     setBusy(true);
     try {
@@ -208,7 +231,7 @@ function RequestForm({ request, onClose, onSaved }: {
           <DialogDescription>
             {existing?.status === 'needs_info' && existing.decision_note
               ? `Asked: ${existing.decision_note}`
-              : 'It goes to the approvers; you will see their decision here.'}
+              : 'It goes to the person you choose; you will see their decision here.'}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -219,6 +242,10 @@ function RequestForm({ request, onClose, onSaved }: {
           <Field label="Priority">
             <FilterSelect value={f.priority} onChange={(v) => set('priority', v as RequestInput['priority'])}
               options={[['normal', 'Normal'], ['urgent', 'Urgent']]} />
+          </Field>
+          <Field label="Send to" required className="sm:col-span-2" hint="The head who should approve it.">
+            <FilterSelect value={f.approver_id} onChange={(v) => set('approver_id', v)} placeholder="Choose the approver"
+              options={choices.map((a) => [a.employee_id, approverLabel(a)] as [string, string])} />
           </Field>
           <Field label="What do you need?" required className="sm:col-span-2">
             <Input value={f.title} onChange={(e) => set('title', e.target.value)} placeholder="e.g. 2 padlocks for the Sadas store" maxLength={200} />
@@ -329,6 +356,9 @@ function RequestDetail({ request, onClose, onEdit, onChanged }: {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <div><div className="text-xs text-muted-foreground">Amount</div><div className="font-medium">{r.amount == null ? '—' : fmtINR(r.amount)}</div></div>
               <div><div className="text-xs text-muted-foreground">Needed by</div><div className="font-medium">{r.needed_by ? fmtDate(r.needed_by) : '—'}</div></div>
+              {r.approver && (
+                <div><div className="text-xs text-muted-foreground">Sent to</div><div className="font-medium">{r.approver}</div></div>
+              )}
               {r.decided_by && (
                 <div><div className="text-xs text-muted-foreground">{r.status === 'approved' ? 'Approved by' : 'Decided by'}</div>
                   <div className="font-medium">{r.decided_by}</div></div>
@@ -428,4 +458,9 @@ function RequestDetail({ request, onClose, onEdit, onChanged }: {
       />
     </>
   );
+}
+
+/** "Banwari Verma — Head · HR" */
+function approverLabel(a: Approver) {
+  return a.title ? `${a.name} — ${a.title}` : a.name;
 }

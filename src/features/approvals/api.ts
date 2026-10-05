@@ -21,6 +21,8 @@ export interface ApprovalRequest {
   decision_note: string | null;
   decided_at: string | null;
   decided_by: string | null;
+  approver_id: string | null;
+  approver: string | null;
   requested_by: string;
   requester_id: string;
   employee_code: string | null;
@@ -70,12 +72,41 @@ export const EVENT_LABEL: Record<string, string> = {
 
 export const approvalKeys = { all: ['approvals'] as const };
 
-export function useApprovals(view: ApprovalView, status: string | null, search: string) {
+export interface Approver {
+  employee_id: string;
+  name: string;
+  title: string;
+  department: string | null;
+  me: boolean;
+  has_login: boolean;
+}
+
+/** Who a request can go to. all = the caller may filter by any approver
+ *  (Super Admin); me = the caller's own approver record, if they are one. */
+export interface ApproverList {
+  all: boolean;
+  me: string | null;
+  approvers: Approver[];
+}
+
+export function useApprovers() {
   return useQuery({
-    queryKey: ['approvals', view, status ?? '', search],
+    queryKey: ['approvals', 'approvers'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('list_approvers');
+      if (error) throw error;
+      return data as ApproverList;
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useApprovals(view: ApprovalView, status: string | null, search: string, approver: string | null = null) {
+  return useQuery({
+    queryKey: ['approvals', view, status ?? '', search, approver ?? ''],
     queryFn: async () => {
       const { data, error } = await supabase.rpc('list_approvals', {
-        p_view: view, p_status: status, p_search: search.trim() || null, p_limit: 200,
+        p_view: view, p_status: status, p_search: search.trim() || null, p_limit: 200, p_approver: approver,
       });
       if (error) throw error;
       return data as ApprovalList;
@@ -90,6 +121,7 @@ export interface RequestInput {
   amount: string;
   needed_by: string;
   priority: 'normal' | 'urgent';
+  approver_id: string;
   note?: string;
 }
 
