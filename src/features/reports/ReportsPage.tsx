@@ -18,10 +18,11 @@ import { Skeleton } from '@/components/ui/misc';
 import { EmptyState, ErrorState, PageHeader, StatCard } from '@/components/common';
 import { fmtKwh } from '@/features/om/shared';
 
-type ReportKey = 'crm' | 'generation' | 'om' | 'hr' | 'daily';
+type ReportKey = 'crm' | 'projects' | 'generation' | 'om' | 'hr' | 'daily';
 
 const REPORTS: { key: ReportKey; module: string; rpc: string; label: string; description: string }[] = [
   { key: 'crm', module: 'reports.crm', rpc: 'report_tenders', label: 'Tenders & quotations', description: 'Bid outcomes, win rate, EMD and quotation value' },
+  { key: 'projects', module: 'reports.projects', rpc: 'report_projects', label: 'Projects', description: 'Stage, progress, site updates, materials and money per project' },
   { key: 'generation', module: 'reports.generation', rpc: 'report_generation', label: 'Generation', description: 'Energy per site and per month, with revenue where a tariff is set' },
   { key: 'om', module: 'reports.om', rpc: 'report_om', label: 'O&M', description: 'Tickets, downtime and maintenance per site' },
   { key: 'hr', module: 'reports.hr', rpc: 'report_hr', label: 'HR', description: 'Headcount, attendance, leave and tasks' },
@@ -134,6 +135,15 @@ function ReportBody({
       const rows = (data.by_authority as Row[]) ?? [];
       return { title: 'By authority', rows, columns: pick(rows, ['authority', 'tenders', 'won', 'value', 'won_value']) };
     }
+    if (reportKey === 'projects') {
+      const rows = (data.by_project as Row[]) ?? [];
+      return {
+        title: 'By project',
+        rows,
+        columns: pick(rows, ['project', 'stage', 'capacity_kwp', 'progress', 'tasks_open', 'tasks_overdue', 'updates', 'last_update',
+          'materials_open', 'shortages', 'approvals_pending', 'bills_waiting', 'contract_value', 'outstanding_value']),
+      };
+    }
     if (reportKey === 'generation') {
       const rows = (data.by_site as Row[]) ?? [];
       return {
@@ -176,6 +186,19 @@ function ReportBody({
         { label: 'Won', value: `${fmtNumber(s.won)} (${s.win_rate == null ? '—' : `${fmtNumber(s.win_rate, 1)}%`})` },
         { label: 'Value won', value: fmtINR(s.value_won, true) },
         { label: 'EMD blocked', value: fmtINR(s.emd_blocked, true) },
+      ];
+    }
+    if (reportKey === 'projects') {
+      const s = (data.summary ?? {}) as Row;
+      return [
+        { label: 'Projects', value: `${fmtNumber(s.projects)} (${fmtNumber(s.commissioned)} commissioned)` },
+        { label: 'Portfolio capacity', value: fmtCapacity(s.capacity_kwp) },
+        { label: 'Site updates filed', value: `${fmtNumber(s.updates)} from ${fmtNumber(s.sites_updating)} site(s)` },
+        { label: 'Open tasks', value: `${fmtNumber(s.tasks_open)} (${fmtNumber(s.tasks_overdue)} overdue)` },
+        { label: 'Average progress', value: `${fmtNumber(s.average_progress)}%` },
+        { label: 'Material shortages', value: fmtNumber(s.shortages) },
+        { label: 'Approvals pending', value: fmtNumber(s.approvals_pending) },
+        { label: 'Client outstanding', value: fmtINR(s.outstanding, true) },
       ];
     }
     if (reportKey === 'generation') {
@@ -221,6 +244,8 @@ function ReportBody({
 
   const formatCell = (key: string, value: unknown) => {
     if (value === null || value === undefined) return '—';
+    if (key === 'progress') return <span className="tabular">{fmtNumber(value)}%</span>;
+    if (key === 'last_update') return fmtDate(String(value));
     if (key.includes('value') || key === 'revenue') return fmtINR(value, true);
     if (key === 'generation' || key === 'expected') return fmtKwh(value);
     if (key === 'capacity_kwp') return fmtCapacity(value);
@@ -271,7 +296,7 @@ function ReportBody({
                 {table.rows.map((r, i) => (
                   <TableRow key={i}>
                     {table.columns.map((k, j) => (
-                      <TableCell key={k} className={j === 0 ? 'font-medium' : 'text-right'}>
+                      <TableCell key={k} className={j === 0 ? 'whitespace-nowrap font-medium' : 'whitespace-nowrap text-right'}>
                         {formatCell(k, r[k])}
                       </TableCell>
                     ))}
@@ -282,6 +307,34 @@ function ReportBody({
           )}
         </CardContent>
       </Card>
+
+      {reportKey === 'projects' && ((data.by_stage as Row[]) ?? []).length > 0 && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>By stage</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Stage</TableHead>
+                  <TableHead className="text-right">Projects</TableHead>
+                  <TableHead className="text-right">Capacity</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {((data.by_stage as Row[]) ?? []).map((m) => (
+                  <TableRow key={String(m.stage)}>
+                    <TableCell className="font-medium">{String(m.stage)}</TableCell>
+                    <TableCell className="tabular text-right">{fmtNumber(m.projects)}</TableCell>
+                    <TableCell className="tabular text-right">{fmtCapacity(m.capacity_kwp)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {reportKey === 'generation' && ((data.by_month as Row[]) ?? []).length > 0 && (
         <Card className="mt-6">

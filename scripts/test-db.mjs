@@ -1068,6 +1068,15 @@ await expectValue('a technician has no access to the project modules', TECH,
     `select count(*)::int from public.project_updates where project_id = $1 and update_date = current_date - 1`, 1, [PRJ]);
 }
 
+// The Projects report in Analytics
+await expectValue('the projects report counts the portfolio', ADMIN,
+  `select (public.report_projects()->'summary'->>'projects')::int = (select count(*)::int from public.projects where deleted_at is null)`, true);
+await expectValue('and lists each project with its progress, tasks and site updates', ADMIN,
+  `select (r->>'progress') is not null and (r->>'tasks_open') is not null and (r->>'updates')::int >= 1
+   from jsonb_array_elements(public.report_projects(current_date - 7, current_date)->'by_project') r where r->>'project' = 'Deegod 3.57 MW'`, true);
+await expectError('a site engineer cannot open the projects report', (await asSystem("select id from auth.users where email = 'site.engineer@diwakarsolar.test'")).rows[0].id,
+  `select public.report_projects()`, 'denied');
+
 console.log('\nSite master - the figures read out of the company spreadsheets');
 await expectValue('every site carries its real inverter count', OWNER,
   `select string_agg(s.name || ':' || ss.inverter_count, ' ' order by s.name)
