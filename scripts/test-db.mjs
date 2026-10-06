@@ -1051,6 +1051,41 @@ await expectValue('a technician has no access to the project modules', TECH,
     `select r->>'icr_civil' || '/' || (r->>'cabling') || '/' || (r->>'electrical') || '/' || (r->>'remarks') || '/' || (r->>'engineer_name')
      from jsonb_array_elements(public.list_site_updates(current_date - 1, current_date - 1, $1)->'rows') r`,
     'completed/in_progress/on_hold/Rain in the evening/Site Engineer One', [PRJ]);
+  // The DPR: the team's WhatsApp format, filed in the suite
+  const dpr = JSON.stringify({
+    materials_received: false, materials_items: '', tomorrow_plan: 'Purlin installation\nModule installation',
+    safety_followed: false, safety_note: 'PPE not available',
+    activities: [
+      { name: 'Piling work', status: 'completed' },
+      { name: 'Module installation', status: 'in_progress', done: '936', total: '5292', unit: 'Nos' },
+      { name: 'DC work', status: 'completed', note: 'Trench work pending 5 inverters' },
+      { name: '   ', status: 'completed' },
+      { name: 'MMS installation', status: 'nonsense', done: 'abc', total: '189', unit: 'Tables' },
+    ],
+  });
+  await expectOk('the site engineer files a DPR in the WhatsApp format', SE,
+    `select public.save_project_update($1, current_date - 2, '{"piling":"completed"}'::jsonb,
+       'Purlin installation work\nPrecast wire fencing', null, 'Rain in the evening', 'Site Engineer One', $2::jsonb)`, [PRJ, dpr]);
+  await expectValue('every section is kept, blank activity lines dropped and bad values cleaned', SE,
+    `select (r->>'materials_received') || '/' || (r->>'safety_followed') || '/' || (r->>'safety_note') || '/' ||
+            jsonb_array_length(r->'activities') || '/' || (r->'activities'->1->>'done') || '-' || (r->'activities'->1->>'total') || '/' ||
+            (r->'activities'->3->>'status') || '/' || coalesce(r->'activities'->3->>'done', 'none') || '/' || (r->>'tomorrow_plan')
+     from jsonb_array_elements(public.list_site_updates(current_date - 2, current_date - 2, $1)->'rows') r`,
+    'false/false/PPE not available/4/936-5292/not_started/none/Purlin installation\nModule installation', [PRJ]);
+  const dprId = (await asSystem('select id from public.project_updates where project_id = $1 and update_date = current_date - 2 and deleted_at is null', [PRJ])).rows[0].id;
+  await expectOk('and attaches the site photos to it', SE,
+    `insert into public.documents (module_key, entity_type, entity_id, category, file_name, storage_path)
+     values ('projects.updates', 'project_update', $1::uuid, 'DPR photo', 'piling.jpg', 'projects.updates/' || $1::text || '/piling.jpg')`, [dprId]);
+  await expectValue('the DPR list counts its photos', SE,
+    `select (r->>'photos')::int from jsonb_array_elements(public.list_site_updates(current_date - 2, current_date - 2, $1)->'rows') r`, 1, [PRJ]);
+  const NEWPRJ = (await asSystem(`insert into public.projects (name, stage) values ('Test Plant 1 MW', 'installation') returning id`)).rows[0].id;
+  await expectValue('a site still being built shows as missing until today\'s DPR is filed', SE,
+    `select exists (select 1 from jsonb_array_elements(public.list_site_updates()->'missing_today') m where m->>'id' = $1::text)`, true, [NEWPRJ]);
+  await expectOk('the engineer files it', SE,
+    `select public.save_project_update($1, (now() at time zone 'Asia/Kolkata')::date, '{}'::jsonb, 'Survey done')`, [NEWPRJ]);
+  await expectValue('and it is no longer missing', SE,
+    `select exists (select 1 from jsonb_array_elements(public.list_site_updates()->'missing_today') m where m->>'id' = $1::text)`, false, [NEWPRJ]);
+  await asSystem('update public.projects set deleted_at = now() where id = $1', [NEWPRJ]);
   await expectValue('the site engineer sees no money or vendor bills', SE,
     `select public.has_permission('projects.bills','view') or public.has_permission('projects.payments','view')`, false);
   await expectError('a technician cannot file a project site update', TECH,
