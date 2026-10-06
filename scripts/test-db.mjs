@@ -1901,10 +1901,15 @@ console.log('\nPMS replacement: employee logins and the work history calendar');
   const task = `'[{"seq":1,"description":"Gate register checked","status":"completed"},{"seq":2,"description":"Patrol round","status":"in_progress"}]'::jsonb`;
   await expectOk('Ketan files and submits today\'s sheet himself', EMPL,
     `select public.save_work_log(current_date, ${task}, 'medium', 'All quiet', true)`);
-  await expectError('but not yesterday\'s, even if he forgot it', EMPL,
+  // For now employees may catch up on the last 8 days (setting worklog_backfill_days).
+  await expectOk('for now he may also fill a sheet from 8 days ago', EMPL,
+    `select public.save_work_log(current_date - 8, ${task}, 'low', 'Caught up', true)`);
+  await expectError('but not 9 days back', EMPL,
+    `select public.save_work_log(current_date - 9, ${task}, 'low', null, false)`, 'last 8 days');
+  await asSystem(`update public.app_settings set value = to_jsonb(0) where key = 'worklog_backfill_days'`);
+  await expectError('with the setting at 0 it is today only again: not yesterday\'s', EMPL,
     `select public.save_work_log(current_date - 1, ${task}, 'low', null, false)`, 'sheet only');
-  await expectError('nor one from days back', EMPL,
-    `select public.save_work_log(current_date - 5, ${task}, 'low', null, false)`, 'sheet only');
+  await asSystem(`update public.app_settings set value = to_jsonb(8) where key = 'worklog_backfill_days'`);
   await expectOk('HR keeps a draft of his yesterday for him', OWNER,
     `select public.save_work_log(current_date - 1, ${task}, 'low', null, false, $1)`, [ketanId]);
   await expectError('nor a colleague\'s sheet', EMPL,

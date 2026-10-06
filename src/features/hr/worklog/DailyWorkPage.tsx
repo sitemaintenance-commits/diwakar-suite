@@ -41,14 +41,23 @@ interface Row {
   status: WorkTaskStatus;
 }
 
+/** The ISO date n days before an ISO date. */
+function daysBefore(iso: string, n: number) {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() - n);
+  return d.toLocaleDateString('en-CA');
+}
+
 export function DailyWorkPage() {
   const can = useCan('hr.worklog');
-  const { access } = useAccess();
+  const { access, setting } = useAccess();
   // HR (team or all scope) files for others and for any past day; everyone
-  // else files their own sheet for today only.
+  // else files their own sheet for today, or the last few days while the
+  // company allows catching up (setting worklog_backfill_days).
   const scope = access?.permissions?.['hr.worklog']?.scope;
   const hr = Boolean(access?.is_super_admin) || scope === 'all' || scope === 'team';
-  const earliest = hr ? undefined : todayIST();
+  const backfill = Math.max(0, Number(setting('worklog_backfill_days', 0)) || 0);
+  const earliest = hr ? undefined : daysBefore(todayIST(), backfill);
   const qc = useQueryClient();
   const [date, setDate] = useState(todayIST());
   // HR can file for someone without a login -- the PMS form never needed
@@ -189,7 +198,7 @@ export function DailyWorkPage() {
           <div className="flex flex-wrap items-end gap-2">
             <label className="grid gap-1 text-xs text-muted-foreground">
               Date
-              <Input type="date" value={date} min={earliest} max={todayIST()} disabled={!hr} title={hr ? undefined : 'You file today’s sheet only'} onChange={(e) => setDate(e.target.value)} className="h-9 w-40" />
+              <Input type="date" value={date} min={earliest} max={todayIST()} disabled={!hr && backfill === 0} title={hr ? undefined : backfill ? `You can fill today or the last ${backfill} days` : 'You file today’s sheet only'} onChange={(e) => setDate(e.target.value)} className="h-9 w-40" />
             </label>
             <label className="grid gap-1 text-xs text-muted-foreground">
               Priority
