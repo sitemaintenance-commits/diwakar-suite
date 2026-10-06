@@ -77,26 +77,22 @@ export const WORK: Record<WorkStatus, { label: string; tone: BadgeProps['variant
   on_hold: { label: 'On hold', tone: 'warning' },
 };
 
-/** The seven work fronts the site engineer reports on each day. */
-export const WORK_FRONTS: [keyof typeof FRONT_LABELS, string][] = [
-  ['tl_work', 'TL work'],
-  ['gss_bay', 'GSS bay'],
-  ['piling', 'Piling'],
-  ['panel', 'Panel'],
-  ['module_work', 'Module'],
-  ['inverter', 'Inverter'],
-  ['material', 'Material'],
-];
-
+/** The work fronts the site engineer reports on each day, in the order of
+ *  the old Google Form. */
 export const FRONT_LABELS = {
   tl_work: 'TL work',
   gss_bay: 'GSS bay',
   piling: 'Piling',
-  panel: 'Panel',
-  module_work: 'Module',
+  icr_civil: 'ICR civil',
+  panel: 'Panel installation',
+  module_work: 'Solar module',
   inverter: 'Inverter',
-  material: 'Material',
+  material: 'Material arrival',
+  cabling: 'Cabling',
+  electrical: 'Electrical connection',
 };
+export type WorkFront = keyof typeof FRONT_LABELS;
+export const WORK_FRONTS = Object.entries(FRONT_LABELS) as [WorkFront, string][];
 
 export const APPROVAL_KINDS = [
   'DISCOM connectivity',

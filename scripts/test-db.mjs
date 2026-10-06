@@ -1035,6 +1035,39 @@ await expectError('no site update for a future date', ADMIN,
 await expectValue('a technician has no access to the project modules', TECH,
   `select public.has_permission('projects.bills','view')`, false);
 
+// Site Updates — the page that replaces the Project CRM's Google Form
+{
+  const SE = await createAuthUser('site.engineer@diwakarsolar.test', 'Site Engineer One');
+  await expectOk('a Site Engineer login is created', OWNER, `select public.admin_save_user($1, $2, true)`,
+    [SE, JSON.stringify({ full_name: 'Site Engineer One', role_ids: [role.site_engineer] })]);
+  await signIn(SE);
+  await expectValue('the site engineer can pick any project site', SE,
+    `select exists (select 1 from jsonb_array_elements(public.list_site_updates()->'projects') p where p->>'id' = $1::text)`, true, [PRJ]);
+  await expectOk('and files the day with the three new work fronts', SE,
+    `select public.save_project_update($1, current_date - 1,
+       '{"tl_work":"completed","piling":"completed","icr_civil":"completed","cabling":"in_progress","electrical":"on_hold"}'::jsonb,
+       'ICR civil done, DC cabling started', 'Electrical held for the shutdown', 'Rain in the evening', 'Site Engineer One')`, [PRJ]);
+  await expectValue('the update lists with every front, the remarks and the engineer', SE,
+    `select r->>'icr_civil' || '/' || (r->>'cabling') || '/' || (r->>'electrical') || '/' || (r->>'remarks') || '/' || (r->>'engineer_name')
+     from jsonb_array_elements(public.list_site_updates(current_date - 1, current_date - 1, $1)->'rows') r`,
+    'completed/in_progress/on_hold/Rain in the evening/Site Engineer One', [PRJ]);
+  await expectValue('the site engineer sees no money or vendor bills', SE,
+    `select public.has_permission('projects.bills','view') or public.has_permission('projects.payments','view')`, false);
+  await expectError('a technician cannot file a project site update', TECH,
+    `select public.save_project_update($1, current_date, '{}'::jsonb, 'x')`, 'You do not have permission', [PRJ]);
+  await expectError('nor read them', TECH, `select public.list_site_updates()`, 'Access denied');
+
+  const PM = await createAuthUser('project.manager@diwakarsolar.test', 'Project Manager One');
+  await expectOk('a Project Manager login is created', OWNER, `select public.admin_save_user($1, $2, true)`,
+    [PM, JSON.stringify({ full_name: 'Project Manager One', role_ids: [role.project_manager] })]);
+  await signIn(PM);
+  await expectValue('the project manager sees materials and tasks the team or an import recorded', PM,
+    `select (select count(*) from public.project_materials where project_id = $1) > 0
+        and (select count(*) from public.project_tasks where project_id = $1) > 0`, true, [PRJ]);
+  await expectValue('and every site update', PM,
+    `select count(*)::int from public.project_updates where project_id = $1 and update_date = current_date - 1`, 1, [PRJ]);
+}
+
 console.log('\nSite master - the figures read out of the company spreadsheets');
 await expectValue('every site carries its real inverter count', OWNER,
   `select string_agg(s.name || ':' || ss.inverter_count, ' ' order by s.name)

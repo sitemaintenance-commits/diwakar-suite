@@ -33,6 +33,7 @@ import { FollowUpsPage } from '@/features/crm/followups/FollowUpsPage';
 import { ProjectsPage } from '@/features/projects/ProjectsPage';
 import { ProjectDetailPage } from '@/features/projects/ProjectDetailPage';
 import { VendorsPage } from '@/features/projects/VendorsPage';
+import { SiteUpdatesPage } from '@/features/projects/SiteUpdates';
 import { SolarSitesPage } from '@/features/om/sites/SolarSitesPage';
 import { DailyEntryPage } from '@/features/om/entry/DailyEntryPage';
 import { MonitorPage } from '@/features/om/monitor/MonitorPage';
@@ -98,6 +99,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: guard('projects.projects', <ProjectsPage />) },
           { path: 'vendors', element: guard('projects.vendors', <VendorsPage />) },
+          { path: 'updates', element: guard('projects.updates', <SiteUpdatesPage />) },
           { path: ':id', element: guard('projects.projects', <ProjectDetailPage />) },
         ],
       },

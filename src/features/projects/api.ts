@@ -206,10 +206,13 @@ export interface ProjectUpdate {
   tl_work: WorkStatus;
   gss_bay: WorkStatus;
   piling: WorkStatus;
+  icr_civil: WorkStatus;
   panel: WorkStatus;
   module_work: WorkStatus;
   inverter: WorkStatus;
   material: WorkStatus;
+  cabling: WorkStatus;
+  electrical: WorkStatus;
   work_description: string | null;
   challenges: string | null;
   remarks: string | null;

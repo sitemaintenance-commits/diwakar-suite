@@ -107,6 +107,7 @@ export const BUILT_MODULES = new Set<string>([
   'crm.quotations',
   'crm.followups',
   'projects.projects',
+  'projects.updates',
   'projects.vendors',
   'om.daily_entry',
   'sites.overview',

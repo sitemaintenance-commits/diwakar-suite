@@ -1,10 +1,10 @@
 // One project, end to end: the execution plan, approvals, materials,
 // vendor bills, client money and the site engineer's day-wise update.
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, Check, Plus, Send, Wallet } from 'lucide-react';
+import { ArrowLeft, Check, Plus, Wallet } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
 import { fmtCapacity, fmtDate, fmtINR, fmtNumber, safeNum, todayIST } from '@/lib/format';
@@ -20,12 +20,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EmptyState, ErrorState, Field, PageHeader, StatCard } from '@/components/common';
 import { FilterSelect } from '@/features/admin/users/UsersPage';
+import { ProjectSiteUpdates } from '@/features/projects/SiteUpdates';
 import {
   useApprovals, useBills, useMaterials, usePayments, useProject, useProjectTasks,
-  useProjectUpdates, useTemplates, useVendors, type WorkStatus,
+  useTemplates, useVendors,
 } from '@/features/projects/api';
 import {
-  APPROVAL, APPROVAL_KINDS, BILL, CLIENT_PAY, FRONT_LABELS, MATERIAL, stageOf, WORK, WORK_FRONTS,
+  APPROVAL, APPROVAL_KINDS, BILL, CLIENT_PAY, MATERIAL, stageOf,
 } from '@/features/projects/shared';
 
 const TASK_STATUS: [string, string][] = [
@@ -40,6 +41,9 @@ export function ProjectDetailPage() {
   const { id } = useParams();
   const project = useProject(id);
   const p = project.data;
+  const canProject = useCan('projects.projects');
+  const canUpdates = useCan('projects.updates');
+  const canFileUpdates = canProject.create || canUpdates.create;
 
   if (project.isLoading) return <Skeleton className="h-96 rounded-xl" />;
   if (project.error)
@@ -90,7 +94,7 @@ export function ProjectDetailPage() {
           <TabsTrigger value="money">Client payments</TabsTrigger>
         </TabsList>
         <TabsContent value="plan"><PlanTab projectId={p.id} /></TabsContent>
-        <TabsContent value="updates"><UpdatesTab projectId={p.id} /></TabsContent>
+        <TabsContent value="updates"><ProjectSiteUpdates projectId={p.id} canFile={canFileUpdates} /></TabsContent>
         <TabsContent value="approvals"><ApprovalsTab projectId={p.id} /></TabsContent>
         <TabsContent value="materials"><MaterialsTab projectId={p.id} /></TabsContent>
         <TabsContent value="bills"><BillsTab projectId={p.id} /></TabsContent>
@@ -201,152 +205,6 @@ function PlanTab({ projectId }: { projectId: string }) {
         )}
       </CardContent>
     </Card>
-  );
-}
-
-// ----------------------------------------------------------------- updates
-const BLANK_FRONTS: Record<string, WorkStatus> = {
-  tl_work: 'not_started', gss_bay: 'not_started', piling: 'not_started', panel: 'not_started',
-  module_work: 'not_started', inverter: 'not_started', material: 'not_started',
-};
-const WORK_OPTIONS: [string, string][] = (Object.keys(WORK) as WorkStatus[]).map((k) => [k, WORK[k].label]);
-
-function UpdatesTab({ projectId }: { projectId: string }) {
-  const can = useCan('projects.projects');
-  const qc = useQueryClient();
-  const updates = useProjectUpdates(projectId);
-  const [date, setDate] = useState(todayIST());
-  const [fronts, setFronts] = useState({ ...BLANK_FRONTS });
-  const [work, setWork] = useState('');
-  const [challenges, setChallenges] = useState('');
-  const [engineer, setEngineer] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  // Load the chosen day's update once, so typing is never overwritten.
-  useEffect(() => {
-    const row = (updates.data ?? []).find((u) => u.update_date === date);
-    setFronts(
-      row
-        ? {
-            tl_work: row.tl_work, gss_bay: row.gss_bay, piling: row.piling, panel: row.panel,
-            module_work: row.module_work, inverter: row.inverter, material: row.material,
-          }
-        : { ...BLANK_FRONTS },
-    );
-    setWork(row?.work_description ?? '');
-    setChallenges(row?.challenges ?? '');
-    setEngineer(row?.engineer_name ?? '');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, updates.data?.length]);
-
-  async function save() {
-    setBusy(true);
-    const { error } = await supabase.rpc('save_project_update', {
-      p_project_id: projectId,
-      p_date: date,
-      p_stages: fronts,
-      p_work_description: work.trim() || null,
-      p_challenges: challenges.trim() || null,
-      p_remarks: null,
-      p_engineer_name: engineer.trim() || null,
-    });
-    setBusy(false);
-    if (error) return toast.error(errorMessage(error));
-    await qc.invalidateQueries({ queryKey: ['project_updates'] });
-    await qc.invalidateQueries({ queryKey: ['project', projectId] });
-    toast.success('Site update saved.');
-  }
-
-  return (
-    <>
-      {can.create && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Day-wise site update</CardTitle>
-            <CardDescription>Where each work front stands today</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Field label="Date">
-                <Input type="date" value={date} max={todayIST()} onChange={(e) => setDate(e.target.value)} />
-              </Field>
-              <Field label="Site engineer">
-                <Input value={engineer} onChange={(e) => setEngineer(e.target.value)} placeholder="Name" />
-              </Field>
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {WORK_FRONTS.map(([key, label]) => (
-                <Field key={key} label={label}>
-                  <FilterSelect
-                    value={fronts[key]}
-                    onChange={(v) => setFronts((f) => ({ ...f, [key]: v as WorkStatus }))}
-                    options={WORK_OPTIONS}
-                  />
-                </Field>
-              ))}
-            </div>
-            <Field label="Work description">
-              <Textarea rows={2} value={work} onChange={(e) => setWork(e.target.value)} />
-            </Field>
-            <Field label="Challenges">
-              <Textarea rows={2} value={challenges} onChange={(e) => setChallenges(e.target.value)} />
-            </Field>
-            <div className="flex justify-end">
-              <Button onClick={save} disabled={busy}>
-                <Send className="mr-2 h-4 w-4" />
-                Save update
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Update history</CardTitle>
-          <CardDescription>{fmtNumber(updates.data?.length)} day(s) recorded</CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          {!updates.data?.length ? (
-            <EmptyState icon={Send} title="No site updates yet" description="The day's update appears here once it is filed." />
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Engineer</TableHead>
-                    {WORK_FRONTS.map(([k, l]) => (
-                      <TableHead key={k}>{l}</TableHead>
-                    ))}
-                    <TableHead>Work description</TableHead>
-                    <TableHead>Challenges</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {updates.data.map((u) => (
-                    <TableRow key={u.id}>
-                      <TableCell className="whitespace-nowrap">{fmtDate(u.update_date)}</TableCell>
-                      <TableCell className="text-sm">{u.engineer_name ?? '—'}</TableCell>
-                      {WORK_FRONTS.map(([k]) => {
-                        const v = u[k as keyof typeof FRONT_LABELS] as WorkStatus;
-                        return (
-                          <TableCell key={k}>
-                            <Badge variant={WORK[v].tone}>{WORK[v].label}</Badge>
-                          </TableCell>
-                        );
-                      })}
-                      <TableCell className="max-w-[16rem] text-sm">{u.work_description ?? '—'}</TableCell>
-                      <TableCell className="max-w-[14rem] text-sm text-muted-foreground">{u.challenges ?? '—'}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </>
   );
 }
 
