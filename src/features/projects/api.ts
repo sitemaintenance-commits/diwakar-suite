@@ -107,11 +107,10 @@ function useChild<T>(table: string, projectId: string | undefined, order: string
     queryKey: [table, projectId],
     enabled: Boolean(projectId),
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from(table)
-        .select(select)
-        .eq('project_id', projectId!)
-        .order(order, { ascending });
+      // '*' lists the rows of every project (the portfolio pages).
+      let q = supabase.from(table).select(select);
+      if (projectId !== '*') q = q.eq('project_id', projectId!);
+      const { data, error } = await q.order(order, { ascending });
       if (error) throw error;
       return (data ?? []) as T[];
     },

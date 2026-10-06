@@ -34,6 +34,9 @@ import { ProjectsPage } from '@/features/projects/ProjectsPage';
 import { ProjectDetailPage } from '@/features/projects/ProjectDetailPage';
 import { VendorsPage } from '@/features/projects/VendorsPage';
 import { SiteUpdatesPage } from '@/features/projects/SiteUpdates';
+import {
+  ClientPaymentsPage, MaterialsPage, ProjectApprovalsPage, ProjectTasksPage, VendorBillsPage,
+} from '@/features/projects/PortfolioPages';
 import { SolarSitesPage } from '@/features/om/sites/SolarSitesPage';
 import { DailyEntryPage } from '@/features/om/entry/DailyEntryPage';
 import { MonitorPage } from '@/features/om/monitor/MonitorPage';
@@ -100,6 +103,11 @@ export const router = createBrowserRouter([
           { index: true, element: guard('projects.projects', <ProjectsPage />) },
           { path: 'vendors', element: guard('projects.vendors', <VendorsPage />) },
           { path: 'updates', element: guard('projects.updates', <SiteUpdatesPage />) },
+          { path: 'tasks', element: guard('projects.milestones', <ProjectTasksPage />) },
+          { path: 'approvals', element: guard('projects.approvals', <ProjectApprovalsPage />) },
+          { path: 'materials', element: guard('projects.materials', <MaterialsPage />) },
+          { path: 'vendor-bills', element: guard('projects.bills', <VendorBillsPage />) },
+          { path: 'client-payments', element: guard('projects.payments', <ClientPaymentsPage />) },
           { path: ':id', element: guard('projects.projects', <ProjectDetailPage />) },
         ],
       },

@@ -21,6 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { EmptyState, ErrorState, Field, PageHeader, StatCard } from '@/components/common';
 import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { ProjectSiteUpdates } from '@/features/projects/SiteUpdates';
+import { SitePicker, usePortfolio } from '@/features/projects/portfolio';
 import {
   useApprovals, useBills, useMaterials, usePayments, useProject, useProjectTasks,
   useTemplates, useVendors,
@@ -105,17 +106,19 @@ export function ProjectDetailPage() {
 }
 
 // -------------------------------------------------------------------- plan
-function PlanTab({ projectId }: { projectId: string }) {
+export function PlanTab({ projectId }: { projectId: string }) {
   const can = useCan('projects.milestones');
   const qc = useQueryClient();
+  const portfolio = usePortfolio(projectId);
   const tasks = useProjectTasks(projectId);
   const templates = useTemplates();
   const [templateId, setTemplateId] = useState('');
 
   async function applyTemplate() {
+    if (!portfolio.target) return toast.error('Choose the site.');
     if (!templateId) return toast.error('Choose a plan first.');
     const { data, error } = await supabase.rpc('apply_project_template', {
-      p_project_id: projectId,
+      p_project_id: portfolio.target,
       p_template_id: templateId,
     });
     if (error) return toast.error(errorMessage(error));
@@ -131,7 +134,10 @@ function PlanTab({ projectId }: { projectId: string }) {
     await qc.invalidateQueries({ queryKey: ['project-dashboard'] });
   }
 
-  const list = tasks.data ?? [];
+  // Across sites, keep each site's plan together.
+  const list = portfolio.all
+    ? [...(tasks.data ?? [])].sort((a, b) => portfolio.name(a.project_id).localeCompare(portfolio.name(b.project_id)) || a.sort_order - b.sort_order)
+    : tasks.data ?? [];
   const done = list.filter((t) => t.status === 'done').length;
 
   return (
@@ -145,6 +151,11 @@ function PlanTab({ projectId }: { projectId: string }) {
         </div>
         {can.create && (
           <div className="flex flex-wrap items-end gap-2">
+            {portfolio.all && (
+              <div className="w-56">
+                <SitePicker portfolio={portfolio} className="" />
+              </div>
+            )}
             <div className="w-64">
               <FilterSelect
                 value={templateId}
@@ -167,6 +178,7 @@ function PlanTab({ projectId }: { projectId: string }) {
           <Table>
             <TableHeader>
               <TableRow>
+                {portfolio.all && <TableHead>Site</TableHead>}
                 <TableHead className="w-12">#</TableHead>
                 <TableHead>Task</TableHead>
                 <TableHead>Stage</TableHead>
@@ -179,8 +191,12 @@ function PlanTab({ projectId }: { projectId: string }) {
                 const overdue = t.due_date && t.status !== 'done' && new Date(t.due_date) < new Date(new Date().toDateString());
                 return (
                   <TableRow key={t.id}>
+                    {portfolio.all && <TableCell className="whitespace-nowrap text-sm font-medium">{portfolio.name(t.project_id)}</TableCell>}
                     <TableCell className="tabular text-muted-foreground">{i + 1}</TableCell>
-                    <TableCell className="font-medium">{t.title}</TableCell>
+                    <TableCell className="font-medium">
+                      {t.title}
+                      {t.notes && <div className="max-w-md whitespace-pre-line text-xs font-normal text-muted-foreground">{t.notes}</div>}
+                    </TableCell>
                     <TableCell>
                       <Badge variant={stageOf(t.stage).tone}>{stageOf(t.stage).label}</Badge>
                     </TableCell>
@@ -209,16 +225,18 @@ function PlanTab({ projectId }: { projectId: string }) {
 }
 
 // --------------------------------------------------------------- approvals
-function ApprovalsTab({ projectId }: { projectId: string }) {
+export function ApprovalsTab({ projectId }: { projectId: string }) {
   const can = useCan('projects.approvals');
   const qc = useQueryClient();
+  const portfolio = usePortfolio(projectId);
   const approvals = useApprovals(projectId);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ kind: APPROVAL_KINDS[0], authority: '', reference_no: '', applied_on: '', expected_on: '', status: 'not_started', remarks: '' });
 
   async function add() {
+    if (!portfolio.target) return toast.error('Choose the site.');
     const { error } = await supabase.from('project_approvals').insert({
-      project_id: projectId,
+      project_id: portfolio.target,
       kind: form.kind,
       authority: form.authority.trim() || null,
       reference_no: form.reference_no.trim() || null,
@@ -264,6 +282,7 @@ function ApprovalsTab({ projectId }: { projectId: string }) {
           <Table>
             <TableHeader>
               <TableRow>
+                {portfolio.all && <TableHead>Site</TableHead>}
                 <TableHead>Approval</TableHead>
                 <TableHead>Authority</TableHead>
                 <TableHead>Reference</TableHead>
@@ -275,6 +294,7 @@ function ApprovalsTab({ projectId }: { projectId: string }) {
             <TableBody>
               {approvals.data.map((a) => (
                 <TableRow key={a.id}>
+                  {portfolio.all && <TableCell className="whitespace-nowrap text-sm font-medium">{portfolio.name(a.project_id)}</TableCell>}
                   <TableCell className="font-medium">{a.kind}</TableCell>
                   <TableCell className="text-sm">{a.authority ?? '—'}</TableCell>
                   <TableCell className="tabular text-sm">{a.reference_no ?? '—'}</TableCell>
@@ -304,6 +324,7 @@ function ApprovalsTab({ projectId }: { projectId: string }) {
             <DialogTitle>Add approval</DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <SitePicker portfolio={portfolio} />
             <Field label="Approval" className="sm:col-span-2">
               <FilterSelect value={form.kind} onChange={(v) => setForm({ ...form, kind: v })} options={APPROVAL_KINDS.map((k) => [k, k])} />
             </Field>
@@ -334,18 +355,20 @@ function ApprovalsTab({ projectId }: { projectId: string }) {
 }
 
 // --------------------------------------------------------------- materials
-function MaterialsTab({ projectId }: { projectId: string }) {
+export function MaterialsTab({ projectId }: { projectId: string }) {
   const can = useCan('projects.materials');
   const qc = useQueryClient();
+  const portfolio = usePortfolio(projectId);
   const materials = useMaterials(projectId);
   const vendors = useVendors();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ item: '', uom: 'nos', qty_required: '', rate: '', vendor_id: '', status: 'pending', po_no: '', expected_on: '' });
 
   async function add() {
+    if (!portfolio.target) return toast.error('Choose the site.');
     if (!form.item.trim()) return toast.error('The item is required.');
     const { error } = await supabase.from('project_materials').insert({
-      project_id: projectId,
+      project_id: portfolio.target,
       item: form.item.trim(),
       uom: form.uom.trim() || 'nos',
       qty_required: safeNum(form.qty_required),
@@ -396,6 +419,7 @@ function MaterialsTab({ projectId }: { projectId: string }) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {portfolio.all && <TableHead>Site</TableHead>}
                   <TableHead>Item</TableHead>
                   <TableHead>Vendor</TableHead>
                   <TableHead className="text-right">Required</TableHead>
@@ -408,9 +432,16 @@ function MaterialsTab({ projectId }: { projectId: string }) {
               <TableBody>
                 {materials.data.map((m) => (
                   <TableRow key={m.id}>
+                    {portfolio.all && <TableCell className="whitespace-nowrap text-sm font-medium">{portfolio.name(m.project_id)}</TableCell>}
                     <TableCell className="font-medium">
                       {m.item}
                       {m.po_no && <div className="text-xs text-muted-foreground">PO {m.po_no}</div>}
+                      {(m.expected_on || m.received_on) && (
+                        <div className="text-xs text-muted-foreground">
+                          {m.received_on ? `Received ${fmtDate(m.received_on)}` : `Expected ${fmtDate(m.expected_on)}`}
+                        </div>
+                      )}
+                      {m.remarks && <div className="max-w-md whitespace-pre-line text-xs font-normal text-muted-foreground">{m.remarks}</div>}
                     </TableCell>
                     <TableCell className="text-sm">{vendorName(m.vendor_id)}</TableCell>
                     <TableCell className="tabular text-right">
@@ -444,6 +475,7 @@ function MaterialsTab({ projectId }: { projectId: string }) {
             <DialogTitle>Add material line</DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <SitePicker portfolio={portfolio} />
             <Field label="Item" required className="sm:col-span-2">
               <Input value={form.item} onChange={(e) => setForm({ ...form, item: e.target.value })} />
             </Field>
@@ -481,19 +513,21 @@ function MaterialsTab({ projectId }: { projectId: string }) {
 }
 
 // ------------------------------------------------------------- vendor bills
-function BillsTab({ projectId }: { projectId: string }) {
+export function BillsTab({ projectId }: { projectId: string }) {
   const canBill = useCan('projects.bills');
   const canPay = useCan('projects.payments');
   const qc = useQueryClient();
+  const portfolio = usePortfolio(projectId);
   const bills = useBills(projectId);
   const vendors = useVendors();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ vendor_id: '', bill_no: '', bill_date: todayIST(), amount: '', deductions: '', description: '' });
 
   async function add() {
+    if (!portfolio.target) return toast.error('Choose the site.');
     if (!form.vendor_id || !form.bill_no.trim()) return toast.error('Vendor and bill number are required.');
     const { error } = await supabase.from('vendor_bills').insert({
-      project_id: projectId,
+      project_id: portfolio.target,
       vendor_id: form.vendor_id,
       bill_no: form.bill_no.trim(),
       bill_date: form.bill_date,
@@ -540,6 +574,7 @@ function BillsTab({ projectId }: { projectId: string }) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {portfolio.all && <TableHead>Site</TableHead>}
                   <TableHead>Bill</TableHead>
                   <TableHead>Vendor</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
@@ -552,6 +587,7 @@ function BillsTab({ projectId }: { projectId: string }) {
               <TableBody>
                 {bills.data.map((b) => (
                   <TableRow key={b.id}>
+                    {portfolio.all && <TableCell className="whitespace-nowrap text-sm font-medium">{portfolio.name(b.project_id)}</TableCell>}
                     <TableCell>
                       <div className="font-medium">{b.bill_no}</div>
                       <div className="text-xs text-muted-foreground">{fmtDate(b.bill_date)}</div>
@@ -595,6 +631,7 @@ function BillsTab({ projectId }: { projectId: string }) {
             <DialogTitle>Record a vendor bill</DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <SitePicker portfolio={portfolio} />
             <Field label="Vendor" required className="sm:col-span-2">
               <FilterSelect
                 value={form.vendor_id}
@@ -630,9 +667,10 @@ function BillsTab({ projectId }: { projectId: string }) {
 }
 
 // ---------------------------------------------------------- client payments
-function PaymentsTab({ projectId }: { projectId: string }) {
+export function PaymentsTab({ projectId }: { projectId: string }) {
   const can = useCan('projects.payments');
   const qc = useQueryClient();
+  const portfolio = usePortfolio(projectId);
   const payments = usePayments(projectId);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ milestone: '', invoice_no: '', invoice_date: '', amount: '' });
@@ -641,9 +679,10 @@ function PaymentsTab({ projectId }: { projectId: string }) {
   const received = (payments.data ?? []).reduce((n, p) => n + safeNum(p.received_amount), 0);
 
   async function add() {
+    if (!portfolio.target) return toast.error('Choose the site.');
     if (!form.milestone.trim()) return toast.error('The milestone is required.');
     const { error } = await supabase.from('client_payments').insert({
-      project_id: projectId,
+      project_id: portfolio.target,
       milestone: form.milestone.trim(),
       invoice_no: form.invoice_no.trim() || null,
       invoice_date: form.invoice_date || null,
@@ -694,6 +733,7 @@ function PaymentsTab({ projectId }: { projectId: string }) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {portfolio.all && <TableHead>Site</TableHead>}
                   <TableHead>Milestone</TableHead>
                   <TableHead>Invoice</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
@@ -705,6 +745,7 @@ function PaymentsTab({ projectId }: { projectId: string }) {
               <TableBody>
                 {payments.data.map((p) => (
                   <TableRow key={p.id}>
+                    {portfolio.all && <TableCell className="whitespace-nowrap text-sm font-medium">{portfolio.name(p.project_id)}</TableCell>}
                     <TableCell className="font-medium">{p.milestone}</TableCell>
                     <TableCell className="text-sm">
                       {p.invoice_no ?? '—'}
@@ -738,6 +779,7 @@ function PaymentsTab({ projectId }: { projectId: string }) {
               <DialogTitle>Add a payment milestone</DialogTitle>
             </DialogHeader>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <SitePicker portfolio={portfolio} />
               <Field label="Milestone" required className="sm:col-span-2" hint="For example: Supply — 40%">
                 <Input value={form.milestone} onChange={(e) => setForm({ ...form, milestone: e.target.value })} />
               </Field>
