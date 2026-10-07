@@ -31,6 +31,12 @@
 --       In-app notifications (submitted, waiting for you, approved,
 --       rejected, returned, final approval...).
 --
+-- The requester may instead choose the approvers of a request, in order,
+-- from the approver list (approval_approvers: department heads and the
+-- others the company named). Either way every request ends with the
+-- Accounts head (setting approval_final_approver), who also sees every
+-- request.
+--
 -- Every change goes through the security-definer functions below, which
 -- check who may do what; the tables themselves are closed to the app.
 -- Rows are audited into audit_logs with old and new values.
@@ -64,6 +70,13 @@ cross join (values ('view'), ('create')) as a(action)
 where m.key = 'approvals' and r.key in ('finance', 'director')
 on conflict (role_id, module_id, action) do nothing;
 
+-- ------------------------------------------- the final approver
+-- Every request ends with the Accounts head: Robin Kumar (DRIPL_1001).
+insert into public.app_settings (key, value)
+select 'approval_final_approver', to_jsonb(e.id::text)
+from public.employees e where e.employee_code = 'DRIPL_1001' and e.deleted_at is null
+on conflict (key) do nothing;
+
 -- -------------------------------------------------------- the request
 alter table public.approval_requests drop constraint if exists approval_requests_status_check;
 alter table public.approval_requests drop constraint if exists approval_requests_category_check;
@@ -72,6 +85,7 @@ update public.approval_requests set status = 'returned' where status = 'needs_in
 
 alter table public.approval_requests
   add column if not exists project_id    uuid references public.projects(id) on delete set null,
+  add column if not exists chosen_approvers uuid[],
   add column if not exists workflow_id   uuid,
   add column if not exists workflow_name text,
   add column if not exists round         int not null default 0,
@@ -395,7 +409,28 @@ as $$
   select p.id from public.profiles p where p.status = 'active' and app.is_approval_admin(p.id);
 $$;
 
-/** Whether the caller may see a request: their own, an approver on it, or an admin. */
+/** The Accounts head, who approves last and sees every request. */
+create or replace function app.approval_final_employee()
+returns uuid
+language sql stable security definer
+set search_path = ''
+as $$
+  select e.id from public.employees e
+  where e.id = (select nullif(value #>> '{}', '')::uuid from public.app_settings where key = 'approval_final_approver')
+    and e.deleted_at is null;
+$$;
+
+/** Whether the caller sees every request: an approval admin or the Accounts head. */
+create or replace function app.approval_sees_all()
+returns boolean
+language sql stable security definer
+set search_path = ''
+as $$
+  select app.is_approval_admin()
+      or (app.my_employee_id() is not null and app.my_employee_id() = app.approval_final_employee());
+$$;
+
+/** Whether the caller may see a request: their own, an approver on it, an admin or the Accounts head. */
 create or replace function app.can_see_approval(p_request uuid)
 returns boolean
 language sql stable security definer
@@ -405,7 +440,7 @@ as $$
     select 1 from public.approval_requests a
     where a.id = p_request
       and (a.requested_by = auth.uid()
-           or (a.status <> 'draft' and app.is_approval_admin())
+           or (a.status <> 'draft' and app.approval_sees_all())
            or exists (select 1 from public.approval_steps s
                       where s.request_id = a.id and app.user_is_step_approver(auth.uid(), s.id))));
 $$;
@@ -551,28 +586,53 @@ declare
   v_first uuid;
   v_step uuid;
   v_approver uuid;
+  v_final uuid := app.approval_final_employee();
+  v_level int := 0;
 begin
   select * into a from public.approval_requests where id = p_request for update;
   v_round := a.round + 1;
   select employee_id into v_emp from public.profiles where id = a.requested_by;
 
   if a.round = 0 then
-    select * into w from public.approval_workflows
-    where is_active and (category = a.category or category is null)
-    order by (category is null), created_at limit 1;
-    if w.id is null or not exists (select 1 from public.approval_workflow_levels where workflow_id = w.id) then
+    if coalesce(array_length(a.chosen_approvers, 1), 0) > 0 then
+      -- The approvers the requester chose, in their order.
+      foreach v_approver in array a.chosen_approvers loop
+        continue when v_approver = v_final;
+        v_level := v_level + 1;
+        insert into public.approval_steps (request_id, round, level_no, name, approver_type, approver_employee_id)
+        values (p_request, v_round, v_level,
+                coalesce((select ap.title from public.approval_approvers ap where ap.employee_id = v_approver), 'Approver'),
+                'employee', v_approver);
+      end loop;
+      update public.approval_requests set workflow_id = null, workflow_name = 'Chosen approvers' where id = p_request;
+    else
+      select * into w from public.approval_workflows
+      where is_active and (category = a.category or category is null)
+      order by (category is null), created_at limit 1;
+      if w.id is not null then
+        for r in select * from public.approval_workflow_levels where workflow_id = w.id order by level_no loop
+          v_approver := case r.approver_type
+            when 'employee' then r.approver_employee_id
+            when 'department_head' then (select d.head_employee_id from public.departments d where d.id = a.department_id)
+            else null end;
+          continue when r.approver_type <> 'role' and v_approver is not null and v_approver = v_final;
+          v_level := v_level + 1;
+          insert into public.approval_steps (request_id, round, level_no, name, approver_type, approver_employee_id, approver_role_id)
+          values (p_request, v_round, v_level, r.name, r.approver_type, v_approver,
+                  case when r.approver_type = 'role' then r.approver_role_id end);
+        end loop;
+        update public.approval_requests set workflow_id = w.id, workflow_name = w.name where id = p_request;
+      end if;
+    end if;
+    -- Every request ends with the Accounts head.
+    if v_final is not null then
+      v_level := v_level + 1;
+      insert into public.approval_steps (request_id, round, level_no, name, approver_type, approver_employee_id)
+      values (p_request, v_round, v_level, 'Accounts (final)', 'employee', v_final);
+    end if;
+    if v_level = 0 then
       raise exception 'No approval workflow is set up for this type of request. Ask an admin to add one in Workflow settings.' using errcode = '22023';
     end if;
-    for r in select * from public.approval_workflow_levels where workflow_id = w.id order by level_no loop
-      v_approver := case r.approver_type
-        when 'employee' then r.approver_employee_id
-        when 'department_head' then (select d.head_employee_id from public.departments d where d.id = a.department_id)
-        else null end;
-      insert into public.approval_steps (request_id, round, level_no, name, approver_type, approver_employee_id, approver_role_id)
-      values (p_request, v_round, r.level_no, r.name, r.approver_type, v_approver,
-              case when r.approver_type = 'role' then r.approver_role_id end);
-    end loop;
-    update public.approval_requests set workflow_id = w.id, workflow_name = w.name where id = p_request;
   else
     insert into public.approval_steps (request_id, round, level_no, name, approver_type, approver_employee_id, approver_role_id)
     select request_id, v_round, level_no, name, approver_type, approver_employee_id, approver_role_id
@@ -665,7 +725,7 @@ drop function if exists public.cancel_approval(uuid);
 drop function if exists app.can_decide_approval(uuid);
 drop function if exists app.my_approver_employee();
 drop table if exists public.approval_events;
-drop table if exists public.approval_approvers;
+-- approval_approvers stays: it is the list a requester chooses approvers from.
 alter table public.approval_requests drop column if exists approver_id;
 
 -- --------------------------------------------------- starting workflows
@@ -1359,7 +1419,7 @@ begin
              where s.request_id = a.id and s.round = a.round and s.status = 'pending' order by s.level_no limit 1) as cur_step
     from public.approval_requests a
     where a.requested_by = v_me
-       or (a.status <> 'draft' and (v_admin or exists (select 1 from public.approval_steps s
+       or (a.status <> 'draft' and (v_admin or app.approval_sees_all() or exists (select 1 from public.approval_steps s
                                                          where s.request_id = a.id and app.user_is_step_approver(v_me, s.id))))
   ),
   enriched as (
@@ -1458,6 +1518,43 @@ end;
 $$;
 
 /** Lists for the request form: departments, sites, projects, the caller's department. */
+/**
+ * The approvers of a request, in order, chosen by the requester before the
+ * first submission. The Accounts head is added at the end by itself.
+ */
+create or replace function public.approval_set_approvers(p_request uuid, p_approvers uuid[])
+returns void
+language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  a public.approval_requests;
+  v_emp uuid := app.my_employee_id();
+  v_final uuid := app.approval_final_employee();
+  v_list uuid[];
+begin
+  perform app.approval_assert_user();
+  select * into a from public.approval_requests where id = p_request for update;
+  if a.id is null or a.requested_by <> auth.uid() then
+    raise exception 'Request not found.' using errcode = 'P0002';
+  end if;
+  if a.round > 0 then
+    raise exception 'The approvers are fixed once the request is submitted.' using errcode = '42501';
+  end if;
+  -- In the order given, each person once, never the requester, never the Accounts head (always last).
+  select coalesce(array_agg(x order by ord), '{}') into v_list
+  from (select x, min(ord) ord from unnest(coalesce(p_approvers, '{}')) with ordinality as t(x, ord)
+        where x is not null and x is distinct from v_emp and x is distinct from v_final group by x) q;
+  if exists (select 1 from unnest(v_list) x where not exists (select 1 from public.approval_approvers ap where ap.employee_id = x)) then
+    raise exception 'Choose approvers from the approver list.' using errcode = '22023';
+  end if;
+  if cardinality(v_list) > 6 then
+    raise exception 'Choose up to 6 approvers.' using errcode = '22023';
+  end if;
+  update public.approval_requests set chosen_approvers = v_list where id = p_request;
+end;
+$$;
+
 create or replace function public.approval_form_options()
 returns jsonb
 language plpgsql stable security definer
@@ -1466,6 +1563,15 @@ as $$
 begin
   perform app.approval_assert_user();
   return jsonb_build_object(
+    -- Whom a request can be sent to, in order; the Accounts head comes last by itself.
+    'approvers', coalesce((select jsonb_agg(jsonb_build_object('employee_id', e.id, 'name', e.full_name, 'title', ap.title)
+                                            order by ap.sort_order, e.full_name)
+                           from public.approval_approvers ap
+                           join public.employees e on e.id = ap.employee_id and e.deleted_at is null and e.status = 'active'
+                           where e.id is distinct from app.my_employee_id()
+                             and e.id is distinct from app.approval_final_employee()), '[]'::jsonb),
+    'final_approver', (select jsonb_build_object('employee_id', e.id, 'name', e.full_name, 'title', 'Accounts (final)')
+                       from public.employees e where e.id = app.approval_final_employee()),
     'my_department_id', (select department_id from public.employees where id = app.my_employee_id()),
     'departments', coalesce((select jsonb_agg(jsonb_build_object('id', d.id, 'name', d.name) order by d.name)
                              from public.departments d where d.status = 'active'), '[]'::jsonb),
@@ -1639,7 +1745,7 @@ begin
     'public.approval_delete_document(uuid, text)', 'public.approval_add_comment(uuid, text)',
     'public.approval_detail(uuid)', 'public.list_approvals(jsonb)', 'public.approval_form_options()',
     'public.approval_settings()', 'public.approval_save_workflow(jsonb)', 'public.approval_set_department_head(uuid, uuid)',
-    'public.my_notifications(int)', 'public.mark_notifications_read(uuid[])']
+    'public.my_notifications(int)', 'public.mark_notifications_read(uuid[])', 'public.approval_set_approvers(uuid, uuid[])']
   loop
     execute format('revoke execute on function %s from public, anon', f);
     execute format('grant execute on function %s to authenticated', f);

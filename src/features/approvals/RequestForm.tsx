@@ -1,9 +1,11 @@
 // New request / edit request. A new request can be saved as a draft or
 // submitted straight away; a request returned for changes is edited and
-// resubmitted. Attachments are uploaded once the request exists.
+// resubmitted. Attachments are uploaded once the request exists. Before
+// the first submission the requester chooses the approvers, in order; the
+// Accounts head is always the last level.
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { FileText, Loader2, Paperclip, Save, Send, X } from 'lucide-react';
+import { FileText, Loader2, Lock, Paperclip, Plus, Save, Send, X } from 'lucide-react';
 import { errorMessage } from '@/lib/errors';
 import { todayIST } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -13,7 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field } from '@/components/common';
 import { FilterSelect } from '@/features/admin/users/UsersPage';
 import {
-  CATEGORIES, FILE_ACCEPT, PRIORITIES, checkFile, fmtSize, saveRequest, uploadApprovalFile, useFormOptions,
+  CATEGORIES, FILE_ACCEPT, PRIORITIES, checkFile, fmtSize, saveRequest, setApprovers, uploadApprovalFile, useFormOptions,
   type ApprovalRequest, type Priority, type RequestInput,
 } from '@/features/approvals/api';
 
@@ -33,6 +35,7 @@ export function RequestForm({ open, request, onClose, onSaved }: {
   });
   const [f, setF] = useState<RequestInput>(blank);
   const [files, setFiles] = useState<File[]>([]);
+  const [chain, setChain] = useState<string[]>([]);
   const [busy, setBusy] = useState<'draft' | 'submit' | null>(null);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
 
@@ -41,6 +44,7 @@ export function RequestForm({ open, request, onClose, onSaved }: {
   if (key && key !== loadedFor) {
     setLoadedFor(key);
     setFiles([]);
+    setChain(request ? request.chosen_approvers ?? [] : ['']);
     setF(request ? {
       category: request.category, priority: request.priority, title: request.title, details: request.details ?? '',
       amount: request.amount == null ? '' : String(request.amount), needed_by: request.needed_by ?? '',
@@ -55,16 +59,20 @@ export function RequestForm({ open, request, onClose, onSaved }: {
   const draft = request?.status === 'draft';
   const canSubmit = isNew || draft || returned;
   const submitted = request && request.round > 0;
-  const workflow = options.data?.workflows.find((w) => w.category === f.category) ?? options.data?.workflows.find((w) => w.category === null);
+  const approvers = options.data?.approvers ?? [];
+  const final = options.data?.final_approver ?? null;
+  const nameOf = (id: string) => approvers.find((a) => a.employee_id === id)?.name ?? 'Approver';
 
   async function save(submit: boolean) {
     if (f.title.trim().length < 3) return toast.error('Give the request a title.');
     if (f.amount && Number.isNaN(Number(f.amount.replace(/[,\s₹]/g, '')))) return toast.error('The amount should be a number.');
+    if (submit && !submitted && chain.filter(Boolean).length === 0) return toast.error('Choose at least one approver.');
     setBusy(submit ? 'submit' : 'draft');
     let id = request?.id ?? null;
     try {
       // Files go up first against a saved draft, so a failed upload never leaves a submitted request without them.
       id = await saveRequest(f, id, false);
+      if (!submitted) await setApprovers(id, chain.filter(Boolean));
       for (const file of files) await uploadApprovalFile(id, file);
       if (submit) await saveRequest(f, id, true);
       toast.success(submit ? (returned ? 'Request resubmitted' : 'Request submitted for approval') : isNew ? 'Saved as draft' : 'Changes saved');
@@ -90,9 +98,9 @@ export function RequestForm({ open, request, onClose, onSaved }: {
           <DialogDescription>
             {returned && request.decision_note
               ? `Returned for changes: ${request.decision_note}`
-              : workflow?.levels?.length
-                ? `Goes through ${workflow.levels.length} level${workflow.levels.length > 1 ? 's' : ''}: ${workflow.levels.join(' → ')}.`
-                : 'Fill in the request; it goes through the approval levels set for its type.'}
+              : chain.filter(Boolean).length
+                ? `Goes to ${[...chain.filter(Boolean).map(nameOf), final?.name].filter(Boolean).join(' → ')}, one after the other.`
+                : 'Choose who approves it, in order. It ends with the Accounts head.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -134,6 +142,36 @@ export function RequestForm({ open, request, onClose, onSaved }: {
                 ...(options.data?.projects ?? []).map((p) => [`p:${p.id}`, `Project · ${p.name}`] as [string, string]),
                 ...(options.data?.sites ?? []).map((s) => [`s:${s.id}`, `Site · ${s.name}`] as [string, string])]} />
           </Field>
+          {!submitted && (
+            <Field label="Approvers, in order" required className="sm:col-span-2"
+              hint="Each one approves after the one before. You can see who has approved and who is left on the request.">
+              <ol className="grid gap-2">
+                {chain.map((id, i) => (
+                  <li key={i} className="flex items-center gap-2">
+                    <span className="w-6 text-center text-sm font-semibold text-muted-foreground">{i + 1}</span>
+                    <div className="flex-1">
+                      <FilterSelect value={id} onChange={(v) => setChain((c) => c.map((x, j) => (j === i ? v : x)))} placeholder="Choose the approver"
+                        options={approvers.filter((a) => a.employee_id === id || !chain.includes(a.employee_id))
+                          .map((a) => [a.employee_id, a.title ? `${a.name} — ${a.title}` : a.name] as [string, string])} />
+                    </div>
+                    <Button size="icon-sm" variant="ghost" aria-label="Remove approver" onClick={() => setChain((c) => c.filter((_, j) => j !== i))}><X /></Button>
+                  </li>
+                ))}
+                {final && (
+                  <li className="flex items-center gap-2 rounded-lg bg-muted/50 px-2 py-2 text-sm">
+                    <span className="w-6 text-center font-semibold text-muted-foreground">{chain.length + 1}</span>
+                    <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="flex-1"><span className="font-medium">{final.name}</span> — {final.title} <span className="text-xs text-muted-foreground">(always last)</span></span>
+                  </li>
+                )}
+              </ol>
+              {chain.length < 6 && (
+                <Button size="sm" variant="outline" className="mt-2" onClick={() => setChain((c) => [...c, ''])}>
+                  <Plus /> Add approver
+                </Button>
+              )}
+            </Field>
+          )}
           {returned && (
             <Field label="Note to the approvers" className="sm:col-span-2">
               <Input value={f.note ?? ''} onChange={(e) => set('note', e.target.value)} placeholder="e.g. Two quotations attached" />

@@ -2319,6 +2319,65 @@ console.log('\nApprovals (multi-level)');
     `select count(*)::int from jsonb_array_elements(public.my_notifications(100)->'rows') r where r->>'kind' = 'approval.waiting'`, 0);
 }
 
+console.log('\nApprovals - chosen approvers, then the Accounts head');
+{
+  const val = async (uid, sql, params) => (await as(uid, sql, params)).rows[0]?.v;
+  const ASKER = (await asSystem("select id from auth.users where email = 'ketan.login@diwakarsolar.test'")).rows[0].id;
+  const HEAD = (await asSystem("select id from auth.users where email = 'banwari.head@diwakarsolar.test'")).rows[0].id;
+  const OTHER = (await asSystem("select id from auth.users where email = 'coordinator@diwakarsolar.test'")).rows[0].id;
+  const banwariEmp = (await asSystem("select id from public.employees where employee_code = 'DRIPL_1101'")).rows[0].id;
+  const accountsEmp = (await asSystem("select id from public.employees where employee_code = 'DRIPL_1099'")).rows[0].id;
+  const otherEmp = (await asSystem("select employee_id from public.profiles where id = $1", [OTHER])).rows[0].employee_id;
+  const ACC = await createAuthUser('accounts.head@diwakarsolar.test', 'Accounts Head');
+  await expectOk('the Accounts head gets a login', OWNER, `select public.admin_save_user($1, $2, true)`,
+    [ACC, JSON.stringify({ full_name: 'Accounts Head', employee_id: accountsEmp, role_ids: [role.employee] })]);
+  await signIn(ACC);
+  await asSystem(`insert into public.app_settings (key, value) values ('approval_final_approver', to_jsonb($1::text))
+                  on conflict (key) do update set value = excluded.value`, [accountsEmp]);
+  const stepNames = (id) => asSystem(`select string_agg(name || ':' || status, ' → ' order by level_no) v from public.approval_steps
+                                      where request_id = $1 and round = (select round from public.approval_requests where id = $1)`, [id]).then((r) => r.rows[0].v);
+  const stepOf = async (id, level) => (await asSystem(
+    `select id from public.approval_steps where request_id = $1 and level_no = $2 and round = (select round from public.approval_requests where id = $1)`, [id, level])).rows[0].id;
+
+  await expectValue('the form offers the approver list, without the Accounts head, who always comes last', ASKER,
+    `select (select bool_and(x->>'employee_id' <> $1::text) from jsonb_array_elements(public.approval_form_options()->'approvers') x)
+        and public.approval_form_options()->'final_approver'->>'title' = 'Accounts (final)'`, true, [accountsEmp]);
+  const R = await val(ASKER, `select public.approval_save($1::jsonb) v`,
+    [JSON.stringify({ category: 'purchase', title: 'Safety shoes for the Sadas team', amount: '9,600', priority: 'urgent' })]);
+  await expectError('approvers come from the approver list', ASKER, `select public.approval_set_approvers($1, $2::uuid[])`, 'approver list', [R, [otherEmp]]);
+  await expectOk('the requester chooses HR first (the Accounts head and a repeat are ignored)', ASKER,
+    `select public.approval_set_approvers($1, $2::uuid[])`, [R, [banwariEmp, accountsEmp, banwariEmp]]);
+  await expectOk('and submits it', ASKER, `select public.approval_save($1::jsonb, $2, true)`,
+    [JSON.stringify({ category: 'purchase', title: 'Safety shoes for the Sadas team', amount: '9,600', priority: 'urgent' }), R]);
+  const chain = await stepNames(R);
+  chain === 'Head · HR:pending → Accounts (final):locked'
+    ? ok('the chain is the chosen HR head, then the Accounts head last')
+    : bad('chosen chain', chain);
+  await expectError('the approvers are fixed once submitted', ASKER, `select public.approval_set_approvers($1, $2::uuid[])`, 'fixed', [R, []]);
+  await expectValue('the Accounts head sees it while it is still with HR', ACC,
+    `select exists (select 1 from jsonb_array_elements(public.list_approvals('{"page_size":200}'::jsonb)->'rows') r where r->>'id' = $1::text)`, true, [R]);
+  const elsewhere = (await asSystem(`select a.id from public.approval_requests a where a.status <> 'draft' and a.id <> $1
+                                      and not exists (select 1 from public.approval_steps s where s.request_id = a.id and s.approver_employee_id = $2) limit 1`, [R, accountsEmp])).rows[0]?.id;
+  if (elsewhere) await expectOk('and every other request too', ACC, `select public.approval_detail($1)`, [elsewhere]);
+  await expectError('but cannot approve before HR has', ACC, `select public.approval_act($1, 'approve')`, 'locked', [await stepOf(R, 2)]);
+  await expectOk('HR approves', HEAD, `select public.approval_act($1, 'approve', 'Needed for safety')`, [await stepOf(R, 1)]);
+  await expectValue('who approved and who is left shows on the request', ASKER,
+    `select string_agg((st->>'name') || ':' || (st->>'status'), ' → ' order by (st->>'level_no')::int)
+     from jsonb_array_elements(public.approval_detail($1)->'steps') st where (st->>'round')::int = 1`,
+    'Head · HR:approved → Accounts (final):pending', [R]);
+  await expectOk('the Accounts head gives the final approval', ACC, `select public.approval_act($1, 'approve')`, [await stepOf(R, 2)]);
+  await expectValue('the request is approved', ASKER, `select public.approval_detail($1)->'request'->>'status'`, 'approved', [R]);
+  await expectOk('the requester attaches the bill after the approval', ASKER, `select public.approval_add_document($1, $2::jsonb)`,
+    [R, JSON.stringify({ file_name: 'bill.pdf', storage_path: `approvals/${R}/bill.pdf`, size_bytes: 900, mime_type: 'application/pdf' })]);
+  const S2 = await val(ASKER, `select public.approval_save($1::jsonb, null, true) v`,
+    [JSON.stringify({ category: 'travel', title: 'Site visit to Bhojusar', priority: 'normal' })]);
+  const chain2 = await stepNames(S2);
+  chain2.endsWith('Accounts (final):locked') || chain2 === 'Accounts (final):pending'
+    ? ok('a request with no approvers chosen still ends with the Accounts head')
+    : bad('default chain', chain2);
+  await asSystem(`delete from public.app_settings where key = 'approval_final_approver'`);
+}
+
 console.log('\nToday in the company (dashboard)');
 await expectValue('the Super Admin sees one card per section', OWNER,
   `select string_agg(x->>'key', ',' order by x->>'key') from jsonb_array_elements(public.get_company_today()->'sections') x`,

@@ -163,6 +163,8 @@ export function useApprovals(p: ListParams) {
 export interface ApprovalRequest {
   id: string;
   request_no: string;
+  /** The approvers the requester chose, in order (the Accounts head follows by itself). */
+  chosen_approvers?: string[] | null;
   category: string;
   title: string;
   details: string | null;
@@ -295,6 +297,10 @@ export interface FormOptions {
   sites: { id: string; name: string }[];
   projects: { id: string; name: string }[];
   workflows: { category: string | null; name: string; levels: string[] | null }[];
+  /** Whom a request can be sent to, in order. */
+  approvers: { employee_id: string; name: string; title: string | null }[];
+  /** The Accounts head: the last level of every request. */
+  final_approver: { employee_id: string; name: string; title: string } | null;
 }
 
 export function useFormOptions(enabled = true) {
@@ -328,6 +334,12 @@ export async function saveRequest(input: RequestInput, id: string | null, submit
   const { data, error } = await supabase.rpc('approval_save', { p_request: input, p_id: id, p_submit: submit });
   if (error) throw error;
   return data as string;
+}
+
+/** The approvers of a not-yet-submitted request, in order. */
+export async function setApprovers(id: string, approvers: string[]) {
+  const { error } = await supabase.rpc('approval_set_approvers', { p_request: id, p_approvers: approvers });
+  if (error) throw error;
 }
 
 export async function actOnStep(stepId: string, action: 'approve' | 'reject' | 'return', comment: string) {
