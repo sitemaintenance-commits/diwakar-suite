@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/misc';
 import { EmptyState, ErrorState, RecordStatusBadge, StatCard } from '@/components/common';
+import { CompanyToday } from '@/features/dashboard/CompanyToday';
 import { errorMessage } from '@/lib/errors';
 import { useDashboardSummary } from '@/features/dashboard/api';
 import { useAudit, useSites } from '@/features/admin/api';
@@ -63,6 +64,8 @@ export function DashboardPage() {
           ))}
         </div>
       </div>
+
+      <CompanyToday />
 
       {/* KPI cards — only sections the user is permitted to see */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

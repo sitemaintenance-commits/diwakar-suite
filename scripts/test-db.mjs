@@ -2151,6 +2151,16 @@ console.log('\nApprovals');
     `select r->>'status' from jsonb_array_elements(public.list_approvals('mine')->'rows') r where r->>'id' = $1`, 'cancelled', [id2]);
 }
 
+console.log('\nToday in the company (dashboard)');
+await expectValue('the Super Admin sees one card per section', OWNER,
+  `select string_agg(x->>'key', ',' order by x->>'key') from jsonb_array_elements(public.get_company_today()->'sections') x`,
+  'approvals,departments,hr,om,projects,tenders');
+await expectValue('each card has a traffic light and a headline', OWNER,
+  `select bool_and(x->>'status' in ('good','ok','bad') and length(x->>'headline') > 0)
+   from jsonb_array_elements(public.get_company_today()->'sections') x`, true);
+await expectValue('an employee sees no company-wide cards', (await asSystem("select id from auth.users where email = 'ketan.login@diwakarsolar.test'")).rows[0].id,
+  `select jsonb_array_length(public.get_company_today()->'sections')`, 0);
+
 console.log('\nDeactivation');
 await expectOk('Admin deactivates Technician', ADMIN, `select public.admin_set_user_status($1, 'inactive')`, [TECH]);
 await expectValue('deactivated user loses every permission immediately', TECH, `select public.has_permission('dashboard','view')`, false);
