@@ -1,6 +1,7 @@
 // Today in the company: one card per section with a traffic light and two
 // or three plain facts, so a Super Admin sees at a glance which sections
 // are doing well, which are fine and which need attention.
+import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronRight } from 'lucide-react';
@@ -33,7 +34,7 @@ const LIGHT: Record<Light | 'none', { dot: string; ring: string; label: string }
 };
 const ORDER: Record<Light, number> = { bad: 0, ok: 1, good: 2 };
 
-export function CompanyToday() {
+export function CompanyToday({ fallback }: { fallback?: ReactNode }) {
   const q = useQuery({
     queryKey: ['company-today'],
     queryFn: async () => {
@@ -48,7 +49,7 @@ export function CompanyToday() {
     return <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-36 rounded-xl" />)}</div>;
   }
   const sections = q.data?.sections ?? [];
-  if (!sections.length) return null;
+  if (!sections.length) return <>{fallback ?? null}</>;
   const counts = { good: 0, ok: 0, bad: 0 };
   sections.forEach((x) => { counts[x.status] += 1; });
 
