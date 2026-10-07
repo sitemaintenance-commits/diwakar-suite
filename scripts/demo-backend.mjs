@@ -69,6 +69,31 @@ for (const [email, name, role, sites, all, dept] of PEOPLE) {
 }
 await mkUser('newjoiner@diwakarsolar.com', 'New Joiner');
 
+// Approvals: an HR employee raises requests; the HR head, Finance and a Director approve.
+{
+  const dept = await one(`select id, head_employee_id from public.departments where code = 'HR'`);
+  const staff = await one(`select id, full_name from public.employees where department_id = $1 and id is distinct from $2 and deleted_at is null and status = 'active'
+                             and not exists (select 1 from public.profiles p where p.employee_id = employees.id) order by full_name limit 1`,
+    [dept.id, dept.head_employee_id]);
+  const head = await one(`select id, full_name from public.employees where id = $1`, [dept.head_employee_id]);
+  const roleId = async (key) => (await one(`select id from public.roles where key = $1`, [key])).id;
+  const people = [
+    ['staff@diwakarsolar.com', staff, ['employee']],
+    ['head@diwakarsolar.com', head, ['employee']],
+    ['finance@diwakarsolar.com', { id: null, full_name: 'Meena Gupta' }, ['employee', 'finance']],
+    ['director@diwakarsolar.com', { id: null, full_name: 'Vikram Singh' }, ['employee', 'director']],
+  ];
+  for (const [email, emp, roles] of people) {
+    if (!emp) continue;
+    const id = await mkUser(email, emp.full_name);
+    const role_ids = [];
+    for (const r of roles) role_ids.push(await roleId(r));
+    await asUser(OWNER, (tx) => tx.query(`select public.admin_save_user($1, $2, true)`,
+      [id, JSON.stringify({ full_name: emp.full_name, ...(emp.id ? { employee_id: emp.id } : {}), role_ids })]));
+    await signIn(id);
+  }
+}
+
 // ---------------------------------------------------------------- demo CRM data
 const SALES_ID = (await one(`select id from public.profiles where email = 'sales@diwakarsolar.com'`)).id;
 const inDays = (n) => `now() + interval '${n} days'`;
@@ -612,6 +637,27 @@ function send(res, status, body, headers = {}) {
   res.writeHead(status, { 'Content-Type': 'application/json', ...CORS, ...headers });
   res.end(body === undefined ? '' : JSON.stringify(body));
 }
+/** Uploaded files, in memory: path -> { data, type }. */
+const files = new Map();
+/** supabase-js sends a Blob as multipart form data; the file is the part with an empty name. */
+function fileFromUpload(buf, contentType) {
+  const m = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/);
+  if (!contentType.startsWith('multipart/form-data') || !m) return { data: buf, type: contentType };
+  const boundary = Buffer.from(`--${m[1] ?? m[2]}`);
+  let at = buf.indexOf(boundary);
+  while (at !== -1) {
+    const next = buf.indexOf(boundary, at + boundary.length);
+    if (next === -1) break;
+    const part = buf.subarray(at + boundary.length + 2, next - 2);
+    const headEnd = part.indexOf('\r\n\r\n');
+    const head = part.subarray(0, headEnd).toString('utf8');
+    if (/name=""/.test(head)) {
+      return { data: part.subarray(headEnd + 4), type: head.match(/content-type:\s*([^\r\n]+)/i)?.[1] ?? 'application/octet-stream' };
+    }
+    at = next;
+  }
+  return { data: buf, type: contentType };
+}
 const pgError = (e) => ({ message: e.message, code: e.code ?? 'P0001', details: e.detail ?? null, hint: e.hint ?? null });
 
 async function handleAdminUsers(sub, body) {
@@ -651,8 +697,10 @@ http
   .createServer(async (req, res) => {
     if (req.method === 'OPTIONS') return send(res, 204);
     const url = new URL(req.url, 'http://localhost');
-    let raw = '';
-    for await (const c of req) raw += c;
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    const rawBuf = Buffer.concat(chunks);
+    const raw = url.pathname.startsWith('/storage/v1/object/') && !url.pathname.startsWith('/storage/v1/object/sign/') ? '' : rawBuf.toString('utf8');
     let body = {};
     try {
       body = raw ? JSON.parse(raw) : {};
@@ -693,8 +741,39 @@ http
         return send(res, status, payload);
       }
 
-      // ---- storage (avatars): not emulated
-      if (url.pathname.startsWith('/storage/v1/')) return send(res, 400, { message: 'Photo upload is not available in the local demo.' });
+      // ---- storage: the documents bucket, in memory (approval attachments)
+      if (url.pathname.startsWith('/storage/v1/')) {
+        const sm = url.pathname.match(/^\/storage\/v1\/object\/(sign\/)?([^/]+)\/?(.*)$/);
+        if (!sm || sm[2] !== 'documents') return send(res, 400, { message: 'Only the documents bucket is available in the local demo.' });
+        const [, isSign, bucket, rawPath] = sm;
+        const path = decodeURIComponent(rawPath);
+        if (isSign && req.method === 'POST') {
+          if (!sub) return send(res, 401, { message: 'Not signed in' });
+          const ok = path.startsWith('approvals/')
+            ? (await asUser(sub, (tx) => tx.query('select app.can_read_approval_file($1) as ok', [path]))).rows[0].ok
+            : true;
+          if (!ok || !files.has(path)) return send(res, 400, { statusCode: '404', error: 'not_found', message: 'Object not found' });
+          return send(res, 200, { signedURL: `/object/sign/${bucket}/${path}?token=demo` });
+        }
+        if (isSign && req.method === 'GET') {
+          const f = files.get(path);
+          if (!f) return send(res, 404, { message: 'Object not found' });
+          const dl = url.searchParams.get('download');
+          res.writeHead(200, { 'Content-Type': f.type, ...CORS, ...(dl != null ? { 'Content-Disposition': `attachment; filename="${dl || path.split('/').pop()}"` } : {}) });
+          return res.end(f.data);
+        }
+        if (req.method === 'POST' && path) {
+          if (!sub) return send(res, 401, { message: 'Not signed in' });
+          if (files.has(path)) return send(res, 400, { statusCode: '409', error: 'Duplicate', message: 'The resource already exists' });
+          files.set(path, fileFromUpload(rawBuf, req.headers['content-type'] || 'application/octet-stream'));
+          return send(res, 200, { Key: `${bucket}/${path}`, Id: path });
+        }
+        if (req.method === 'DELETE') {
+          for (const p of body.prefixes ?? []) files.delete(p);
+          return send(res, 200, []);
+        }
+        return send(res, 400, { message: 'Not available in the local demo.' });
+      }
 
       const m = url.pathname.match(/^\/rest\/v1\/(rpc\/)?([a-z_]+)$/);
       if (!m) return send(res, 404, { message: 'Not found' });

@@ -2078,77 +2078,245 @@ console.log('\nSuper Technician');
     `select public.save_field_entry($1, current_date - 20, '[{"label":"INV-01","kwh":100}]'::jsonb)`, 'not assigned to this site', [site.Bassi]);
 }
 
-console.log('\nApprovals');
+console.log('\nApprovals (multi-level)');
 {
   const ASKER = (await asSystem("select id from auth.users where email = 'ketan.login@diwakarsolar.test'")).rows[0].id;   // Employee role
   const OTHER = (await asSystem("select id from auth.users where email = 'coordinator@diwakarsolar.test'")).rows[0].id;  // not an approver
   const banwariEmp = (await asSystem("select id from public.employees where employee_code = 'DRIPL_1101'")).rows[0].id;
-  const rajpalEmp = (await asSystem('select employee_id id from public.approval_approvers where employee_id <> $1 order by sort_order limit 1', [banwariEmp])).rows[0].id; // another approver
+  const otherEmp = (await asSystem("select id from public.employees where employee_code = 'DRIPL_1090'")).rows[0].id;
   const HEAD = await createAuthUser('banwari.head@diwakarsolar.test', 'Banwari Verma');
   await expectOk('the HR head gets a login', OWNER, `select public.admin_save_user($1, $2, true)`,
     [HEAD, JSON.stringify({ full_name: 'Banwari Verma', employee_id: banwariEmp, role_ids: [role.employee] })]);
   await signIn(HEAD);
+  const FIN = await createAuthUser('finance@diwakarsolar.test', 'Finance Person');
+  await expectOk('a Finance login is created', OWNER, `select public.admin_save_user($1, $2, true)`,
+    [FIN, JSON.stringify({ full_name: 'Finance Person', role_ids: [role.employee, role.finance] })]);
+  await signIn(FIN);
+  const SUB = await createAuthUser('ganesh.head@diwakarsolar.test', 'Ganesh');
+  await expectOk('a stand-in approver gets a login', OWNER, `select public.admin_save_user($1, $2, true)`,
+    [SUB, JSON.stringify({ full_name: 'Ganesh', employee_id: otherEmp, role_ids: [role.employee] })]);
+  await signIn(SUB);
 
-  await expectValue('everyone on the approver list can be chosen', ASKER,
-    `select jsonb_array_length(public.list_approvers()->'approvers')`,
-    (await asSystem('select count(*)::int n from public.approval_approvers')).rows[0].n);
-  await expectValue('an approver filters by their own name only', HEAD,
-    `select (public.list_approvers()->>'all')::boolean = false and public.list_approvers()->>'me' = $1::text`, true, [banwariEmp]);
-  await expectValue('a Super Admin filters by anyone', OWNER, `select (public.list_approvers()->>'all')::boolean`, true);
+  const sysError = async (name, sql, pattern, params = []) => {
+    try { await asSystem(sql, params); bad(name, 'succeeded'); }
+    catch (e) { e.message.includes(pattern) ? ok(name) : bad(name, e.message); }
+  };
+  const val = async (uid, sql, params) => (await as(uid, sql, params)).rows[0]?.v;
+  const detail = (uid, id) => val(uid, `select public.approval_detail($1) v`, [id]);
+  const stepOf = async (id, level, round = null) => (await asSystem(
+    `select id from public.approval_steps where request_id = $1 and level_no = $2 and round = coalesce($3, (select round from public.approval_requests where id = $1))`,
+    [id, level, round])).rows[0].id;
+  const statusOf = async (id) => (await asSystem(`select status from public.approval_requests where id = $1`, [id])).rows[0].status;
+  const unread = async (uid, kind, id) => (await asSystem(
+    `select count(*)::int n from public.notifications where user_id = $1 and kind = $2 and entity_id = $3`, [uid, kind, id])).rows[0].n;
 
-  await expectError('a request must say who it goes to', ASKER,
-    `select public.save_approval_request($1::jsonb)`, 'Choose who', [JSON.stringify({ category: 'purchase', title: 'No approver chosen' })]);
-  await expectError('and an approver cannot send one to themselves', HEAD,
-    `select public.save_approval_request($1::jsonb)`, 'cannot approve your own',
-    [JSON.stringify({ category: 'travel', title: 'Visit to Sadas', approver_id: banwariEmp })]);
+  // ------------------------------------------------ workflow settings
+  await expectError('an employee cannot open workflow settings', ASKER, `select public.approval_settings()`, 'only an admin');
+  await expectError('nor change a workflow', ASKER, `select public.approval_save_workflow('{}'::jsonb)`, 'only an admin');
+  const seeded = await val(OWNER, `select public.approval_settings() v`);
+  const purchase = seeded.workflows.find((w) => w.category === 'purchase');
+  purchase && purchase.levels.map((l) => l.name).join(' → ') === 'Department Head → Finance Head → Director'
+    ? ok('Purchase starts as Department Head → Finance Head → Director')
+    : bad('seeded purchase workflow', JSON.stringify(purchase));
+  const wf = { name: 'Maintenance approval', category: 'maintenance', levels: [
+    { name: 'HR Head', approver_type: 'employee', approver_employee_id: banwariEmp },
+    { name: 'Finance', approver_type: 'role', approver_role_id: role.finance },
+  ] };
+  const WF = await val(OWNER, `select public.approval_save_workflow($1::jsonb) v`, [JSON.stringify(wf)]);
+  WF ? ok('an admin sets up a two-level workflow for Maintenance') : bad('save workflow', 'no id');
+  await expectError('only one active workflow per type', OWNER, `select public.approval_save_workflow($1::jsonb)`, 'already an active workflow',
+    [JSON.stringify({ ...wf, name: 'Second' })]);
+  await expectError('a workflow needs a level', OWNER, `select public.approval_save_workflow($1::jsonb)`, 'at least one',
+    [JSON.stringify({ name: 'Empty', category: 'project', levels: [] })]);
 
-  const req = JSON.stringify({ category: 'purchase', title: 'Two padlocks for the store', details: 'Old ones are rusted', amount: 850, priority: 'urgent', approver_id: banwariEmp });
-  const id = (await as(ASKER, `select public.save_approval_request($1::jsonb) id`, [req])).rows[0].id;
-  id ? ok('an employee sends a purchase request to the HR head') : bad('raise request', 'no id');
-  await expectValue('it gets a number, waits, and says who it went to', ASKER,
-    `select (r->>'request_no') like 'APR-%' and r->>'status' = 'pending' and r->>'approver' = 'Banwari Verma'
-     from jsonb_array_elements(public.list_approvals('mine')->'rows') r where r->>'id' = $1`, true, [id]);
-  await expectValue('the head sees it waiting for him', HEAD,
-    `select (public.list_approvals('to_approve')->>'waiting')::int = 1
-        and exists (select 1 from jsonb_array_elements(public.list_approvals('to_approve')->'rows') r where r->>'id' = $1 and (r->>'can_decide')::boolean)`, true, [id]);
-  await expectValue('a colleague does not see it', OTHER,
-    `select count(*)::int from jsonb_array_elements(public.list_approvals('all')->'rows') r where r->>'id' = $1`, 0, [id]);
-  await expectError('nor can a colleague decide it', OTHER, `select public.decide_approval($1, 'approved')`, 'only the approver', [id]);
-  await expectError('nor can the employee approve their own', ASKER, `select public.decide_approval($1, 'approved')`, 'only the approver', [id]);
-  await expectValue("the head cannot look at another approver's requests by changing the filter", HEAD,
-    `select count(*)::int from jsonb_array_elements(public.list_approvals('all', null, null, 100, $1)->'rows') r where r->>'id' = $2`, 1, [rajpalEmp, id]);
-  await expectValue('the Super Admin sees it too, and can filter by the head', OWNER,
-    `select exists (select 1 from jsonb_array_elements(public.list_approvals('all', null, null, 100, $1)->'rows') r where r->>'id' = $2)`, true, [banwariEmp, id]);
-  await expectError('sending it back needs a reason', HEAD, `select public.decide_approval($1, 'needs_info')`, 'Say why', [id]);
-  await expectOk('the head asks for the quotation', HEAD,
-    `select public.decide_approval($1, 'needs_info', 'Attach the shop quotation')`, [id]);
-  await expectValue('the employee sees what is asked', ASKER,
-    `select r->>'status' || ' / ' || (r->>'decision_note') from jsonb_array_elements(public.list_approvals('mine')->'rows') r where r->>'id' = $1`,
-    'needs_info / Attach the shop quotation', [id]);
-  await expectOk('the employee attaches the quotation to their request', ASKER,
-    `insert into public.documents (module_key, entity_type, entity_id, category, file_name, storage_path)
-     values ('approvals', 'approval', $1::uuid, 'Quotation', 'quotation.pdf', 'approvals/' || $1::text || '/quotation.pdf')`, [id]);
-  await expectRows('which the head it was sent to can see', HEAD, `select 1 from public.documents where entity_type = 'approval'`, 1);
-  await expectRows('and a colleague cannot', OTHER, `select 1 from public.documents where entity_type = 'approval'`, 0);
-  await expectError('nor attach to', OTHER,
-    `insert into public.documents (module_key, entity_type, entity_id, file_name, storage_path)
-     values ('approvals', 'approval', $1::uuid, 'x.pdf', 'approvals/' || $1::text || '/x.pdf')`, 'row-level security', [id]);
-  await expectOk('and resubmits', ASKER, `select public.save_approval_request($1::jsonb, $2)`,
-    [JSON.stringify({ category: 'purchase', title: 'Two padlocks for the store', amount: 850, note: 'Quotation attached', approver_id: banwariEmp }), id]);
-  await expectOk('the head approves', HEAD, `select public.decide_approval($1, 'approved', 'Buy from the usual shop')`, [id]);
-  await expectValue('the employee sees it approved by the head, with the whole history', ASKER,
-    `select r->>'status' || ' / ' || (r->>'decided_by') || ' / ' || (select string_agg(e->>'action', ',') from jsonb_array_elements(r->'events') e)
-     from jsonb_array_elements(public.list_approvals('mine')->'rows') r where r->>'id' = $1`,
-    'approved / Banwari Verma / submitted,needs_info,resubmitted,approved', [id]);
-  await expectError('a decided request can no longer be changed', ASKER,
-    `select public.save_approval_request($1::jsonb, $2)`, 'no longer be changed', [JSON.stringify({ title: 'Changed', approver_id: banwariEmp }), id]);
-  const id2 = (await as(ASKER, `select public.save_approval_request($1::jsonb) id`,
-    [JSON.stringify({ category: 'advance', title: 'Travel advance for Jaipur visit', amount: 3000, approver_id: rajpalEmp })])).rows[0].id;
-  await expectValue("a request sent to another head is not the HR head's to see", HEAD,
-    `select count(*)::int from jsonb_array_elements(public.list_approvals('all')->'rows') r where r->>'id' = $1`, 0, [id2]);
-  await expectOk('the employee withdraws a request they no longer need', ASKER, `select public.cancel_approval($1)`, [id2]);
-  await expectValue('it shows as cancelled', ASKER,
-    `select r->>'status' from jsonb_array_elements(public.list_approvals('mine')->'rows') r where r->>'id' = $1`, 'cancelled', [id2]);
+  // ------------------------------------------------ flow 1: L1 -> L2 -> final
+  const req = { category: 'maintenance', title: 'Replace inverter fan at Bassi', details: 'Fan noisy', amount: '12,500', priority: 'high' };
+  const A = await val(ASKER, `select public.approval_save($1::jsonb) v`, [JSON.stringify(req)]);
+  await expectValue('a request starts as a draft with an APR number', ASKER,
+    `select (public.approval_detail($1)->'request'->>'status') || ' / ' || ((public.approval_detail($1)->'request'->>'request_no') ~ '^APR-[0-9]{4,}$')::text`, 'draft / true', [A]);
+  await expectError('a draft is private to the requester', HEAD, `select public.approval_detail($1)`, 'cannot see it', [A]);
+  await expectOk('the requester submits it', ASKER, `select public.approval_save($1::jsonb, $2, true)`, [JSON.stringify(req), A]);
+  {
+    const d = await detail(ASKER, A);
+    const s = d.steps.map((x) => `${x.level_no}:${x.status}`).join(',');
+    d.request.status === 'pending' && d.request.current_level === 1 && d.request.total_levels === 2 && s === '1:pending,2:locked'
+      && Number(d.request.amount) === 12500
+      ? ok('submitted: Pending Approval at Level 1 of 2, Level 2 locked')
+      : bad('submit state', JSON.stringify({ status: d.request.status, s, lvl: d.request.current_level }));
+  }
+  (await unread(HEAD, 'approval.waiting', A)) === 1 ? ok('the Level 1 approver is notified') : bad('L1 notified', 'no notification');
+  (await unread(FIN, 'approval.waiting', A)) === 0 ? ok('the Level 2 approver is not notified yet') : bad('L2 not yet', 'notified early');
+  await expectValue('My Approvals shows it to the Level 1 approver', HEAD,
+    `select (public.list_approvals('{"tab":"my_approvals"}')->'rows'->0->>'id') = $1::text`, true, [A]);
+  await expectValue('but not to the Level 2 approver', FIN,
+    `select jsonb_array_length(public.list_approvals('{"tab":"my_approvals"}')->'rows')`, 0);
+  await expectError('Level 2 cannot act before Level 1', FIN, `select public.approval_act($1, 'approve')`, 'locked', [await stepOf(A, 2)]);
+  await expectError('someone not assigned cannot approve', OTHER, `select public.approval_act($1, 'approve')`, 'not the approver', [await stepOf(A, 1)]);
+  await expectError('the requester cannot approve', ASKER, `select public.approval_act($1, 'approve')`, 'not the approver', [await stepOf(A, 1)]);
+  await expectError('an admin cannot approve a level not given to them', OWNER, `select public.approval_act($1, 'approve')`, 'not the approver', [await stepOf(A, 1)]);
+  await expectOk('Level 1 approves with a comment', HEAD, `select public.approval_act($1, 'approve', 'Go ahead')`, [await stepOf(A, 1)]);
+  await expectError('approving twice is refused', HEAD, `select public.approval_act($1, 'approve')`, 'already been approved', [await stepOf(A, 1)]);
+  await expectValue('the request is In Review at Level 2', ASKER,
+    `select (public.approval_detail($1)->'request'->>'status') || ' / ' || (public.approval_detail($1)->'request'->>'current_level') || ' / ' || (public.approval_detail($1)->'request'->>'completed_levels')`,
+    'in_review / 2 / 1', [A]);
+  (await unread(FIN, 'approval.waiting', A)) === 1 && (await unread(ASKER, 'approval.level_approved', A)) === 1
+    ? ok('Level 2 and the requester are notified') : bad('L2 notified', 'missing notification');
+  await sysError('a decided level cannot be changed, even directly',
+    `update public.approval_steps set status = 'pending' where id = $1`, 'cannot be changed', [await stepOf(A, 1)]);
+  await expectOk('Level 2 gives the final approval', FIN, `select public.approval_act($1, 'approve')`, [await stepOf(A, 2)]);
+  (await statusOf(A)) === 'approved' && (await unread(ASKER, 'approval.approved', A)) === 1
+    ? ok('the request is Approved and the requester told') : bad('final approval', await statusOf(A));
+  {
+    const d = await detail(ASKER, A);
+    const t = d.timeline.map((x) => x.action).join(',');
+    const second = d.timeline.find((x) => x.action === 'approved' && x.level_no === 2);
+    t === 'created,submitted,approved,approved' && second?.actor_name === 'Finance Person' && second?.actor_role === 'Finance' && second?.created_at
+      ? ok('the timeline records each step with who, role and time')
+      : bad('timeline', t + ' ' + JSON.stringify(second));
+  }
+  await sysError('the timeline cannot be edited', `update public.approval_actions set comment = 'x' where request_id = $1`, 'cannot be changed', [A]);
+  await sysError('nor deleted', `delete from public.approval_actions where request_id = $1`, 'cannot be changed', [A]);
+  await expectError('the app cannot read the tables directly', ASKER, `select * from public.approval_steps`, 'permission denied');
+  await expectOk('the requester marks it completed', ASKER, `select public.approval_complete($1, 'Fan replaced')`, [A]);
+  await expectError('a completed request cannot be cancelled', ASKER, `select public.approval_cancel($1)`, 'cannot be cancelled', [A]);
+
+  // ------------------------------------------------ flow 2: L1 rejects
+  const B = await val(ASKER, `select public.approval_save($1::jsonb, null, true) v`,
+    [JSON.stringify({ category: 'maintenance', title: 'New pressure washer', amount: 45000 })]);
+  await expectError('a rejection needs a reason', HEAD, `select public.approval_act($1, 'reject')`, 'reason', [await stepOf(B, 1)]);
+  await expectOk('Level 1 rejects it', HEAD, `select public.approval_act($1, 'reject', 'Use the existing washer')`, [await stepOf(B, 1)]);
+  {
+    const d = await detail(ASKER, B);
+    d.request.status === 'rejected' && d.steps.map((x) => x.status).join(',') === 'rejected,locked' && d.request.decision_note === 'Use the existing washer'
+      ? ok('rejected at Level 1; Level 2 never opens') : bad('reject state', JSON.stringify(d.steps));
+  }
+  await expectError('Level 2 cannot act on a rejected request', FIN, `select public.approval_act($1, 'approve')`, 'nothing to approve', [await stepOf(B, 2)]);
+  (await unread(ASKER, 'approval.rejected', B)) === 1 ? ok('the requester is told it was rejected') : bad('reject notification', 'missing');
+  await expectError('a rejected request cannot be edited', ASKER, `select public.approval_save($1::jsonb, $2, true)`, 'can no longer be edited',
+    [JSON.stringify({ category: 'maintenance', title: 'New pressure washer' }), B]);
+  await expectError('reopening needs an admin', ASKER, `select public.approval_reopen($1, 'please')`, 'only an admin', [B]);
+  await expectOk('an admin reopens it with a reason', OWNER, `select public.approval_reopen($1, 'Budget approved after all')`, [B]);
+  await expectValue('reopened: back to Level 1 in a new round', ASKER,
+    `select (public.approval_detail($1)->'request'->>'status') || ' / ' || (public.approval_detail($1)->'request'->>'round')`, 'pending / 2', [B]);
+  await expectError('an admin cancelling needs a reason', OWNER, `select public.approval_cancel($1)`, 'reason', [B]);
+  await expectOk('an admin cancels it', OWNER, `select public.approval_cancel($1, 'Duplicate')`, [B]);
+  await expectError('a cancelled request cannot be approved', HEAD, `select public.approval_act($1, 'approve')`, 'nothing to approve', [await stepOf(B, 1)]);
+
+  // ------------------------------------------------ flow 3: return -> resubmit -> L1 -> L2
+  const C = await val(ASKER, `select public.approval_save($1::jsonb, null, true) v`,
+    [JSON.stringify({ category: 'maintenance', title: 'Module cleaning kit', amount: 8000 })]);
+  await expectError('returning needs a reason', HEAD, `select public.approval_act($1, 'return', '  ')`, 'reason', [await stepOf(C, 1)]);
+  await expectOk('Level 1 returns it for changes', HEAD, `select public.approval_act($1, 'return', 'Attach two quotations')`, [await stepOf(C, 1)]);
+  (await statusOf(C)) === 'returned' && (await unread(ASKER, 'approval.returned', C)) === 1
+    ? ok('Returned for Changes, requester notified') : bad('return', await statusOf(C));
+  await expectError('a returned request cannot be approved', HEAD, `select public.approval_act($1, 'approve')`, 'nothing to approve', [await stepOf(C, 1)]);
+  await expectOk('the requester edits and resubmits it', ASKER, `select public.approval_save($1::jsonb, $2, true)`,
+    [JSON.stringify({ category: 'maintenance', title: 'Module cleaning kit', amount: 7600, note: 'Two quotations attached' }), C]);
+  {
+    const d = await detail(ASKER, C);
+    const now = d.steps.filter((x) => x.round === 2).map((x) => x.status).join(',');
+    const before = d.steps.filter((x) => x.round === 1).map((x) => x.status).join(',');
+    const edit = d.timeline.find((x) => x.action === 'edited');
+    d.request.status === 'pending' && now === 'pending,locked' && before === 'returned,locked' && edit?.meta?.changes?.amount?.to === 7600
+      ? ok('resubmitted: a new round from Level 1, the first round and the edit kept')
+      : bad('resubmit', JSON.stringify({ s: d.request.status, now, before, edit }));
+  }
+  await expectOk('Level 1 approves the resubmission', HEAD, `select public.approval_act($1, 'approve')`, [await stepOf(C, 1)]);
+  await expectOk('Level 2 approves', FIN, `select public.approval_act($1, 'approve')`, [await stepOf(C, 2)]);
+  await expectValue('approved, with the whole history', ASKER,
+    `select (public.approval_detail($1)->'request'->>'status') || ' / ' ||
+            (select string_agg(t->>'action', ',') from jsonb_array_elements(public.approval_detail($1)->'timeline') t)`,
+    'approved / created,submitted,returned,edited,resubmitted,approved,approved', [C]);
+
+  // ------------------------------------------------ reassigning, workflow changes
+  const D = await val(ASKER, `select public.approval_save($1::jsonb, null, true) v`,
+    [JSON.stringify({ category: 'maintenance', title: 'Ladder for roof access', priority: 'urgent' })]);
+  await expectOk('the admin changes the template after submission', OWNER, `select public.approval_save_workflow($1::jsonb)`,
+    [JSON.stringify({ ...wf, id: WF, levels: [...wf.levels, { name: 'Director', approver_type: 'role', approver_role_id: role.director }] })]);
+  await expectValue('a request in flight keeps its own levels', ASKER,
+    `select jsonb_array_length(public.approval_detail($1)->'steps')`, 2, [D]);
+  await expectError('only an admin reassigns', ASKER, `select public.approval_reassign($1, $2)`, 'only an admin', [await stepOf(D, 1), otherEmp]);
+  await expectError('the requester cannot be made the approver', OWNER, `select public.approval_reassign($1, $2)`, 'cannot approve their own',
+    [await stepOf(D, 1), (await asSystem('select employee_id from public.profiles where id = $1', [ASKER])).rows[0].employee_id]);
+  await expectOk('the admin reassigns Level 1 (approver on leave)', OWNER, `select public.approval_reassign($1, $2, null, 'Banwari on leave')`, [await stepOf(D, 1), otherEmp]);
+  await expectError('the previous approver can no longer act', HEAD, `select public.approval_act($1, 'approve')`, 'not the approver', [await stepOf(D, 1)]);
+  (await unread(SUB, 'approval.waiting', D)) === 1 ? ok('the new approver is notified') : bad('reassign notification', 'missing');
+  await expectOk('the stand-in approves', SUB, `select public.approval_act($1, 'approve')`, [await stepOf(D, 1)]);
+  await expectError('a decided level cannot be reassigned', OWNER, `select public.approval_reassign($1, $2)`, 'already approved', [await stepOf(D, 1), banwariEmp]);
+  await expectValue('the dashboard counts urgent open requests', OWNER,
+    `select (public.list_approvals('{}')->'counts'->>'urgent')::int >= 1`, true);
+  await expectValue('the list filters, sorts and pages', OWNER,
+    `select (x->>'total')::int || ' / ' || jsonb_array_length(x->'rows') || ' / ' || (x->'rows'->0->>'request_no')
+       from public.list_approvals('{"category":"maintenance","sort":"request_no","dir":"asc","page_size":5,"page":1}') x`,
+    `4 / 4 / ${(await asSystem('select request_no from public.approval_requests where id = $1', [A])).rows[0].request_no}`);
+  await expectValue('an outsider sees none of it', OTHER, `select (public.list_approvals('{}')->>'total')::int`, 0);
+  await expectError('nor opens one', OTHER, `select public.approval_detail($1)`, 'cannot see it', [A]);
+
+  // ------------------------------------------------ documents
+  const path = (id, n) => `approvals/${id}/${n}`;
+  const DOC = await val(ASKER, `select public.approval_add_document($1, $2::jsonb) v`,
+    [D, JSON.stringify({ file_name: 'quote.pdf', storage_path: path(D, 'a-quote.pdf'), size_bytes: 1200, mime_type: 'application/pdf' })]);
+  DOC ? ok('the requester attaches a PDF') : bad('attach', 'no id');
+  await expectError('only office files, PDFs and images', ASKER, `select public.approval_add_document($1, $2::jsonb)`, 'Only PDF',
+    [D, JSON.stringify({ file_name: 'tool.exe', storage_path: path(D, 'tool.exe') })]);
+  await expectError('the file must be under the request', ASKER, `select public.approval_add_document($1, $2::jsonb)`, 'not uploaded to this request',
+    [D, JSON.stringify({ file_name: 'x.pdf', storage_path: path(A, 'x.pdf') })]);
+  await expectError('an outsider cannot attach', OTHER, `select public.approval_add_document($1, $2::jsonb)`, 'cannot add documents',
+    [D, JSON.stringify({ file_name: 'x.pdf', storage_path: path(D, 'x.pdf') })]);
+  await expectError('a Level 2 approver cannot attach before their level opens', SUB, `select public.approval_add_document($1, $2::jsonb)`, 'cannot add',
+    [A, JSON.stringify({ file_name: 'x.pdf', storage_path: path(A, 'x.pdf') })]);
+  await expectOk('a new version keeps the old one', ASKER, `select public.approval_add_document($1, $2::jsonb, $3)`,
+    [D, JSON.stringify({ file_name: 'quote-v2.pdf', storage_path: path(D, 'b-quote-v2.pdf'), note: 'Revised price' }), DOC]);
+  await expectValue('two versions, the newest first', FIN,
+    `select (d->>'current_version') || ' / ' || (select string_agg(v->>'file_name', ',') from jsonb_array_elements(d->'versions') v)
+       from jsonb_array_elements(public.approval_detail($1)->'documents') d`, '2 / quote-v2.pdf,quote.pdf', [D]);
+  await asSystem(`insert into storage.objects (bucket_id, name) values ('documents', $1)`, [path(D, 'b-quote-v2.pdf')]);
+  await expectRows('the approver can open the file', FIN, `select 1 from storage.objects where name = $1`, 1, [path(D, 'b-quote-v2.pdf')]);
+  await expectRows('an outsider cannot', OTHER, `select 1 from storage.objects where name = $1`, 0, [path(D, 'b-quote-v2.pdf')]);
+  await expectError('an approver cannot delete the requester’s file', FIN, `select public.approval_delete_document($1)`, 'cannot delete', [DOC]);
+  await expectOk('the requester deletes it', ASKER, `select public.approval_delete_document($1, 'Wrong vendor')`, [DOC]);
+  await expectValue('it is gone for the requester', ASKER, `select jsonb_array_length(public.approval_detail($1)->'documents')`, 0, [D]);
+  await expectValue('but kept, marked deleted, for the admin', OWNER,
+    `select (public.approval_detail($1)->'documents'->0->>'deleted_at') is not null`, true, [D]);
+  await sysError('versions can never be removed', `delete from public.approval_document_versions where document_id = $1`, 'cannot be changed', [DOC]);
+  await expectValue('the timeline has the uploads and the deletion', ASKER,
+    `select string_agg(t->>'action', ',') from jsonb_array_elements(public.approval_detail($1)->'timeline') t where t->>'action' like 'document%'`,
+    'document_added,document_version,document_deleted', [D]);
+  await expectOk('comments are added', FIN, `select public.approval_add_comment($1, 'Will review tomorrow')`, [D]);
+  {
+    const n = (await asSystem(`select count(*)::int n from public.audit_logs where entity_table = 'approval_steps' and changes ? 'status'`)).rows[0].n;
+    n > 0 ? ok('level changes reach the audit log with old and new values') : bad('audit', 'no approval_steps rows');
+  }
+
+  // ------------------------------------------------ department head, self-skip
+  const P = await val(ASKER, `select public.approval_save($1::jsonb, null, true) v`,
+    [JSON.stringify({ category: 'purchase', title: 'Safety shoes', amount: 2400 })]);
+  {
+    const head = (await asSystem(`select d.head_employee_id h from public.employees e join public.departments d on d.id = e.department_id
+                                  where e.id = (select employee_id from public.profiles where id = $1)`, [ASKER])).rows[0]?.h ?? null;
+    const d = await detail(ASKER, P);
+    (d.steps[0].approver_employee_id ?? null) === head && d.request.status === (head ? 'pending' : 'submitted')
+      ? ok('Purchase Level 1 goes to the head of the requester’s department')
+      : bad('department head', JSON.stringify({ head, step: d.steps[0], status: d.request.status }));
+  }
+  const H = await val(HEAD, `select public.approval_save($1::jsonb, null, true) v`,
+    [JSON.stringify({ category: 'purchase', title: 'Printer cartridges', amount: 3000 })]);
+  {
+    const d = await detail(HEAD, H);
+    d.steps.map((x) => x.status).join(',') === 'skipped,pending,locked' && d.request.current_level === 2
+      && d.timeline.some((x) => x.action === 'level_skipped')
+      ? ok('a head’s own request skips their level and goes to Finance')
+      : bad('self skip', JSON.stringify(d.steps.map((x) => [x.name, x.status])));
+  }
+  await expectOk('Finance approves it', FIN, `select public.approval_act($1, 'approve')`, [await stepOf(H, 2)]);
+  await expectValue('nobody holds the Director role yet: In Review, admins told to assign someone', OWNER,
+    `select (public.approval_detail($1)->'request'->>'status') || ' / ' || (public.approval_detail($1)->'steps'->2->>'unassigned')`, 'in_review / true', [H]);
+  (await unread(OWNER, 'approval.unassigned', H)) === 1 ? ok('the admin is notified') : bad('unassigned notice', 'missing');
+  await expectValue('the requester has unread notifications', ASKER, `select (public.my_notifications(10)->>'unread')::int > 0`, true);
+  await expectOk('and marks them all read', ASKER, `select public.mark_notifications_read(null)`);
+  await expectValue('none unread now', ASKER, `select (public.my_notifications(10)->>'unread')::int`, 0);
+  await expectValue('nobody sees anyone else’s notifications', ASKER,
+    `select count(*)::int from jsonb_array_elements(public.my_notifications(100)->'rows') r where r->>'kind' = 'approval.waiting'`, 0);
 }
 
 console.log('\nToday in the company (dashboard)');

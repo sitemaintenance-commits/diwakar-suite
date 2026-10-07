@@ -3,6 +3,7 @@ import { Link, Outlet } from 'react-router';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { CalendarDays, LogOut, Menu, UserRound } from 'lucide-react';
 import { Sidebar } from '@/components/layout/Sidebar';
+import { NotificationsBell } from '@/components/layout/NotificationsBell';
 import { Button } from '@/components/ui/button';
 import { Dialog, SheetContent } from '@/components/ui/dialog';
 import {
@@ -71,6 +72,7 @@ function Topbar({ onMenu }: { onMenu: () => void }) {
         {today}
       </div>
       <div className="flex-1" />
+      <NotificationsBell />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-left hover:bg-muted" aria-label="Account menu">

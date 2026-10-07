@@ -49,6 +49,8 @@ import { SiteTeamsPage } from '@/features/om/team/SiteTeamsPage';
 import { AnalyticsPage } from '@/features/om/analytics/AnalyticsPage';
 import { DocumentsPage, SectionDocumentsButton } from '@/features/documents/SectionDocuments';
 import { ApprovalsPage } from '@/features/approvals/ApprovalsPage';
+import { ApprovalDetailPage } from '@/features/approvals/ApprovalDetailPage';
+import { WorkflowSettingsPage } from '@/features/approvals/WorkflowSettingsPage';
 import { registerPageHeaderExtra } from '@/components/common';
 
 // Every section's page header carries its Documents button.
@@ -77,6 +79,8 @@ export const router = createBrowserRouter([
       { path: 'profile', element: <ProfilePage /> },
       { path: 'documents', element: guard('documents', <DocumentsPage />) },
       { path: 'approvals', element: guard('approvals', <ApprovalsPage />) },
+      { path: 'approvals/workflows', element: guard('approvals', <WorkflowSettingsPage />) },
+      { path: 'approvals/:id', element: guard('approvals', <ApprovalDetailPage />) },
       { path: '403', element: <ForbiddenPage /> },
 
       // CRM & Tenders
