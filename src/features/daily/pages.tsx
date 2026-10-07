@@ -135,9 +135,19 @@ function DepartmentHead({ name }: { name: string }) {
   return head ? <div className="text-xs text-muted-foreground">Head: {head}</div> : null;
 }
 
-function emptyMetricsFor(departmentName: string): Metric[] {
-  const labels = DEFAULT_METRICS_BY_DEPARTMENT[departmentName];
+/** A new report's rows: the department's own (setting daily_report_rows), else the usual ones. */
+function emptyMetricsFor(departmentName: string, saved?: unknown): Metric[] {
+  const labels = Array.isArray(saved) ? (saved as string[]) : DEFAULT_METRICS_BY_DEPARTMENT[departmentName];
   return labels?.length ? labels.map((label) => ({ label, value: '' })) : [{ label: '', value: '' }];
+}
+
+/** Keep a department's rows for its next report. */
+async function saveDepartmentRows(departmentId: string, rows: Metric[]) {
+  const { error } = await supabase.rpc('set_department_report_rows', {
+    p_department: departmentId,
+    p_labels: rows.map((m) => m.label.trim()).filter(Boolean),
+  });
+  if (error) throw error;
 }
 
 interface DeptReport {
@@ -319,6 +329,8 @@ function ReportEditor({
   onSaved: () => Promise<void>;
 }) {
   const can = useCan('daily.reports');
+  const { setting, refresh: refreshAccess } = useAccess();
+  const savedRows = setting<Record<string, unknown>>('daily_report_rows', {});
   // The form asks only for the department's numbers and today's key remarks,
   // as the legacy Daily Review sheet does.
   const [work, setWork] = useState('');
@@ -331,26 +343,39 @@ function ReportEditor({
     const r = entry?.report;
     setWork(r?.work_completed ?? '');
     // A filed report shows exactly what was saved -- rows deleted from it stay deleted;
-    // only a new report starts from the department's usual rows.
+    // a new report starts from the department's own rows.
     setMetrics(r
       ? (r.metrics?.length ? r.metrics.map((m) => ({ ...m })) : [{ label: '', value: '' }])
-      : emptyMetricsFor(entry?.name ?? ''));
+      : emptyMetricsFor(entry?.name ?? '', entry ? savedRows[entry.departmentId] : undefined));
+    // Only when another report is opened: a refreshed setting must not wipe what is being typed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry]);
 
   if (!entry) return null;
   const locked = entry.report?.status === 'reviewed' && !can.edit;
 
   /**
-   * The bin on a row. On a report already filed the row is deleted there and
-   * then (with whatever else has been typed), so it does not come back on a
-   * refresh; on a new report it just leaves the form.
+   * The bin on a row. The row leaves the department's rows there and then, so
+   * it does not come back on a refresh or on the next day's report; on a
+   * report already filed it is also deleted from that report.
    */
   async function removeMetric(i: number) {
     const next = metrics.filter((_, j) => j !== i);
     setMetrics(next.length ? next : [{ label: '', value: '' }]);
     const r = entry!.report;
     const removed = metrics[i];
-    if (!r || locked || !removed.label.trim() || !removed.value.trim()) return;
+    if (locked) return;
+    if (removed.label.trim()) {
+      try {
+        await saveDepartmentRows(entry!.departmentId, next);
+        await refreshAccess();
+      } catch (e) {
+        setMetrics(metrics);
+        return toast.error(errorMessage(e));
+      }
+      if (!r) toast.success(`"${removed.label}" removed`);
+    }
+    if (!r || !removed.label.trim() || !removed.value.trim()) return;
     const items = next.filter((m) => m.label.trim() && m.value.trim());
     if (!items.length && !work.trim() && !r.issues?.trim() && !r.next_day_plan?.trim() && !r.remarks?.trim() && !r.reviews?.length) {
       toast.info('Row removed. Save to clear the report.');
@@ -421,6 +446,13 @@ function ReportEditor({
     });
     setBusy(false);
     if (error) return toast.error(errorMessage(error));
+    // Rows added or renamed today are there again tomorrow.
+    try {
+      await saveDepartmentRows(entry!.departmentId, metrics);
+      await refreshAccess();
+    } catch {
+      /* the report is saved; its rows are kept next time */
+    }
     toast.success(status === 'submitted' ? 'Report submitted' : 'Draft saved');
     await onSaved();
     onClose();

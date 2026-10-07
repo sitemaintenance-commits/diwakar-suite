@@ -2378,6 +2378,19 @@ console.log('\nApprovals - chosen approvers, then the Accounts head');
   await asSystem(`delete from public.app_settings where key = 'approval_final_approver'`);
 }
 
+console.log('\nDepartment Review - each department keeps its rows');
+{
+  const COORD = (await asSystem("select id from auth.users where email = 'coordinator@diwakarsolar.test'")).rows[0].id;
+  const EMPL = (await asSystem("select id from auth.users where email = 'ketan.login@diwakarsolar.test'")).rows[0].id;
+  const adminDept = (await asSystem("select id from public.departments where name = 'Admin' limit 1")).rows[0].id;
+  await expectOk('the coordinator deletes a row (it leaves the department\'s rows)', COORD,
+    `select public.set_department_report_rows($1, array['Office housekeeping', 'Facility & asset status', '  ', 'Office housekeeping'])`, [adminDept]);
+  await expectValue('the deleted row stays deleted after a refresh, without blanks or repeats', COORD,
+    `select public.get_my_access()->'settings'->'daily_report_rows'->>$1::text`, '["Office housekeeping", "Facility & asset status"]', [adminDept]);
+  await expectError('someone who cannot file reports cannot change them', EMPL,
+    `select public.set_department_report_rows($1, array['x'])`, 'Access denied', [adminDept]);
+}
+
 console.log('\nToday in the company (dashboard)');
 await expectValue('the Super Admin sees one card per section', OWNER,
   `select string_agg(x->>'key', ',' order by x->>'key') from jsonb_array_elements(public.get_company_today()->'sections') x`,
