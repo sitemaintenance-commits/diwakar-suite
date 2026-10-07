@@ -143,7 +143,6 @@ export function GenerationPage() {
                           <tr className="border-y text-xs uppercase tracking-wide text-muted-foreground">
                             <th className="px-4 py-2 text-left font-semibold">Site</th>
                             <th className="w-32 px-2 py-2 text-right font-semibold">Generation kWh</th>
-                            <th className="w-32 px-2 py-2 text-right font-semibold">Expected kWh</th>
                             <th className="w-28 px-2 py-2 text-right font-semibold">Irradiation</th>
                             <th className="w-24 px-2 py-2 text-right font-semibold">Grid out (h)</th>
                             <th className="w-24 px-2 py-2 text-right font-semibold">Plant out (h)</th>
@@ -165,9 +164,6 @@ export function GenerationPage() {
                                 </td>
                                 <td className="px-2 py-2">
                                   <Input inputMode="decimal" value={e.generation_kwh} onChange={(ev) => setEntry(s.id, { generation_kwh: ev.target.value })} className="h-8 text-right" />
-                                </td>
-                                <td className="px-2 py-2">
-                                  <Input inputMode="decimal" value={e.expected_kwh} onChange={(ev) => setEntry(s.id, { expected_kwh: ev.target.value })} className="h-8 text-right" />
                                 </td>
                                 <td className="px-2 py-2">
                                   <Input inputMode="decimal" value={e.irradiation} onChange={(ev) => setEntry(s.id, { irradiation: ev.target.value })} className="h-8 text-right" placeholder="kWh/m²" />
@@ -229,7 +225,6 @@ function GenerationHistory() {
         { header: 'Date', value: (r) => r.gen_date },
         { header: 'Site', value: (r) => r.sites?.name },
         { header: 'Generation (kWh)', value: (r) => safeNum(r.generation_kwh) },
-        { header: 'Expected (kWh)', value: (r) => r.expected_kwh },
         { header: 'Irradiation (kWh/m2)', value: (r) => r.irradiation_kwh_m2 },
         { header: 'Grid outage (h)', value: (r) => safeNum(r.grid_outage_hrs) },
         { header: 'Plant outage (h)', value: (r) => safeNum(r.plant_outage_hrs) },
@@ -276,25 +271,17 @@ function GenerationHistory() {
               <TableHead>Date</TableHead>
               <TableHead>Site</TableHead>
               <TableHead className="text-right">Generation</TableHead>
-              <TableHead className="text-right">Expected</TableHead>
               <TableHead className="text-right">Outage (grid / plant)</TableHead>
               <TableHead>Remarks</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {history.data.rows.map((r) => {
-              const pct = r.expected_kwh ? (safeNum(r.generation_kwh) / safeNum(r.expected_kwh)) * 100 : null;
               return (
                 <TableRow key={r.id}>
                   <TableCell className="whitespace-nowrap">{fmtDate(r.gen_date)}</TableCell>
                   <TableCell className="font-medium">{r.sites?.name ?? '—'}</TableCell>
                   <TableCell className="tabular text-right font-medium">{fmtKwh(r.generation_kwh, 1)}</TableCell>
-                  <TableCell className="tabular text-right">
-                    {r.expected_kwh ? fmtKwh(r.expected_kwh, 1) : '—'}
-                    {pct !== null && (
-                      <div className={`text-xs ${pct >= 95 ? 'text-green-700' : pct >= 80 ? 'text-amber-600' : 'text-destructive'}`}>{fmtNumber(pct, 1)}%</div>
-                    )}
-                  </TableCell>
                   <TableCell className="tabular text-right text-sm">
                     {fmtNumber(r.grid_outage_hrs, 2)} / {fmtNumber(r.plant_outage_hrs, 2)} h
                   </TableCell>
