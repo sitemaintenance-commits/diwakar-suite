@@ -1,7 +1,12 @@
-// Send a document to anyone by email, as an attachment, from the suite.
-// The email goes out through the send-document function; until email is set
-// up (or for a quick send from a phone) the document can also be shared with
-// the phone's apps, or emailed as a download link that works for 7 days.
+// Send a document to anyone by email, from the sender's own email account:
+//   * Open in Gmail -- the sender's Gmail opens a new message, filled in,
+//     with a download link to the file (a website cannot attach a file to
+//     Gmail), and they press Send there.
+//   * Share file -- on a phone (and Chrome / Edge on Windows) the file itself
+//     goes to their Gmail / Outlook / WhatsApp app as an attachment.
+//   * Mail app -- the computer's mail program, with the download link.
+// The suite can also send it as an attachment from the company address
+// (send-document function) once email is set up.
 import { useEffect, useState } from 'react';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { toast } from 'sonner';
@@ -33,7 +38,7 @@ export function SendDocumentDialog({ doc, onClose }: { doc: SendableDoc | null; 
   const [cc, setCc] = useState('');
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
-  const [busy, setBusy] = useState<'send' | 'share' | 'link' | null>(null);
+  const [busy, setBusy] = useState<'send' | 'share' | 'gmail' | 'app' | null>(null);
   const [notSetUp, setNotSetUp] = useState(false);
 
   useEffect(() => {
@@ -96,21 +101,36 @@ export function SendDocumentDialog({ doc, onClose }: { doc: SendableDoc | null; 
     }
   }
 
-  /** Open the mail app with a download link that works for a week. */
-  async function emailLink() {
-    setBusy('link');
+  /**
+   * A new message in the sender's own Gmail (or their computer's mail app),
+   * filled in, with a download link to the file that works for a week.
+   */
+  async function compose(where: 'gmail' | 'app') {
+    // Open the tab now: one opened after an await is often blocked.
+    const tab = where === 'gmail' ? window.open('', '_blank') : null;
+    setBusy(where);
     try {
       const { data, error } = await supabase.storage.from('documents')
         .createSignedUrl(d.storage_path, LINK_DAYS * 24 * 3600, { download: d.file_name });
       if (error || !data) throw error ?? new Error('Could not make a link.');
       const body = `${message ? `${message}\n\n` : ''}${d.file_name}:\n${data.signedUrl}\n\n(The link works for ${LINK_DAYS} days.)`;
-      const params = [
-        split(cc).length ? `cc=${encodeURIComponent(split(cc).join(','))}` : '',
-        `subject=${encodeURIComponent(subject || d.file_name)}`,
-        `body=${encodeURIComponent(body)}`,
-      ].filter(Boolean).join('&');
-      window.location.href = `mailto:${split(to).map(encodeURIComponent).join(',')}?${params}`;
+      const enc = encodeURIComponent;
+      if (where === 'gmail') {
+        const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${enc(split(to).join(','))}`
+          + (split(cc).length ? `&cc=${enc(split(cc).join(','))}` : '')
+          + `&su=${enc(subject || d.file_name)}&body=${enc(body)}`;
+        if (tab) tab.location.href = url;
+        else window.open(url, '_blank', 'noopener');
+      } else {
+        const params = [
+          split(cc).length ? `cc=${enc(split(cc).join(','))}` : '',
+          `subject=${enc(subject || d.file_name)}`,
+          `body=${enc(body)}`,
+        ].filter(Boolean).join('&');
+        window.location.href = `mailto:${split(to).map(enc).join(',')}?${params}`;
+      }
     } catch (e) {
+      tab?.close();
       toast.error(errorMessage(e));
     } finally {
       setBusy(null);
@@ -123,7 +143,7 @@ export function SendDocumentDialog({ doc, onClose }: { doc: SendableDoc | null; 
         <DialogHeader>
           <DialogTitle>Send document</DialogTitle>
           <DialogDescription>
-            {d.file_name}{d.size_bytes ? ` · ${fmtSize(d.size_bytes)}` : ''} goes as an email attachment.
+            {d.file_name}{d.size_bytes ? ` · ${fmtSize(d.size_bytes)}` : ''} — sent from your own email account.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
@@ -141,25 +161,33 @@ export function SendDocumentDialog({ doc, onClose }: { doc: SendableDoc | null; 
           </Field>
           {notSetUp && (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              Sending email from the suite is not switched on yet. Use <b>Email link</b> (opens your mail app with a download link) or <b>Share</b> on a phone for now.
+              Sending from the company address is not switched on yet. Use <b>Open in Gmail</b> or <b>Share file</b>.
             </p>
           )}
+        </div>
+        <div className="grid gap-2 rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
+          <p><b className="text-foreground">Open in Gmail</b> — your Gmail opens with everything filled in; press Send there. The file goes as a download link (works {LINK_DAYS} days).</p>
+          {canShareFiles && <p><b className="text-foreground">Share file</b> — the file itself goes to your Gmail / Outlook / WhatsApp app as an attachment.</p>}
         </div>
         <DialogFooter className="flex-wrap gap-2 sm:justify-between">
           <div className="flex gap-2">
             {canShareFiles && (
-              <Button variant="outline" disabled={!!busy} onClick={() => void share()} title="Share the file with WhatsApp, Gmail and other apps">
-                {busy === 'share' ? <Loader2 className="animate-spin" /> : <Share2 />} Share
+              <Button variant="outline" disabled={!!busy} onClick={() => void share()} title="Attach the file in your Gmail, Outlook or WhatsApp app">
+                {busy === 'share' ? <Loader2 className="animate-spin" /> : <Share2 />} Share file
               </Button>
             )}
-            <Button variant="outline" disabled={!!busy} onClick={() => void emailLink()} title={`Opens your mail app with a download link (works ${LINK_DAYS} days)`}>
-              {busy === 'link' ? <Loader2 className="animate-spin" /> : <Link2 />} Email link
+            <Button variant="outline" disabled={!!busy} onClick={() => void compose('app')} title="Your computer's mail program, with a download link">
+              {busy === 'app' ? <Loader2 className="animate-spin" /> : <Link2 />} Mail app
             </Button>
           </div>
-          <Button disabled={!!busy} onClick={() => void send()}>
-            {busy === 'send' ? <Loader2 className="animate-spin" /> : <Mail />} Send email
+          <Button disabled={!!busy} onClick={() => void compose('gmail')}>
+            {busy === 'gmail' ? <Loader2 className="animate-spin" /> : <Mail />} Open in Gmail
           </Button>
         </DialogFooter>
+        <button type="button" disabled={!!busy} onClick={() => void send()}
+          className="-mt-2 self-end text-right text-xs text-muted-foreground underline-offset-2 hover:underline disabled:opacity-50">
+          {busy === 'send' ? 'Sending…' : 'Or send it as an attachment from the company address'}
+        </button>
       </DialogContent>
     </Dialog>
   );
