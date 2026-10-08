@@ -6,7 +6,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, Download, Eye, FileArchive, FileImage, FileSpreadsheet, FileText, Loader2, Paperclip, Pencil, Trash2, Upload, X,
+  AlertTriangle, Download, Eye, FileArchive, FileImage, FileSpreadsheet, FileText, Loader2, Mail, Paperclip, Pencil, Trash2, Upload, X,
 } from 'lucide-react';
 import { errorMessage } from '@/lib/errors';
 import { exportXlsx } from '@/lib/export';
@@ -25,6 +25,7 @@ import {
   BLOCKED_FILE, DOC_CATEGORIES, MAX_FILE_BYTES, canPreview, docKeys, fetchDocuments, openDocument, removeDocument,
   updateDocument, uploadSectionDocument, useDocumentList, type LibraryDoc,
 } from '@/features/documents/api';
+import { SendDocumentDialog } from '@/features/documents/SendDocumentDialog';
 
 const ALL = '__all__';
 const NONE = '__none__';
@@ -140,6 +141,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
 
   // ------------------------------------------------------ edit / delete
   const [editing, setEditing] = useState<LibraryDoc | null>(null);
+  const [sending, setSending] = useState<LibraryDoc | null>(null);
   const [removing, setRemoving] = useState<LibraryDoc | null>(null);
 
   async function onExport() {
@@ -314,6 +316,9 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
                       onClick={() => void openDocument(d, true).catch((e) => toast.error(errorMessage(e)))}>
                       <Download />
                     </Button>
+                    <Button variant="ghost" size="icon-sm" aria-label="Send by email" title="Send by email" onClick={() => setSending(d)}>
+                      <Mail />
+                    </Button>
                     {d.can_edit && (
                       <Button variant="ghost" size="icon-sm" aria-label="Edit details" title="Edit details" onClick={() => setEditing(d)}>
                         <Pencil />
@@ -341,6 +346,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
       )}
 
       <EditDocumentDialog doc={editing} categories={categories} onClose={() => setEditing(null)} />
+      <SendDocumentDialog doc={sending} onClose={() => setSending(null)} />
       <ConfirmDialog
         open={Boolean(removing)}
         onOpenChange={(o) => !o && setRemoving(null)}

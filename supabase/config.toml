@@ -79,3 +79,9 @@ verify_jwt = true
 #   npx supabase secrets set GEMINI_API_KEY=... TAVILY_API_KEY=...
 [functions.tender-ai]
 verify_jwt = true
+
+# Emails documents as attachments through Resend. Needs RESEND_API_KEY and
+# MAIL_FROM (an address on a domain verified in Resend):
+#   npx supabase secrets set RESEND_API_KEY=... MAIL_FROM="Diwakar Solar <documents@diwakarsolar.com>"
+[functions.send-document]
+verify_jwt = true
