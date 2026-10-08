@@ -1,16 +1,15 @@
-// Send a document to anyone by email, from the sender's own email account:
-//   * Open in Gmail -- the sender's Gmail opens a new message, filled in,
+// Send a document to anyone by email:
+//   * Send email -- the suite emails the file as an attachment from the
+//     company Gmail (send-document function); replies go to the sender.
+//   * Open in Gmail -- the sender's own Gmail opens a new message, filled in,
 //     with a download link to the file (a website cannot attach a file to
 //     Gmail), and they press Send there.
 //   * Share file -- on a phone (and Chrome / Edge on Windows) the file itself
-//     goes to their Gmail / Outlook / WhatsApp app as an attachment.
-//   * Mail app -- the computer's mail program, with the download link.
-// The suite can also send it as an attachment from the company address
-// (send-document function) once email is set up.
+//     goes to their Gmail / Outlook / WhatsApp app.
 import { useEffect, useState } from 'react';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { toast } from 'sonner';
-import { Link2, Loader2, Mail, Share2 } from 'lucide-react';
+import { Link2, Loader2, Mail, Send, Share2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
 import { fmtNumber } from '@/lib/format';
@@ -143,7 +142,7 @@ export function SendDocumentDialog({ doc, onClose }: { doc: SendableDoc | null; 
         <DialogHeader>
           <DialogTitle>Send document</DialogTitle>
           <DialogDescription>
-            {d.file_name}{d.size_bytes ? ` · ${fmtSize(d.size_bytes)}` : ''} — sent from your own email account.
+            {d.file_name}{d.size_bytes ? ` · ${fmtSize(d.size_bytes)}` : ''} goes as an attachment from the company email. Replies come to you.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
@@ -161,13 +160,13 @@ export function SendDocumentDialog({ doc, onClose }: { doc: SendableDoc | null; 
           </Field>
           {notSetUp && (
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              Sending from the company address is not switched on yet. Use <b>Open in Gmail</b> or <b>Share file</b>.
+              Sending from the company email is not switched on yet. Use <b>Open in Gmail</b> or <b>Share file</b> for now.
             </p>
           )}
         </div>
-        <div className="grid gap-2 rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
-          <p><b className="text-foreground">Open in Gmail</b> — your Gmail opens with everything filled in; press Send there. The file goes as a download link (works {LINK_DAYS} days).</p>
-          {canShareFiles && <p><b className="text-foreground">Share file</b> — the file itself goes to your Gmail / Outlook / WhatsApp app as an attachment.</p>}
+        <div className="grid gap-1 rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
+          <p>Or from your own account: <b className="text-foreground">Open in Gmail</b> (sends a download link, works {LINK_DAYS} days)
+            {canShareFiles && <>, or <b className="text-foreground">Share file</b> (the file itself, to your mail or WhatsApp app)</>}.</p>
         </div>
         <DialogFooter className="flex-wrap gap-2 sm:justify-between">
           <div className="flex gap-2">
@@ -180,14 +179,15 @@ export function SendDocumentDialog({ doc, onClose }: { doc: SendableDoc | null; 
               {busy === 'app' ? <Loader2 className="animate-spin" /> : <Link2 />} Mail app
             </Button>
           </div>
-          <Button disabled={!!busy} onClick={() => void compose('gmail')}>
-            {busy === 'gmail' ? <Loader2 className="animate-spin" /> : <Mail />} Open in Gmail
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" disabled={!!busy} onClick={() => void compose('gmail')}>
+              {busy === 'gmail' ? <Loader2 className="animate-spin" /> : <Mail />} Open in Gmail
+            </Button>
+            <Button disabled={!!busy} onClick={() => void send()}>
+              {busy === 'send' ? <Loader2 className="animate-spin" /> : <Send />} Send email
+            </Button>
+          </div>
         </DialogFooter>
-        <button type="button" disabled={!!busy} onClick={() => void send()}
-          className="-mt-2 self-end text-right text-xs text-muted-foreground underline-offset-2 hover:underline disabled:opacity-50">
-          {busy === 'send' ? 'Sending…' : 'Or send it as an attachment from the company address'}
-        </button>
       </DialogContent>
     </Dialog>
   );

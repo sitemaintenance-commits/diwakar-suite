@@ -80,8 +80,8 @@ verify_jwt = true
 [functions.tender-ai]
 verify_jwt = true
 
-# Emails documents as attachments through Resend. Needs RESEND_API_KEY and
-# MAIL_FROM (an address on a domain verified in Resend):
-#   npx supabase secrets set RESEND_API_KEY=... MAIL_FROM="Diwakar Solar <documents@diwakarsolar.com>"
+# Emails documents as attachments from the company Gmail. Needs the Gmail
+# address and an App Password for it (2-Step Verification must be on):
+#   npx supabase secrets set SMTP_USER=diwakarsolar.documents@gmail.com SMTP_PASS=...
 [functions.send-document]
 verify_jwt = true

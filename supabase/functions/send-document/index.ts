@@ -2,26 +2,29 @@
 //
 // Everything runs as the caller: the documents are read through RLS and the
 // files downloaded through the storage policies, so nobody can send a file
-// they could not open themselves. Mail goes out through Resend
-// (https://resend.com) with the caller as Reply-To.
+// they could not open themselves. Mail goes out from the company's Gmail
+// account (SMTP with an App Password, port 465 -- Supabase blocks 25 and
+// 587), with the person who pressed Send as Reply-To.
 //
 // Secrets:
-//   RESEND_API_KEY   the Resend API key
-//   MAIL_FROM        e.g. "Diwakar Solar <documents@diwakarsolar.com>" (a
-//                    domain verified in Resend)
+//   SMTP_USER   the Gmail address, e.g. diwakarsolar.documents@gmail.com
+//   SMTP_PASS   its 16-letter App Password (Google account > Security >
+//               2-Step Verification > App passwords)
+//   MAIL_NAME   optional display name, default "Diwakar Solar"
 //
 // Body: { document_ids: string[], to: string[], cc?: string[], subject: string, message?: string }
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { encodeBase64 } from 'jsr:@std/encoding@1/base64';
+import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts';
 import { corsHeaders, json } from '../_shared/cors.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
-const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? '';
-const MAIL_FROM = Deno.env.get('MAIL_FROM') ?? '';
+const SMTP_USER = (Deno.env.get('SMTP_USER') ?? '').trim();
+const SMTP_PASS = (Deno.env.get('SMTP_PASS') ?? '').replace(/\s+/g, '');
+const MAIL_NAME = (Deno.env.get('MAIL_NAME') ?? 'Diwakar Solar').replace(/["<>]/g, '');
 
 const EMAIL_RE = /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/;
-const MAX_TOTAL = 25 * 1024 * 1024;   // Resend allows 40 MB a message, base64 included
+const MAX_TOTAL = 18 * 1024 * 1024;   // Gmail takes 25 MB a message, and attachments grow by a third when encoded
 const MAX_RECIPIENTS = 20;
 const MAX_FILES = 10;
 
@@ -38,8 +41,8 @@ Deno.serve(async (req) => {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader?.startsWith('Bearer ')) return json(req, { error: 'Not signed in.' }, 401);
 
-  if (!RESEND_API_KEY || !MAIL_FROM) {
-    return json(req, { error: 'Email is not set up yet. Use Share or Email link for now.', code: 'not_configured' }, 503);
+  if (!SMTP_USER || !SMTP_PASS) {
+    return json(req, { error: 'Email is not set up yet. Use Open in Gmail or Share file for now.', code: 'not_configured' }, 503);
   }
 
   const caller = createClient(SUPABASE_URL, ANON_KEY, {
@@ -55,7 +58,7 @@ Deno.serve(async (req) => {
     const ids = Array.isArray(body.document_ids) ? body.document_ids.map(String).slice(0, MAX_FILES + 1) : [];
     const to = emails(body.to);
     const cc = emails(body.cc).filter((e) => !to.includes(e));
-    const subject = String(body.subject ?? '').trim().slice(0, 200);
+    const subject = String(body.subject ?? '').replace(/[\r\n]+/g, ' ').trim().slice(0, 200);
     const message = String(body.message ?? '').trim().slice(0, 5000);
 
     if (!ids.length) return json(req, { error: 'Choose a document to send.' }, 400);
@@ -73,13 +76,18 @@ Deno.serve(async (req) => {
     if (!docs || docs.length !== ids.length) return json(req, { error: 'A document was not found, or you cannot open it.' }, 403);
 
     const total = docs.reduce((n, d) => n + Number(d.size_bytes ?? 0), 0);
-    if (total > MAX_TOTAL) return json(req, { error: 'The files are larger than 25 MB together. Send fewer, or use Email link.' }, 400);
+    if (total > MAX_TOTAL) return json(req, { error: 'The files are larger than 18 MB together, which Gmail cannot take. Use Open in Gmail (sends a link) instead.' }, 400);
 
     const attachments = [];
     for (const d of docs) {
       const { data: blob, error } = await caller.storage.from('documents').download(d.storage_path);
       if (error || !blob) return json(req, { error: `Could not read ${d.file_name}.` }, 403);
-      attachments.push({ filename: d.file_name, content: encodeBase64(new Uint8Array(await blob.arrayBuffer())) });
+      attachments.push({
+        filename: d.file_name,
+        content: new Uint8Array(await blob.arrayBuffer()),
+        encoding: 'binary' as const,
+        contentType: d.mime_type || blob.type || 'application/octet-stream',
+      });
     }
 
     const { data: me } = await caller.from('profiles').select('full_name, email').eq('id', userData.user.id).single();
@@ -89,20 +97,31 @@ Deno.serve(async (req) => {
     const html = `<div style="font:14px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif;color:#0f172a">
       ${message ? `<p style="white-space:pre-line">${esc(message)}</p>` : ''}
       <p>Attached:</p><ul>${list}</ul>
-      <p style="color:#64748b;font-size:12px">Sent by ${esc(sender)} from the Diwakar Solar Management Suite.</p></div>`;
+      <p style="color:#64748b;font-size:12px">Sent by ${esc(sender)}${replyTo ? ` (${esc(replyTo)})` : ''} from the Diwakar Solar Management Suite. Replies go to ${esc(sender)}.</p></div>`;
+    const text = `${message ? message + '\n\n' : ''}Attached: ${docs.map((d) => d.file_name).join(', ')}\n\nSent by ${sender} from the Diwakar Solar Management Suite.`;
 
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: MAIL_FROM, to, cc: cc.length ? cc : undefined, reply_to: replyTo, subject, html,
-        text: `${message ? message + '\n\n' : ''}Attached: ${docs.map((d) => d.file_name).join(', ')}\n\nSent by ${sender} from the Diwakar Solar Management Suite.`,
-        attachments,
-      }),
+    const client = new SMTPClient({
+      connection: { hostname: 'smtp.gmail.com', port: 465, tls: true, auth: { username: SMTP_USER, password: SMTP_PASS } },
     });
-    const out = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      return json(req, { error: `The email could not be sent: ${out?.message ?? res.statusText}` }, 502);
+    try {
+      await client.send({
+        from: `${MAIL_NAME} <${SMTP_USER}>`,
+        to,
+        cc: cc.length ? cc : undefined,
+        replyTo,
+        subject,
+        content: text,
+        html,
+        attachments,
+      });
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      const hint = /auth|535|534|username|password/i.test(why)
+        ? 'Gmail refused the sign-in: check SMTP_USER and the App Password.'
+        : why;
+      return json(req, { error: `The email could not be sent. ${hint}` }, 502);
+    } finally {
+      await client.close().catch(() => {});
     }
 
     // Who sent which files to whom, in the audit log.
@@ -110,10 +129,10 @@ Deno.serve(async (req) => {
       p_action: 'document.emailed',
       p_module: 'documents',
       p_summary: `Emailed ${docs.length} document(s) to ${[...to, ...cc].join(', ')}`,
-      p_details: { document_ids: ids, files: docs.map((d) => d.file_name), to, cc, subject, email_id: out?.id ?? null },
+      p_details: { document_ids: ids, files: docs.map((d) => d.file_name), to, cc, subject },
     });
 
-    return json(req, { ok: true, id: out?.id ?? null, sent_to: [...to, ...cc] });
+    return json(req, { ok: true, sent_to: [...to, ...cc] });
   } catch (e) {
     return json(req, { error: e instanceof Error ? e.message : String(e) }, 500);
   }
