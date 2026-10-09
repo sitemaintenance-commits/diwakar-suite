@@ -2428,6 +2428,21 @@ console.log('\nDaily Entry from the technicians\' Google Sheet');
   await expectError('only the sync (service key) may write sheet rows', OWNER, `select public.sync_generation_sheet('[]'::jsonb)`, 'permission denied');
 }
 
+console.log('\nO&M site ranking (dashboard)');
+{
+  const EMPL = (await asSystem("select id from auth.users where email = 'ketan.login@diwakarsolar.test'")).rows[0].id;
+  const r = (await as(OWNER, 'select public.get_om_site_ranking() r')).rows[0].r;
+  const sites = r?.sites ?? [];
+  sites.length > 0 && sites.every((x) => ['best', 'good', 'attention'].includes(x.status) && x.reason) && sites[0].rank === 1
+    ? ok('the Super Admin gets every commissioned plant ranked best / good / needs attention, with the reason')
+    : bad('ranking', JSON.stringify(r).slice(0, 300));
+  const order = sites.map((x) => x.status);
+  order.lastIndexOf('best') <= Math.max(order.indexOf('attention'), order.length) && (order.indexOf('attention') === -1 || order.slice(order.indexOf('attention')).every((x) => x === 'attention'))
+    ? ok('plants needing attention come last')
+    : bad('ranking order', order.join(','));
+  await expectValue('an employee does not see the ranking', EMPL, 'select public.get_om_site_ranking() is null', true);
+}
+
 console.log('\nToday in the company (dashboard)');
 await expectValue('the Super Admin sees one card per section', OWNER,
   `select string_agg(x->>'key', ',' order by x->>'key') from jsonb_array_elements(public.get_company_today()->'sections') x`,

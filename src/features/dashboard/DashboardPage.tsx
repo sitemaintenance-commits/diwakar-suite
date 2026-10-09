@@ -8,6 +8,7 @@ import { BUILT_MODULES, iconFor } from '@/app/registry';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { CompanyToday } from '@/features/dashboard/CompanyToday';
+import { SiteRanking } from '@/features/dashboard/SiteRanking';
 
 function greeting() {
   const h = Number(new Intl.DateTimeFormat('en-IN', { hour: 'numeric', hour12: false, timeZone: 'Asia/Kolkata' }).format(new Date()));
@@ -39,6 +40,7 @@ export function DashboardPage() {
       </div>
 
       <CompanyToday fallback={<YourWorkspace />} />
+      <SiteRanking />
     </>
   );
 }
