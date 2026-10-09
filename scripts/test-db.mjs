@@ -2391,6 +2391,43 @@ console.log('\nDepartment Review - each department keeps its rows');
     `select public.set_department_report_rows($1, array['x'])`, 'Access denied', [adminDept]);
 }
 
+console.log('\nDaily Entry from the technicians\' Google Sheet');
+{
+  await asSystem(`update public.app_settings set value = jsonb_build_object('sheet_id', 'test-sheet', 'from', (current_date - 30)::text) where key = 'generation_sheet'`);
+  const day = (await asSystem(`select (current_date - 13)::text d`)).rows[0].d;
+  const row = (over = {}) => ({ site: 'Sadas', date: day, submitted_at: `${day}T19:30:00+05:30`,
+    readings: [{ label: 'INV-01', kwh: 1800 }, { label: 'INV-02', kwh: 1750.5 }], total: 3550.5,
+    had_failure: true, side: 'gss', windows: [{ kind: 'grid', from: '10:44', to: '11:26' }], timing: '10:44 AM - 11:26 AM',
+    reason: '33 kv line off', weather: 'Clear Weather', ...over });
+  const sync = async (rows) => (await asSystem('select public.sync_generation_sheet($1::jsonb) r', [JSON.stringify(rows)])).rows[0].r;
+  const rec = async () => (await asSystem(`select generation_kwh::text kwh, source, grid_outage_hrs::text grid, failure_side, failure_reason, weather,
+      jsonb_array_length(inverter_readings) inv from public.generation_records where site_id = $1 and gen_date = $2::date and deleted_at is null`, [site.Sadas, day])).rows[0];
+
+  const r1 = await sync([row(), row({ site: 'Nowhere' }), row({ date: '2020-01-01' })]);
+  r1.added === 1 && r1.unknown_sites[0] === 'Nowhere' && r1.outside_dates === 1
+    ? ok('a sheet answer becomes the day\'s entry; an unknown site and an old date are reported, not saved')
+    : bad('first sync', JSON.stringify(r1));
+  const a = await rec();
+  a && a.source === 'sheet' && Number(a.kwh) === 3550.5 && Number(a.grid) === 0.7 && a.failure_side === 'gss' && a.inv === 2 && a.weather === 'Clear Weather'
+    ? ok('with the inverter readings, the outage window as hours, the side, reason and weather')
+    : bad('saved row', JSON.stringify(a));
+  const r2 = await sync([row()]);
+  r2.unchanged === 1 ? ok('syncing the same answer again changes nothing') : bad('resync', JSON.stringify(r2));
+  const r3 = await sync([row({ submitted_at: `${day}T21:00:00+05:30`, total: 3600, had_failure: false })]);
+  const b = await rec();
+  r3.updated === 1 && Number(b.kwh) === 3600 && Number(b.grid) === 0 && b.failure_side === null
+    ? ok('a later answer for the same day updates it')
+    : bad('later answer', JSON.stringify({ r3, b }));
+  await expectOk('someone corrects the day in Daily Entry', OWNER,
+    `select public.save_field_entry($1, $2::date, '[{"label":"INV-01","kwh":1900},{"label":"INV-02","kwh":1800}]'::jsonb)`, [site.Sadas, day]);
+  const r4 = await sync([row({ submitted_at: `${day}T23:00:00+05:30`, total: 1 })]);
+  const c = await rec();
+  r4.kept_suite_version === 1 && c.source === 'field' && Number(c.kwh) === 3700
+    ? ok('and the sheet never overwrites a day edited in the suite')
+    : bad('suite wins', JSON.stringify({ r4, c }));
+  await expectError('only the sync (service key) may write sheet rows', OWNER, `select public.sync_generation_sheet('[]'::jsonb)`, 'permission denied');
+}
+
 console.log('\nToday in the company (dashboard)');
 await expectValue('the Super Admin sees one card per section', OWNER,
   `select string_agg(x->>'key', ',' order by x->>'key') from jsonb_array_elements(public.get_company_today()->'sections') x`,

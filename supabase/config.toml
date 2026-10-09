@@ -85,3 +85,9 @@ verify_jwt = true
 #   npx supabase secrets set SMTP_USER=diwakarsolar.documents@gmail.com SMTP_PASS=...
 [functions.send-document]
 verify_jwt = true
+
+# Reads the technicians' Google Form sheet into Daily Entry. Called by the
+# 30-minute scheduler (header x-sync-secret = SYNC_SECRET, no user JWT) and
+# by "Sync now"; the function checks the caller itself.
+[functions.sheet-sync]
+verify_jwt = false

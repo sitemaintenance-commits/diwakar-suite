@@ -10,11 +10,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CheckCircle2, ClipboardList, Loader2, Plus, Save, Sun, Trash2, TriangleAlert, Zap } from 'lucide-react';
+import { CheckCircle2, ClipboardList, FileSpreadsheet, Loader2, Plus, RefreshCw, Save, Sun, Trash2, TriangleAlert, Zap } from 'lucide-react';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
-import { fmtCapacity, fmtDate, fmtNumber, safeNum, todayIST } from '@/lib/format';
-import { useAccess } from '@/auth/AccessProvider';
+import { fmtCapacity, fmtDate, fmtNumber, fmtRelative, safeNum, todayIST } from '@/lib/format';
+import { useAccess, useCan } from '@/auth/AccessProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -100,9 +101,41 @@ const OTHER = 'Other';
 
 const label = (i: number) => `INV-${String(i + 1).padStart(2, '0')}`;
 
+interface SheetSync {
+  at?: string;
+  error?: string;
+  added?: number;
+  updated?: number;
+  kept_suite_version?: number;
+  unknown_sites?: string[];
+}
+
 export function DailyEntryPage() {
-  const { access } = useAccess();
+  const { access, setting, refresh: refreshAccess } = useAccess();
+  const can = useCan('om.daily_entry');
   const qc = useQueryClient();
+  const lastSync = setting<SheetSync | null>('generation_sheet_last_sync', null);
+  const [syncing, setSyncing] = useState(false);
+
+  /** Pull the technicians' Google Form sheet in now (it also runs every 30 minutes). */
+  async function syncNow() {
+    setSyncing(true);
+    try {
+      const { data: out, error } = await supabase.functions.invoke('sheet-sync', { body: {} });
+      if (error) {
+        const payload = error instanceof FunctionsHttpError ? await error.context.json().catch(() => null) : null;
+        throw new Error(payload?.error ?? error.message);
+      }
+      const r = out as SheetSync;
+      toast.success(`Google Sheet synced: ${fmtNumber(r.added)} new, ${fmtNumber(r.updated)} updated${r.kept_suite_version ? `, ${fmtNumber(r.kept_suite_version)} kept as edited here` : ''}.`);
+      loadedFor.current = '';
+      await Promise.all([qc.invalidateQueries({ queryKey: ['field-entry'] }), refreshAccess()]);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setSyncing(false);
+    }
+  }
   const [date, setDate] = useState(todayIST());
   const data = useFieldEntry(date);
   const [siteId, setSiteId] = useState('');
@@ -141,7 +174,14 @@ export function DailyEntryPage() {
     const e = site.entry;
     setFailure(!e ? '' : e.had_failure ?? (safeNum(e.grid_outage_hrs) + safeNum(e.plant_outage_hrs) > 0) ? 'yes' : 'no');
     setSide(e?.failure_side ?? '');
-    setReason(e?.failure_reason ?? '');
+    const listed = (data.data?.failure_reasons ?? []).some((r) => r.label === e?.failure_reason);
+    if (e?.source === 'sheet' && e.failure_reason && !listed) {
+      setReason(OTHER);
+      setRemarks([e.remarks, e.failure_reason].filter(Boolean).join('\n'));
+    } else {
+      setReason(e?.failure_reason ?? '');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [site, siteId, date]);
 
   const reasons = useMemo(
@@ -200,6 +240,24 @@ export function DailyEntryPage() {
         description={`Fill in today's readings for your site${firstName ? `, ${firstName}` : ''}. The O&M head sees them straight away.`}
       />
 
+      {(can.create || can.edit) && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border bg-card px-4 py-2.5 text-sm">
+          <FileSpreadsheet className="h-4 w-4 text-green-700" />
+          <span className="font-medium">Google Sheet</span>
+          <span className="text-muted-foreground">
+            {lastSync?.error
+              ? `last sync failed: ${lastSync.error}`
+              : lastSync?.at
+                ? `synced ${fmtRelative(lastSync.at)} · the technicians' form answers come in every 30 minutes`
+                : "the technicians' form answers come in every 30 minutes"}
+            {lastSync?.unknown_sites?.length ? ` · not matched to a site: ${lastSync.unknown_sites.join(', ')}` : ''}
+          </span>
+          <Button size="sm" variant="outline" className="ml-auto" disabled={syncing} onClick={() => void syncNow()}>
+            {syncing ? <Loader2 className="animate-spin" /> : <RefreshCw />} Sync now
+          </Button>
+        </div>
+      )}
+
       {data.isLoading ? (
         <Skeleton className="h-96 rounded-xl" />
       ) : data.error ? (
@@ -216,7 +274,11 @@ export function DailyEntryPage() {
             <CardHeader>
               <CardTitle>Daily generation form</CardTitle>
               <CardDescription>
-                {site?.entry ? (
+                {site?.entry?.source === 'sheet' ? (
+                  <span className="inline-flex items-center gap-1 text-green-700">
+                    <FileSpreadsheet className="h-4 w-4" /> From the technicians' Google Form — edit and save to correct it; the sheet will not change it again.
+                  </span>
+                ) : site?.entry ? (
                   <span className="inline-flex items-center gap-1 text-green-700">
                     <CheckCircle2 className="h-4 w-4" /> Already submitted for this day — saving again will correct it.
                   </span>
