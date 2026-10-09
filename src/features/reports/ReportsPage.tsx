@@ -126,6 +126,8 @@ function ReportBody({
   to: string;
 }) {
   const can = useCan(module);
+  // A project's value is stored as contract_value; it reads as Project Value.
+  const colLabel = (k: string) => (reportKey === 'projects' && k === 'contract_value' ? 'Project Value' : titleCase(k));
 
   // Postgres jsonb does not preserve key order, so each report states the
   // column order it wants to be read in.
@@ -170,7 +172,7 @@ function ReportBody({
 
   async function onExport() {
     if (!table.rows.length) return toast.error('Nothing to export for this period.');
-    const columns = table.columns.map((k) => ({ header: titleCase(k), value: (r: Row) => r[k] }));
+    const columns = table.columns.map((k) => ({ header: colLabel(k), value: (r: Row) => r[k] }));
     try {
       await exportCsv(module, `${reportKey}-report-${from}-to-${to}`, table.rows, columns);
     } catch (e) {
@@ -287,7 +289,7 @@ function ReportBody({
                 <TableRow>
                   {table.columns.map((k, i) => (
                     <TableHead key={k} className={i === 0 ? '' : 'text-right'}>
-                      {titleCase(k)}
+                      {colLabel(k)}
                     </TableHead>
                   ))}
                 </TableRow>

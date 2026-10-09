@@ -107,7 +107,7 @@ export function ProjectsPage() {
         { header: 'AC (kW)', value: (r) => safeNum(r.capacity_ac_kw) },
         { header: 'Stage', value: (r) => r.stage },
         { header: 'Progress %', value: (r) => safeNum(r.progress) },
-        { header: 'Contract value', value: (r) => safeNum(r.contract_value) },
+        { header: 'Project value', value: (r) => safeNum(r.contract_value) },
         { header: 'Target commissioning', value: (r) => r.target_commissioning ?? '' },
         { header: 'Manager', value: (r) => r.manager ?? '' },
       ]);
@@ -297,7 +297,7 @@ export function ProjectsPage() {
                         <TableHead className="text-right">Capacity</TableHead>
                         <TableHead>Stage</TableHead>
                         <TableHead className="text-right">Progress</TableHead>
-                        <TableHead className="text-right">Contract value</TableHead>
+                        <TableHead className="text-right">Project value</TableHead>
                         <TableHead>Target</TableHead>
                         <TableHead>Manager</TableHead>
                       </TableRow>
@@ -367,7 +367,7 @@ export function ProjectsPage() {
             <Field label="AC capacity (kW)">
               <Input type="number" value={form.capacity_ac_kw} onChange={(e) => setForm({ ...form, capacity_ac_kw: e.target.value })} />
             </Field>
-            <Field label="Contract value (₹)">
+            <Field label="Project value (₹)">
               <Input type="number" value={form.contract_value} onChange={(e) => setForm({ ...form, contract_value: e.target.value })} />
             </Field>
             <Field label="Stage">

@@ -105,7 +105,7 @@ export function ProjectDetailPage() {
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Capacity" value={fmtCapacity(p.capacity_kwp)} hint={`${fmtNumber(p.capacity_ac_kw)} kW AC`} />
-        <StatCard label="Contract value" value={fmtINR(p.contract_value, true)} tone="green" />
+        <StatCard label="Project value" value={fmtINR(p.contract_value, true)} tone="green" />
         <StatCard label="Started" value={p.start_date ? fmtDate(p.start_date) : '—'} tone="slate" />
         <StatCard
           label="Target commissioning"
