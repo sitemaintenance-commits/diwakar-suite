@@ -32,10 +32,10 @@ import { QuotationDetailPage } from '@/features/crm/quotations/QuotationDetailPa
 import { FollowUpsPage } from '@/features/crm/followups/FollowUpsPage';
 import { ProjectsPage } from '@/features/projects/ProjectsPage';
 import { ProjectDetailPage } from '@/features/projects/ProjectDetailPage';
-import { VendorsPage } from '@/features/projects/VendorsPage';
+import { VendorsSection } from '@/features/projects/VendorsSection';
 import { SiteUpdatesPage } from '@/features/projects/SiteUpdates';
 import {
-  ClientPaymentsPage, MaterialsPage, ProjectApprovalsPage, ProjectTasksPage, VendorBillsPage,
+  MaterialsPage, ProjectApprovalsPage, ProjectTasksPage,
 } from '@/features/projects/PortfolioPages';
 import { SolarSitesPage } from '@/features/om/sites/SolarSitesPage';
 import { DailyEntryPage } from '@/features/om/entry/DailyEntryPage';
@@ -105,13 +105,13 @@ export const router = createBrowserRouter([
         element: <Outlet />,
         children: [
           { index: true, element: guard('projects.projects', <ProjectsPage />) },
-          { path: 'vendors', element: guard('projects.vendors', <VendorsPage />) },
+          { path: 'vendors', element: guard('projects.vendors', <VendorsSection />) },
           { path: 'updates', element: guard('projects.updates', <SiteUpdatesPage />) },
           { path: 'tasks', element: guard('projects.milestones', <ProjectTasksPage />) },
           { path: 'approvals', element: guard('projects.approvals', <ProjectApprovalsPage />) },
           { path: 'materials', element: guard('projects.materials', <MaterialsPage />) },
-          { path: 'vendor-bills', element: guard('projects.bills', <VendorBillsPage />) },
-          { path: 'client-payments', element: guard('projects.payments', <ClientPaymentsPage />) },
+          { path: 'vendor-bills', element: <Navigate to="/projects/vendors?tab=bills" replace /> },
+          { path: 'client-payments', element: <Navigate to="/projects/vendors?tab=payments" replace /> },
           { path: ':id', element: guard('projects.projects', <ProjectDetailPage />) },
         ],
       },
