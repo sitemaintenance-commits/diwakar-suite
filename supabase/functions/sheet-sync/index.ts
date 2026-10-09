@@ -54,8 +54,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { data: setting } = await admin.from('app_settings').select('value').eq('key', 'generation_sheet').single();
-    const sheetId = String((setting?.value as { sheet_id?: string } | null)?.sheet_id ?? '').trim();
+    const { data: config, error: cfgErr } = await admin.rpc('generation_sheet_config');
+    if (cfgErr) throw new Error(cfgErr.message);
+    const sheetId = String((config as { sheet_id?: string } | null)?.sheet_id ?? '').trim();
     if (!/^[A-Za-z0-9_-]{20,}$/.test(sheetId)) {
       return json(req, { error: 'The Google Sheet is not set up yet.', code: 'not_configured' }, 503);
     }
@@ -75,15 +76,11 @@ Deno.serve(async (req) => {
     if (error) throw new Error(error.message);
 
     const summary = { at: new Date().toISOString(), by, tabs: read, rows: rows.length, ...(result as Record<string, unknown>) };
-    await admin.from('app_settings').upsert({ key: 'generation_sheet_last_sync', value: summary, updated_at: summary.at });
+    await admin.rpc('record_generation_sheet_sync', { p_summary: summary });
     return json(req, { ok: true, ...summary });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    await admin.from('app_settings').upsert({
-      key: 'generation_sheet_last_sync',
-      value: { at: new Date().toISOString(), by, error: message },
-      updated_at: new Date().toISOString(),
-    });
+    await admin.rpc('record_generation_sheet_sync', { p_summary: { at: new Date().toISOString(), by, error: message } });
     return json(req, { error: message }, 500);
   }
 });
