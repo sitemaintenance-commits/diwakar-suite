@@ -2443,6 +2443,17 @@ console.log('\nO&M site ranking (dashboard)');
   await expectValue('an employee does not see the ranking', EMPL, 'select public.get_om_site_ranking() is null', true);
 }
 
+console.log('\nProjects without an O&M site');
+{
+  const PM = (await asSystem("select id from auth.users where email = 'project.manager@diwakarsolar.test'")).rows[0].id;
+  await expectValue('the project manager has no sites assigned', PM, 'select cardinality(app.my_site_ids())', 0);
+  await expectOk('and still creates a project at a new location (no site yet)', PM,
+    `insert into public.projects (name, client_name, capacity_kwp, stage, state) values ('New plant at Chomu', 'GCPL', 3000, 'design', 'Rajasthan')`);
+  await expectRows('and sees it', PM, `select 1 from public.projects where name = 'New plant at Chomu'`, 1);
+  await expectError('but cannot link a project to a site that is not theirs', PM,
+    `insert into public.projects (name, site_id) values ('At Sadas', $1)`, 'row-level security', [site.Sadas]);
+}
+
 console.log('\nToday in the company (dashboard)');
 await expectValue('the Super Admin sees one card per section', OWNER,
   `select string_agg(x->>'key', ',' order by x->>'key') from jsonb_array_elements(public.get_company_today()->'sections') x`,
