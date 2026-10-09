@@ -2452,6 +2452,10 @@ console.log('\nProjects without an O&M site');
   await expectRows('and sees it', PM, `select 1 from public.projects where name = 'New plant at Chomu'`, 1);
   await expectError('but cannot link a project to a site that is not theirs', PM,
     `insert into public.projects (name, site_id) values ('At Sadas', $1)`, 'row-level security', [site.Sadas]);
+  const chomu = (await asSystem("select id from public.projects where name = 'New plant at Chomu'")).rows[0].id;
+  await expectError('a project manager cannot delete a project', PM, `select public.soft_delete_record('projects', $1)`, 'DELETE', [chomu]);
+  await expectOk('a Super Admin deletes it', OWNER, `select public.soft_delete_record('projects', $1)`, [chomu]);
+  await expectRows('and it is gone from the lists', PM, `select 1 from public.projects where name = 'New plant at Chomu'`, 0);
 }
 
 console.log('\nToday in the company (dashboard)');

@@ -1,10 +1,10 @@
 // One project, end to end: the execution plan, approvals, materials,
 // vendor bills, client money and the site engineer's day-wise update.
 import { useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, Check, Plus, Wallet } from 'lucide-react';
+import { ArrowLeft, Check, Plus, Trash2, Wallet } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
 import { fmtCapacity, fmtDate, fmtINR, fmtNumber, safeNum, todayIST } from '@/lib/format';
@@ -18,7 +18,7 @@ import { Skeleton } from '@/components/ui/misc';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { EmptyState, ErrorState, Field, PageHeader, StatCard } from '@/components/common';
+import { ConfirmDialog, EmptyState, ErrorState, Field, PageHeader, StatCard } from '@/components/common';
 import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { ProjectSiteUpdates } from '@/features/projects/SiteUpdates';
 import { SitePicker, usePortfolio } from '@/features/projects/portfolio';
@@ -43,6 +43,18 @@ export function ProjectDetailPage() {
   const project = useProject(id);
   const p = project.data;
   const canProject = useCan('projects.projects');
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [deleting, setDeleting] = useState(false);
+
+  /** Removed from every list; its history stays in the audit log. Needs DELETE on Projects. */
+  async function removeProject() {
+    const { error } = await supabase.rpc('soft_delete_record', { p_table: 'projects', p_id: p!.id });
+    if (error) return toast.error(errorMessage(error));
+    toast.success(`${p!.project_code} deleted`);
+    await qc.invalidateQueries();
+    navigate('/projects');
+  }
   const canUpdates = useCan('projects.updates');
   const canFileUpdates = canProject.create || canUpdates.create;
 
@@ -70,7 +82,25 @@ export function ProjectDetailPage() {
       <PageHeader
         title={p.name}
         description={`${p.project_code} · ${p.client_name ?? 'No client recorded'} · ${p.district ?? ''} ${p.state ?? ''}`}
-        actions={<Badge variant={stageOf(p.stage).tone}>{stageOf(p.stage).label}</Badge>}
+        actions={
+          <>
+            <Badge variant={stageOf(p.stage).tone}>{stageOf(p.stage).label}</Badge>
+            {canProject.delete && (
+              <Button variant="outline" size="sm" className="text-destructive" onClick={() => setDeleting(true)}>
+                <Trash2 /> Delete project
+              </Button>
+            )}
+          </>
+        }
+      />
+      <ConfirmDialog
+        open={deleting}
+        onOpenChange={setDeleting}
+        title={`Delete ${p.project_code} · ${p.name}?`}
+        description="The project is removed from every list, with its plan, materials and updates. Its history stays in the audit log."
+        confirmLabel="Delete project"
+        destructive
+        onConfirm={() => void removeProject()}
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
