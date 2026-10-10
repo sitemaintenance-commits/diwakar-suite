@@ -20,8 +20,11 @@ export const CATEGORIES: Record<string, string> = {
   procurement: 'Procurement',
   project: 'Project',
   maintenance: 'Maintenance',
+  marketing: 'Marketing & social media',
   other: 'Other',
 };
+/** Types that have the Accounts head approve last unless the requester unticks it. */
+export const ACCOUNTS_LAST_BY_DEFAULT = new Set(['purchase', 'payment', 'reimbursement', 'procurement']);
 /** Types raised before the multi-level upgrade; shown, not offered. */
 const LEGACY_CATEGORIES: Record<string, string> = { advance: 'Advance', equipment: 'IT / equipment' };
 export const categoryLabel = (c: string) => CATEGORIES[c] ?? LEGACY_CATEGORIES[c] ?? c;
@@ -165,6 +168,10 @@ export interface ApprovalRequest {
   request_no: string;
   /** The approvers the requester chose, in order (the Accounts head follows by itself). */
   chosen_approvers?: string[] | null;
+  /** Whether the Accounts head approves last (not for marketing, which has its own approver). */
+  include_final?: boolean;
+  /** Marketing & social media: the post's text, approved together with the post PDF. */
+  post_content?: string | null;
   category: string;
   title: string;
   details: string | null;
@@ -301,6 +308,8 @@ export interface FormOptions {
   approvers: { employee_id: string; name: string; title: string | null }[];
   /** The Accounts head: the last level of every request. */
   final_approver: { employee_id: string; name: string; title: string } | null;
+  /** The last approver of every Marketing & social media request. */
+  marketing_approver: { employee_id: string; name: string; title: string } | null;
 }
 
 export function useFormOptions(enabled = true) {
@@ -327,6 +336,8 @@ export interface RequestInput {
   site_id: string;
   project_id: string;
   note?: string;
+  include_final?: boolean;
+  post_content?: string;
 }
 
 /** Saves a request (new or edited); submit sends it for approval. Returns its id. */

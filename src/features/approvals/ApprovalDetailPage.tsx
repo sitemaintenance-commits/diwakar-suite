@@ -185,6 +185,13 @@ function Detail({ d, refresh }: { d: ApprovalDetail; refresh: () => Promise<void
               <div className="text-xs font-medium text-muted-foreground">Details</div>
               <p className="mt-1 whitespace-pre-wrap text-sm">{r.details || '—'}</p>
             </div>
+            {r.post_content && (
+              <div className="mt-4 rounded-lg border border-orange-200 bg-orange-50/60 p-3">
+                <div className="text-xs font-semibold uppercase tracking-wide text-orange-700">Post content</div>
+                <p className="mt-1 whitespace-pre-wrap text-sm">{r.post_content}</p>
+                <p className="mt-2 text-xs text-muted-foreground">The post itself is in the documents below.</p>
+              </div>
+            )}
           </Card>
 
           <DocumentsCard d={d} refresh={refresh} onDelete={(doc) => setDialog({ kind: 'delete-doc', doc })} />
@@ -250,6 +257,7 @@ const toInput = (d: ApprovalDetail) => ({
   category: d.request.category, priority: d.request.priority, title: d.request.title, details: d.request.details ?? '',
   amount: d.request.amount == null ? '' : String(d.request.amount), needed_by: d.request.needed_by ?? '',
   department_id: d.request.department_id ?? '', site_id: d.request.site_id ?? '', project_id: d.request.project_id ?? '',
+  include_final: d.request.include_final ?? true, post_content: d.request.post_content ?? '',
 });
 
 function Meta({ label, children }: { label: string; children: ReactNode }) {

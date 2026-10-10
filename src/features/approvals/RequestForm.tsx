@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field } from '@/components/common';
 import { FilterSelect } from '@/features/admin/users/UsersPage';
 import {
-  CATEGORIES, FILE_ACCEPT, PRIORITIES, checkFile, fmtSize, saveRequest, setApprovers, uploadApprovalFile, useFormOptions,
+  ACCOUNTS_LAST_BY_DEFAULT, CATEGORIES, FILE_ACCEPT, PRIORITIES, checkFile, fmtSize, saveRequest, setApprovers, uploadApprovalFile, useFormOptions,
   type ApprovalRequest, type Priority, type RequestInput,
 } from '@/features/approvals/api';
 
@@ -32,6 +32,7 @@ export function RequestForm({ open, request, onClose, onSaved }: {
   const blank = (): RequestInput => ({
     category: 'purchase', priority: 'normal', title: '', details: '', amount: '', needed_by: '',
     department_id: options.data?.my_department_id ?? '', site_id: '', project_id: '', note: '',
+    include_final: true, post_content: '',
   });
   const [f, setF] = useState<RequestInput>(blank);
   const [files, setFiles] = useState<File[]>([]);
@@ -49,6 +50,7 @@ export function RequestForm({ open, request, onClose, onSaved }: {
       category: request.category, priority: request.priority, title: request.title, details: request.details ?? '',
       amount: request.amount == null ? '' : String(request.amount), needed_by: request.needed_by ?? '',
       department_id: request.department_id ?? '', site_id: request.site_id ?? '', project_id: request.project_id ?? '', note: '',
+      include_final: request.include_final ?? true, post_content: request.post_content ?? '',
     } : blank());
   }
   const set = <K extends keyof RequestInput>(k: K, v: RequestInput[K]) => setF((s) => ({ ...s, [k]: v }));
@@ -60,13 +62,17 @@ export function RequestForm({ open, request, onClose, onSaved }: {
   const canSubmit = isNew || draft || returned;
   const submitted = request && request.round > 0;
   const approvers = options.data?.approvers ?? [];
-  const final = options.data?.final_approver ?? null;
+  const marketing = f.category === 'marketing';
+  // Marketing ends with its own approver; anything else with the Accounts head when ticked.
+  const accounts = options.data?.final_approver ?? null;
+  const final = marketing ? options.data?.marketing_approver ?? null : f.include_final ? accounts : null;
   const nameOf = (id: string) => approvers.find((a) => a.employee_id === id)?.name ?? 'Approver';
 
   async function save(submit: boolean) {
     if (f.title.trim().length < 3) return toast.error('Give the request a title.');
     if (f.amount && Number.isNaN(Number(f.amount.replace(/[,\s₹]/g, '')))) return toast.error('The amount should be a number.');
     if (submit && !submitted && chain.filter(Boolean).length === 0) return toast.error('Choose at least one approver.');
+    if (submit && f.category === 'marketing' && !(f.post_content ?? '').trim()) return toast.error('Write the post content.');
     setBusy(submit ? 'submit' : 'draft');
     let id = request?.id ?? null;
     try {
@@ -109,7 +115,7 @@ export function RequestForm({ open, request, onClose, onSaved }: {
             {submitted ? (
               <Input value={CATEGORIES[f.category] ?? f.category} disabled />
             ) : (
-              <FilterSelect value={f.category} onChange={(v) => set('category', v)}
+              <FilterSelect value={f.category} onChange={(v) => setF((s) => ({ ...s, category: v, include_final: ACCOUNTS_LAST_BY_DEFAULT.has(v) }))}
                 options={Object.entries(CATEGORIES).map(([k, v]) => [k, v] as [string, string])} />
             )}
           </Field>
@@ -157,11 +163,21 @@ export function RequestForm({ open, request, onClose, onSaved }: {
                     <Button size="icon-sm" variant="ghost" aria-label="Remove approver" onClick={() => setChain((c) => c.filter((_, j) => j !== i))}><X /></Button>
                   </li>
                 ))}
-                {final && (
+                {marketing && final && (
                   <li className="flex items-center gap-2 rounded-lg bg-muted/50 px-2 py-2 text-sm">
                     <span className="w-6 text-center font-semibold text-muted-foreground">{chain.length + 1}</span>
                     <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="flex-1"><span className="font-medium">{final.name}</span> — {final.title} <span className="text-xs text-muted-foreground">(always last)</span></span>
+                    <span className="flex-1"><span className="font-medium">{final.name}</span> — {final.title} <span className="text-xs text-muted-foreground">(always last for marketing)</span></span>
+                  </li>
+                )}
+                {!marketing && accounts && (
+                  <li>
+                    <label className="flex cursor-pointer items-center gap-2 rounded-lg bg-muted/50 px-2 py-2 text-sm">
+                      <span className="w-6 text-center font-semibold text-muted-foreground">{f.include_final ? chain.length + 1 : ''}</span>
+                      <input type="checkbox" className="h-4 w-4 accent-[var(--color-primary,#ea580c)]" checked={!!f.include_final}
+                        onChange={(e) => set('include_final', e.target.checked)} />
+                      <span className="flex-1"><span className="font-medium">{accounts.name}</span> — {accounts.title} <span className="text-xs text-muted-foreground">(approves last — optional)</span></span>
+                    </label>
                   </li>
                 )}
               </ol>
@@ -172,12 +188,20 @@ export function RequestForm({ open, request, onClose, onSaved }: {
               )}
             </Field>
           )}
+          {marketing && (
+            <Field label="Post content" required className="sm:col-span-2"
+              hint="The caption / text of the post. Attach the post itself as a PDF below; the approvers approve both together.">
+              <Textarea rows={6} value={f.post_content ?? ''} onChange={(e) => set('post_content', e.target.value)}
+                placeholder={'e.g. Powering Rajasthan with clean energy ☀️\nOur 4.4 MW Bassi plant crossed 1 crore units…'} />
+            </Field>
+          )}
           {returned && (
             <Field label="Note to the approvers" className="sm:col-span-2">
               <Input value={f.note ?? ''} onChange={(e) => set('note', e.target.value)} placeholder="e.g. Two quotations attached" />
             </Field>
           )}
-          <Field label="Attachments" className="sm:col-span-2" hint="PDF, Word, Excel, JPG or PNG — up to 25 MB each.">
+          <Field label={marketing ? 'Post PDF / creatives' : 'Attachments'} className="sm:col-span-2"
+            hint={marketing ? 'The post as a PDF (and images if any) — up to 25 MB each.' : 'PDF, Word, Excel, JPG or PNG — up to 25 MB each.'}>
             <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed px-3 py-3 text-sm text-muted-foreground hover:bg-muted/50">
               <Paperclip className="h-4 w-4" /> Choose files…
               <input type="file" multiple accept={FILE_ACCEPT} className="hidden"

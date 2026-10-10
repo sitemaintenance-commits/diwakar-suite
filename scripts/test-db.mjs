@@ -2370,10 +2370,10 @@ console.log('\nApprovals - chosen approvers, then the Accounts head');
   await expectOk('the requester attaches the bill after the approval', ASKER, `select public.approval_add_document($1, $2::jsonb)`,
     [R, JSON.stringify({ file_name: 'bill.pdf', storage_path: `approvals/${R}/bill.pdf`, size_bytes: 900, mime_type: 'application/pdf' })]);
   const S2 = await val(ASKER, `select public.approval_save($1::jsonb, null, true) v`,
-    [JSON.stringify({ category: 'travel', title: 'Site visit to Bhojusar', priority: 'normal' })]);
+    [JSON.stringify({ category: 'purchase', title: 'Site visit kit for Bhojusar', priority: 'normal' })]);
   const chain2 = await stepNames(S2);
   chain2.endsWith('Accounts (final):locked') || chain2 === 'Accounts (final):pending'
-    ? ok('a request with no approvers chosen still ends with the Accounts head')
+    ? ok('a purchase with no approvers chosen still ends with the Accounts head')
     : bad('default chain', chain2);
   await asSystem(`delete from public.app_settings where key = 'approval_final_approver'`);
 }
@@ -2456,6 +2456,44 @@ console.log('\nProjects without an O&M site');
   await expectError('a project manager cannot delete a project', PM, `select public.soft_delete_record('projects', $1)`, 'DELETE', [chomu]);
   await expectOk('a Super Admin deletes it', OWNER, `select public.soft_delete_record('projects', $1)`, [chomu]);
   await expectRows('and it is gone from the lists', PM, `select 1 from public.projects where name = 'New plant at Chomu'`, 0);
+}
+
+console.log('\nApprovals - Accounts last is a choice; Marketing & social media');
+{
+  const val = async (uid, sql, params) => (await as(uid, sql, params)).rows[0]?.v;
+  const ASKER = (await asSystem("select id from auth.users where email = 'ketan.login@diwakarsolar.test'")).rows[0].id;
+  const banwariEmp = (await asSystem("select id from public.employees where employee_code = 'DRIPL_1101'")).rows[0].id;
+  const accountsEmp = (await asSystem("select id from public.employees where employee_code = 'DRIPL_1099'")).rows[0].id;
+  const marketingEmp = (await asSystem("select id from public.employees where employee_code = 'DRIPL_1090'")).rows[0].id;
+  await asSystem(`insert into public.app_settings (key, value) values ('approval_final_approver', to_jsonb($1::text)), ('approval_marketing_approver', to_jsonb($2::text))
+                  on conflict (key) do update set value = excluded.value`, [accountsEmp, marketingEmp]);
+  const chain = (id) => asSystem(`select string_agg(name, ' → ' order by level_no) v from public.approval_steps
+    where request_id = $1 and round = (select round from public.approval_requests where id = $1)`, [id]).then((r) => r.rows[0].v);
+  const raise = async (req, approvers, submit = true) => {
+    const id = await val(ASKER, 'select public.approval_save($1::jsonb) v', [JSON.stringify(req)]);
+    await as(ASKER, 'select public.approval_set_approvers($1, $2::uuid[])', [id, approvers]);
+    if (submit) await as(ASKER, 'select public.approval_save($1::jsonb, $2, true)', [JSON.stringify(req), id]);
+    return id;
+  };
+
+  const T = await raise({ category: 'travel', title: 'Visit to Bassi', include_final: false }, [banwariEmp]);
+  (await chain(T)) === 'Head · HR' ? ok('with "Accounts last" unticked, the request ends with the chosen approver') : bad('no final', await chain(T));
+  const P = await raise({ category: 'purchase', title: 'Gloves for the store', amount: '1200' }, [banwariEmp]);
+  (await chain(P)) === 'Head · HR → Accounts (final)' ? ok('a purchase has the Accounts head last unless unticked') : bad('purchase default', await chain(P));
+
+  const M = await raise({ category: 'marketing', title: 'Diwali post', include_final: true }, [banwariEmp], false);
+  await expectError('a marketing request needs its post text', ASKER, 'select public.approval_save($1::jsonb, $2, true)', 'post content',
+    [JSON.stringify({ category: 'marketing', title: 'Diwali post' }), M]);
+  await expectOk('with the text it is submitted', ASKER, 'select public.approval_save($1::jsonb, $2, true)',
+    [JSON.stringify({ category: 'marketing', title: 'Diwali post', post_content: 'Happy Diwali from Diwakar Solar! ☀️' }), M]);
+  (await chain(M)) === 'Head · HR → Marketing (final)'
+    ? ok('and it ends with the marketing approver, not the Accounts head')
+    : bad('marketing chain', await chain(M));
+  await expectValue('the approvers see the post text on the request', ASKER,
+    `select public.approval_detail($1)->'request'->>'post_content'`, 'Happy Diwali from Diwakar Solar! ☀️', [M]);
+  await expectValue('the form offers the marketing approver', ASKER,
+    `select public.approval_form_options()->'marketing_approver'->>'title'`, 'Marketing (final)');
+  await asSystem(`delete from public.app_settings where key in ('approval_final_approver', 'approval_marketing_approver')`);
 }
 
 console.log('\nToday in the company (dashboard)');
