@@ -2496,6 +2496,29 @@ console.log('\nApprovals - Accounts last is a choice; Marketing & social media')
   await asSystem(`delete from public.app_settings where key in ('approval_final_approver', 'approval_marketing_approver')`);
 }
 
+console.log('\nInsolation from the office report sheet (PR)');
+{
+  const day = (await asSystem(`select (current_date - 13)::text d`)).rows[0].d;
+  const empty = (await asSystem(`select (current_date - 14)::text d`)).rows[0].d;
+  await asSystem(`update public.generation_records set irradiation_kwh_m2 = null where site_id = $1 and gen_date = $2::date`, [site.Sadas, day]);
+  const sync = async (rows) => (await asSystem('select public.sync_generation_insolation($1::jsonb) r', [JSON.stringify(rows)])).rows[0].r;
+  const ins = async () => (await asSystem(`select irradiation_kwh_m2::text v from public.generation_records where site_id = $1 and gen_date = $2::date and deleted_at is null`, [site.Sadas, day])).rows[0]?.v;
+
+  const r1 = await sync([{ site: 'Sadas', date: day, insolation: 0.09 }, { site: 'Sadas', date: empty, insolation: 5.5 }, { site: 'Nowhere', date: day, insolation: 5 }]);
+  r1.suspect.length === 1 && r1.waiting_for_generation === 1 && r1.unknown_sites[0] === 'Nowhere' && !(await ins())
+    ? ok('an impossible insolation (0.09) is listed as suspect, not saved; a day not filed yet waits')
+    : bad('suspect / waiting', JSON.stringify(r1));
+  const r2 = await sync([{ site: 'Sadas', date: day, insolation: 6.1 }]);
+  r2.filled === 1 && Number(await ins()) === 6.1
+    ? ok('a good value fills the day\'s insolation, so PR can be worked out')
+    : bad('fill', JSON.stringify(r2));
+  const r3 = await sync([{ site: 'Sadas', date: day, insolation: 5.9 }]);
+  r3.kept_suite_value === 1 && Number(await ins()) === 6.1
+    ? ok('insolation already on a day entered in the suite is kept')
+    : bad('kept', JSON.stringify(r3));
+  await expectError('only the sync (service key) may write it', OWNER, `select public.sync_generation_insolation('[]'::jsonb)`, 'permission denied');
+}
+
 console.log('\nToday in the company (dashboard)');
 await expectValue('the Super Admin sees one card per section', OWNER,
   `select string_agg(x->>'key', ',' order by x->>'key') from jsonb_array_elements(public.get_company_today()->'sections') x`,

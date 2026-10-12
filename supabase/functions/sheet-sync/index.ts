@@ -13,7 +13,7 @@
 // The sheet's id comes from setting generation_sheet ({sheet_id, from}).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders, json } from '../_shared/cors.ts';
-import { parseSheet, parseTabs, type SheetRow } from './parse.ts';
+import { parseInsolation, parseSheet, parseTabs, type SheetRow } from './parse.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
@@ -75,7 +75,21 @@ Deno.serve(async (req) => {
     const { data: result, error } = await admin.rpc('sync_generation_sheet', { p_rows: rows });
     if (error) throw new Error(error.message);
 
-    const summary = { at: new Date().toISOString(), by, tabs: read, rows: rows.length, ...(result as Record<string, unknown>) };
+    // Insolation from the office report's Insolation tab, so PR can be worked out.
+    let insolation: Record<string, unknown> | null = null;
+    const { data: insCfg } = await admin.rpc('generation_insolation_config');
+    const ins = insCfg as { sheet_id?: string; gid?: string } | null;
+    if (ins?.sheet_id && ins?.gid) {
+      try {
+        const insRows = parseInsolation(await fetchText(`https://docs.google.com/spreadsheets/d/${ins.sheet_id}/export?format=csv&gid=${ins.gid}`));
+        const { data: insResult, error: insErr } = await admin.rpc('sync_generation_insolation', { p_rows: insRows });
+        insolation = insErr ? { error: insErr.message } : { rows: insRows.length, ...(insResult as Record<string, unknown>) };
+      } catch (e) {
+        insolation = { error: e instanceof Error ? e.message : String(e) };
+      }
+    }
+
+    const summary = { at: new Date().toISOString(), by, tabs: read, rows: rows.length, ...(result as Record<string, unknown>), insolation };
     await admin.rpc('record_generation_sheet_sync', { p_summary: summary });
     return json(req, { ok: true, ...summary });
   } catch (e) {

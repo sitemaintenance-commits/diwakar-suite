@@ -143,3 +143,41 @@ export function parseSheet(csv: string): SheetRow[] {
   }
   return [...latest.values()];
 }
+
+export interface InsolationRow { site: string; date: string; insolation: number }
+const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+
+/**
+ * The office report's Insolation tab: "INSOLATION DATA - OCTOBER 2026",
+ * a row of site names, then one row a day with each site's insolation.
+ * The month comes from the title -- the date cells keep an old month when
+ * the tab is copied forward -- and the day from the date cell.
+ */
+export function parseInsolation(csv: string): InsolationRow[] {
+  const rows = parseCsv(csv);
+  let month = -1, year = 0;
+  for (const r of rows.slice(0, 5)) {
+    const m = /insolation data\s*[-–]\s*([a-z]+)\s+(\d{4})/i.exec((r[0] ?? '').trim());
+    if (m) {
+      month = MONTHS.findIndex((x) => x.startsWith(m[1].toLowerCase().slice(0, 3)));
+      year = Number(m[2]);
+    }
+  }
+  const h = rows.findIndex((r) => /^site name/i.test((r[0] ?? '').trim()));
+  if (month < 0 || h < 0) return [];
+  const sites = rows[h].map((s, i) => (i === 0 ? '' : s.split(/,|\s*[-–—]\s*/)[0].trim()));
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const out: InsolationRow[] = [];
+  for (const r of rows.slice(h + 1)) {
+    const d = /^(\d{1,2})[/\-.]/.exec((r[0] ?? '').trim());
+    if (!d) continue;
+    const day = Number(d[1]);
+    if (day < 1 || day > daysInMonth) continue;
+    const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    for (let i = 1; i < r.length; i++) {
+      const v = num(r[i]);
+      if (sites[i] && v !== null && v > 0) out.push({ site: sites[i], date, insolation: v });
+    }
+  }
+  return out;
+}
