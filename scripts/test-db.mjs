@@ -2547,6 +2547,36 @@ console.log('\nDocument folders filled by the file name');
     `select (f->>'count')::int >= 1 from jsonb_array_elements(public.list_documents()->'folders') f where f->>'code' = 'LOA'`, true);
 }
 
+console.log('\nProject site updates from the engineers\' Google Form');
+{
+  const prj = (await asSystem("select id from public.projects where name = 'Deegod 3.57 MW' and deleted_at is null")).rows[0].id;
+  const d1 = (await asSystem('select (current_date - 25)::text d')).rows[0].d;
+  const d2 = (await asSystem('select (current_date - 24)::text d')).rows[0].d;
+  const sync = async (rows) => (await asSystem('select public.sync_project_updates($1::jsonb) r', [JSON.stringify(rows)])).rows[0].r;
+  const day = async (d) => (await asSystem(`select source, piling::text piling, panel::text panel, work_description w, engineer_name e
+     from public.project_updates where project_id = $1 and update_date = $2::date and deleted_at is null`, [prj, d])).rows[0];
+  const row = (d, over = {}) => ({ site: 'Deegod', date: d, submitted_at: `${d}T18:00:00+05:30`, engineer: 'Ajay Verma',
+    fronts: { tl_work: 'completed', piling: 'completed', panel: 'in_progress' }, work: 'Piling block B', challenges: null, remarks: null, ...over });
+
+  const r1 = await sync([row(d1), row(d1, { work: 'test' }), row(d1, { site: 'Nowhere' })]);
+  const a = await day(d1);
+  r1.added === 1 && r1.unknown_sites[0] === 'Nowhere' && a?.source === 'sheet' && a.piling === 'completed' && a.e === 'Ajay Verma'
+    ? ok('a form answer becomes the project\'s site update; an unknown site is reported') : bad('add', JSON.stringify({ r1, a }));
+  const r2 = await sync([row(d1, { submitted_at: `${d1}T20:00:00+05:30`, work: 'Piling block B and C' })]);
+  r2.updated === 1 && (await day(d1)).w === 'Piling block B and C' ? ok('a later answer for the same day updates it') : bad('update', JSON.stringify(r2));
+  await sync([row(d2, { fronts: { tl_work: 'completed' }, work: 'Survey of block D' })]);
+  const b = await day(d2);
+  b.piling === 'completed' && b.panel === 'in_progress'
+    ? ok('a work front left blank keeps the last reported status') : bad('carry forward', JSON.stringify(b));
+  await expectOk('the project manager corrects the day in the suite', OWNER,
+    `select public.save_project_update($1, $2::date, '{"piling":"completed","panel":"completed"}'::jsonb, 'Corrected in the suite')`, [prj, d2]);
+  const r3 = await sync([row(d2, { submitted_at: `${d2}T23:00:00+05:30`, work: 'From the form again' })]);
+  const c = await day(d2);
+  r3.kept_suite_version === 1 && c.source === 'app' && c.w === 'Corrected in the suite'
+    ? ok('and the form never overwrites a day edited in the suite') : bad('suite wins', JSON.stringify({ r3, c }));
+  await expectError('only the sync (service key) may write form answers', OWNER, `select public.sync_project_updates('[]'::jsonb)`, 'permission denied');
+}
+
 console.log('\nToday in the company (dashboard)');
 await expectValue('the Super Admin sees one card per section', OWNER,
   `select string_agg(x->>'key', ',' order by x->>'key') from jsonb_array_elements(public.get_company_today()->'sections') x`,

@@ -181,3 +181,70 @@ export function parseInsolation(csv: string): InsolationRow[] {
   }
   return out;
 }
+
+export interface ProjectUpdateRow {
+  site: string;
+  date: string;
+  submitted_at: string | null;
+  engineer: string | null;
+  fronts: Record<string, string | null>;
+  work: string | null;
+  challenges: string | null;
+  remarks: string | null;
+}
+
+const WORK_STATUS = (s: string | undefined): string | null => {
+  const t = norm(s ?? '');
+  if (!t) return null;
+  if (t.startsWith('complete') || t === 'done') return 'completed';
+  if (t.startsWith('in progress') || t.startsWith('ongoing') || t.startsWith('on going') || t.startsWith('wip')) return 'in_progress';
+  if (t.startsWith('not started') || t.startsWith('pending')) return 'not_started';
+  if (t.startsWith('hold') || t.startsWith('on hold')) return 'on_hold';
+  return null;
+};
+const nothing = (s: string | undefined) => {
+  const t = (s ?? '').trim();
+  return !t || /^(no|nil|none|na|n\/a|-|\.)$/i.test(t) ? null : t;
+};
+
+/**
+ * The projects team's Google Form sheet: one answer a row -- date, site,
+ * engineer, the status of each work front, today's work, challenges and
+ * remarks. Keeps the latest answer for each site and day.
+ */
+export function parseProjectSheet(csv: string): ProjectUpdateRow[] {
+  const rows = parseCsv(csv);
+  const h = rows.findIndex((r) => norm(r[0] ?? '') === 'timestamp');
+  if (h < 0) return [];
+  const head = rows[h].map(norm);
+  // The first column whose heading contains the words (the sheet has a duplicated "Electrical Panel" column).
+  const col = (...words: string[]) => head.findIndex((x) => words.every((w) => x.includes(w)));
+  const c = {
+    date: head.findIndex((x) => x === 'date' || x.startsWith('date')), site: col('site name'), engineer: col('engineer'),
+    tl_work: col('tl work'), gss_bay: col('gss bay'), piling: col('piling'), icr_civil: col('icr'),
+    panel: col('panel'), module_work: col('solar module'), inverter: col('inverter'), material: col('material'),
+    cabling: col('cabling'), electrical: col('electrical connection'),
+    work: col('work description'), challenges: col('challenges'), remarks: col('remarks'),
+  };
+  const fronts = ['tl_work', 'gss_bay', 'piling', 'icr_civil', 'panel', 'module_work', 'inverter', 'material', 'cabling', 'electrical'] as const;
+  const latest = new Map<string, ProjectUpdateRow>();
+  for (const r of rows.slice(h + 1)) {
+    const date = isoDate(r[c.date] ?? '') ?? isoDate(r[0] ?? '');
+    const siteRaw = (r[c.site] ?? '').trim();
+    if (!date || !siteRaw) continue;
+    const row: ProjectUpdateRow = {
+      site: siteKey(siteRaw),
+      date,
+      submitted_at: isoStamp(r[0] ?? ''),
+      engineer: (r[c.engineer] ?? '').trim().replace(/\b\w/g, (x) => x.toUpperCase()) || null,
+      fronts: Object.fromEntries(fronts.map((k) => [k, c[k] >= 0 ? WORK_STATUS(r[c[k]]) : null])),
+      work: nothing(r[c.work]),
+      challenges: nothing(r[c.challenges]),
+      remarks: nothing(r[c.remarks]),
+    };
+    const key = `${row.site.toLowerCase()}|${row.date}`;
+    const prev = latest.get(key);
+    if (!prev || (row.submitted_at ?? '') >= (prev.submitted_at ?? '')) latest.set(key, row);
+  }
+  return [...latest.values()];
+}

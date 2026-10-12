@@ -13,7 +13,7 @@
 // The sheet's id comes from setting generation_sheet ({sheet_id, from}).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders, json } from '../_shared/cors.ts';
-import { parseInsolation, parseSheet, parseTabs, type SheetRow } from './parse.ts';
+import { parseInsolation, parseProjectSheet, parseSheet, parseTabs, type SheetRow } from './parse.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
@@ -89,7 +89,23 @@ Deno.serve(async (req) => {
       }
     }
 
-    const summary = { at: new Date().toISOString(), by, tabs: read, rows: rows.length, ...(result as Record<string, unknown>), insolation };
+    // The projects team's site-update form -> Projects -> Site Updates (DPR).
+    let projects: Record<string, unknown> | null = null;
+    const { data: pjCfg } = await admin.rpc('project_updates_sheet_config');
+    const pj = pjCfg as { sheet_id?: string; gid?: string } | null;
+    if (pj?.sheet_id) {
+      try {
+        let gid = pj.gid;
+        if (!gid) gid = parseTabs(await fetchText(`https://docs.google.com/spreadsheets/d/${pj.sheet_id}/edit`))[0]?.gid;
+        const pjRows = parseProjectSheet(await fetchText(`https://docs.google.com/spreadsheets/d/${pj.sheet_id}/export?format=csv&gid=${gid}`));
+        const { data: pjResult, error: pjErr } = await admin.rpc('sync_project_updates', { p_rows: pjRows });
+        projects = pjErr ? { error: pjErr.message } : { rows: pjRows.length, ...(pjResult as Record<string, unknown>) };
+      } catch (e) {
+        projects = { error: e instanceof Error ? e.message : String(e) };
+      }
+    }
+
+    const summary = { at: new Date().toISOString(), by, tabs: read, rows: rows.length, ...(result as Record<string, unknown>), insolation, projects };
     await admin.rpc('record_generation_sheet_sync', { p_summary: summary });
     return json(req, { ok: true, ...summary });
   } catch (e) {
