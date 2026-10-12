@@ -19,6 +19,9 @@ export interface LibraryDoc {
   mime_type: string | null;
   size_bytes: number | null;
   notes: string | null;
+  /** The folder (PPA, LOA, DPR ...) -- set from the file name on upload, movable by hand. */
+  folder_id: string | null;
+  folder: string | null;
   valid_until: string | null;
   expiry: 'expired' | 'expiring' | 'valid' | null;
   site_id: string | null;
@@ -31,9 +34,14 @@ export interface LibraryDoc {
   can_delete: boolean;
 }
 
+export interface DocFolder { id: string; code: string; name: string; count: number }
+
 export interface DocList {
   total: number;
   categories: string[];
+  /** Every folder, with how many of the documents in view it holds. */
+  folders: DocFolder[];
+  unfiled: number;
   rows: LibraryDoc[];
 }
 
@@ -46,6 +54,7 @@ export interface DocFilters {
   category?: string | null;
   mine?: boolean;
   expiring?: boolean;
+  folder?: string | null;
   limit?: number;
   offset?: number;
 }
@@ -66,6 +75,7 @@ export async function fetchDocuments(f: DocFilters): Promise<DocList> {
     p_limit: f.limit ?? 50,
     p_offset: f.offset ?? 0,
     p_group: f.group ?? null,
+    p_folder: f.folder ?? null,
   });
   if (error) throw error;
   return data as DocList;
@@ -107,6 +117,8 @@ export async function uploadSectionDocument(opts: {
   notes?: string | null;
   validUntil?: string | null;
   siteId?: string | null;
+  /** A folder chosen by hand; otherwise the database files it by the file name. */
+  folderId?: string | null;
 }) {
   if (BLOCKED_FILE.test(opts.file.name)) throw new Error(`${opts.file.name}: programs and web pages cannot be uploaded.`);
   if (opts.file.size > MAX_FILE_BYTES) throw new Error(`${opts.file.name} is larger than 50 MB.`);
@@ -122,6 +134,7 @@ export async function uploadSectionDocument(opts: {
     notes: opts.notes || null,
     valid_until: opts.validUntil || null,
     site_id: opts.siteId || null,
+    folder_id: opts.folderId || null,
     file_name: opts.file.name,
     storage_path: path,
     mime_type: opts.file.type || null,
@@ -133,7 +146,7 @@ export async function uploadSectionDocument(opts: {
   }
 }
 
-export async function updateDocument(id: string, patch: { category: string | null; notes: string | null; valid_until: string | null }) {
+export async function updateDocument(id: string, patch: { category: string | null; notes: string | null; valid_until: string | null; folder_id?: string | null }) {
   const { error } = await supabase.from('documents').update(patch).eq('id', id);
   if (error) throw error;
 }

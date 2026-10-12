@@ -6,7 +6,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, Download, Eye, FileArchive, FileImage, FileSpreadsheet, FileText, Loader2, Mail, Paperclip, Pencil, Trash2, Upload, X,
+  AlertTriangle, Download, Eye, FileArchive, FileImage, FileSpreadsheet, FileText, Folder, FolderOpen, Loader2, Mail, Paperclip, Pencil, Trash2, Upload, X,
 } from 'lucide-react';
 import { errorMessage } from '@/lib/errors';
 import { exportXlsx } from '@/lib/export';
@@ -23,12 +23,13 @@ import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { useSites } from '@/features/admin/api';
 import {
   BLOCKED_FILE, DOC_CATEGORIES, MAX_FILE_BYTES, canPreview, docKeys, fetchDocuments, openDocument, removeDocument,
-  updateDocument, uploadSectionDocument, useDocumentList, type LibraryDoc,
+  updateDocument, uploadSectionDocument, useDocumentList, type DocFolder, type LibraryDoc,
 } from '@/features/documents/api';
 import { SendDocumentDialog } from '@/features/documents/SendDocumentDialog';
 
 const ALL = '__all__';
 const NONE = '__none__';
+const AUTO = '__auto__';
 const PAGE = 50;
 // Sections whose work is tied to a plant: offer the plant on upload.
 const PLANT_GROUPS = new Set(['operations', 'portfolio', 'projects']);
@@ -67,6 +68,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
   const [scope, setScope] = useState<'all' | 'section' | 'records'>(moduleKey ? 'section' : 'all');
   const [mine, setMine] = useState(false);
   const [expiring, setExpiring] = useState(false);
+  const [folder, setFolder] = useState<string | null>(null);
   const [limit, setLimit] = useState(PAGE);
   const filters = {
     module: moduleKey ?? null,
@@ -76,6 +78,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
     category: category === ALL ? null : category,
     mine,
     expiring,
+    folder,
     limit,
   };
   const list = useDocumentList(filters);
@@ -95,6 +98,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
   const [upNotes, setUpNotes] = useState('');
   const [upValid, setUpValid] = useState('');
   const [upSite, setUpSite] = useState(NONE);
+  const [upFolder, setUpFolder] = useState(AUTO);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
   const targetModule = modules.find((m) => m.key === target);
@@ -121,6 +125,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
         await uploadSectionDocument({
           moduleKey: target, file, category: upCategory.trim() || null, notes: upNotes.trim() || null,
           validUntil: upValid || null, siteId: showPlant && upSite !== NONE ? upSite : null,
+          folderId: upFolder === AUTO ? null : upFolder,
         });
       } catch (e) {
         failed.push(file);
@@ -216,6 +221,10 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
                       options={groupModules.map((m) => [m.key, m.label] as [string, string])} />
                   </Field>
                 )}
+                <Field label="Folder" hint="Automatic files it by its name: LOA, PPA, DPR…">
+                  <FilterSelect value={upFolder} onChange={setUpFolder}
+                    options={[[AUTO, 'Automatic, from the file name'], ...(list.data?.folders ?? []).map((f) => [f.id, f.name] as [string, string])]} />
+                </Field>
                 <Field label="Document type">
                   <Input list="doc-categories" value={upCategory} onChange={(e) => setUpCategory(e.target.value)} placeholder="e.g. Report, Invoice" />
                 </Field>
@@ -244,6 +253,17 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ------------------------------------------------------ folders */}
+      {(list.data?.folders ?? []).some((f) => f.count > 0) && (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+          <FolderTile label="All documents" count={null} active={folder === null} onClick={() => { setFolder(null); setLimit(PAGE); }} />
+          {(list.data?.folders ?? []).filter((f) => f.count > 0 || !moduleKey).map((f) => (
+            <FolderTile key={f.id} code={f.code} label={f.name} count={f.count} active={folder === f.id}
+              onClick={() => { setFolder(folder === f.id ? null : f.id); setLimit(PAGE); }} />
+          ))}
         </div>
       )}
 
@@ -292,6 +312,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <p className="truncate text-sm font-medium">{d.file_name}</p>
+                      {d.folder && <Badge variant="default"><Folder className="h-3 w-3" />{d.folder}</Badge>}
                       {d.category && <Badge variant="secondary">{d.category}</Badge>}
                       {d.expiry === 'expired' && <Badge variant="destructive"><AlertTriangle className="mr-1 h-3 w-3" />Expired {fmtDate(d.valid_until)}</Badge>}
                       {d.expiry === 'expiring' && <Badge variant="warning">Expires {fmtDate(d.valid_until)}</Badge>}
@@ -345,7 +366,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
         </>
       )}
 
-      <EditDocumentDialog doc={editing} categories={categories} onClose={() => setEditing(null)} />
+      <EditDocumentDialog doc={editing} categories={categories} folders={list.data?.folders ?? []} onClose={() => setEditing(null)} />
       <SendDocumentDialog doc={sending} onClose={() => setSending(null)} />
       <ConfirmDialog
         open={Boolean(removing)}
@@ -369,8 +390,26 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
   );
 }
 
-function EditDocumentDialog({ doc, categories, onClose }: { doc: LibraryDoc | null; categories: string[]; onClose: () => void }) {
+/** One folder in the strip above the list. */
+function FolderTile({ code, label, count, active, onClick }: { code?: string; label: string; count: number | null; active: boolean; onClick: () => void }) {
+  const Icon = active ? FolderOpen : Folder;
+  return (
+    <button type="button" onClick={onClick} title={label}
+      className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors ${active ? 'border-primary bg-primary-soft' : 'bg-card hover:bg-muted/60'}`}>
+      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${active ? 'bg-primary text-primary-foreground' : 'bg-orange-50 text-orange-600'}`}>
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-semibold">{code ?? label}</span>
+        <span className="block truncate text-xs text-muted-foreground">{code ? label.replace(new RegExp(`\\s*-\\s*${code}$`, 'i'), '') : ''}{count !== null ? `${code ? ' · ' : ''}${count} file${count === 1 ? '' : 's'}` : 'Every folder'}</span>
+      </span>
+    </button>
+  );
+}
+
+function EditDocumentDialog({ doc, categories, folders, onClose }: { doc: LibraryDoc | null; categories: string[]; folders: DocFolder[]; onClose: () => void }) {
   const qc = useQueryClient();
+  const [folderId, setFolderId] = useState(NONE);
   const [category, setCategory] = useState('');
   const [notes, setNotes] = useState('');
   const [valid, setValid] = useState('');
@@ -379,6 +418,7 @@ function EditDocumentDialog({ doc, categories, onClose }: { doc: LibraryDoc | nu
   if (doc && loadedFor !== doc.id) {
     setLoadedFor(doc.id);
     setCategory(doc.category ?? '');
+    setFolderId(doc.folder_id ?? NONE);
     setNotes(doc.notes ?? '');
     setValid(doc.valid_until ?? '');
   }
@@ -387,7 +427,7 @@ function EditDocumentDialog({ doc, categories, onClose }: { doc: LibraryDoc | nu
     if (!doc) return;
     setBusy(true);
     try {
-      await updateDocument(doc.id, { category: category.trim() || null, notes: notes.trim() || null, valid_until: valid || null });
+      await updateDocument(doc.id, { category: category.trim() || null, notes: notes.trim() || null, valid_until: valid || null, folder_id: folderId === NONE ? null : folderId });
       toast.success('Details saved');
       await qc.invalidateQueries({ queryKey: docKeys.all });
       onClose();
@@ -406,6 +446,10 @@ function EditDocumentDialog({ doc, categories, onClose }: { doc: LibraryDoc | nu
           <DialogDescription className="truncate">{doc?.file_name}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
+          <Field label="Folder">
+            <FilterSelect value={folderId} onChange={setFolderId}
+              options={[[NONE, 'No folder'], ...folders.map((f) => [f.id, f.name] as [string, string])]} />
+          </Field>
           <Field label="Document type">
             <Input list="doc-categories-edit" value={category} onChange={(e) => setCategory(e.target.value)} />
             <datalist id="doc-categories-edit">{categories.map((c) => <option key={c} value={c} />)}</datalist>

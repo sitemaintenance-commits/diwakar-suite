@@ -2519,6 +2519,34 @@ console.log('\nInsolation from the office report sheet (PR)');
   await expectError('only the sync (service key) may write it', OWNER, `select public.sync_generation_insolation('[]'::jsonb)`, 'permission denied');
 }
 
+console.log('\nDocument folders filled by the file name');
+{
+  const cases = [
+    ['LOA - Niwai.pdf', 'LOA'],
+    ['CEIG APPROVAL - Sadas.pdf', 'CEIG'],
+    ['EPC AGREEMENT - Bassi.pdf', 'EPC'],
+    ['PPA VSS @132 KV GSS CHOTISADRI.pdf', 'PPA'],
+    ['COI – Supl Solar Energy Private Limited.pdf', 'COI'],
+    ['Letter of Intent for Gangrar.pdf', 'LOI'],
+    ['PVSYST - Kadel.pdf', 'PVSYST'],
+    ['ESCROW - Budsu.pdf', 'ESCROW'],
+    ['Load test report.pdf', null],
+    ['Monthly bill.pdf', null],
+  ];
+  const got = [];
+  for (const [name] of cases) {
+    got.push((await asSystem(`select f.code from public.document_folders f where f.id = app.match_document_folder($1)`, [name])).rows[0]?.code ?? null);
+  }
+  const wrong = cases.filter(([, want], k) => want !== got[k]).map(([n, want], k) => `${n}: ${got[cases.findIndex((c) => c[0] === n)]} (want ${want})`);
+  wrong.length === 0 ? ok('LOA, CEIG, EPC, PPA, COI, LOI, PVSYST and Escrow names find their folder; "Load test" does not count as LOA') : bad('folder matching', wrong.join('; '));
+  await expectOk('an upload named LOA lands in Letter of Award by itself', OWNER,
+    `insert into public.documents (module_key, entity_type, file_name, storage_path) values ('documents', 'section', 'LOA - Test site.pdf', 'documents/section/loa-test.pdf')`);
+  await expectValue('and the library lists it in that folder', OWNER,
+    `select x->>'folder' from jsonb_array_elements(public.list_documents(p_search => 'LOA - Test site')->'rows') x`, 'LOA');
+  await expectValue('the folder count shows it', OWNER,
+    `select (f->>'count')::int >= 1 from jsonb_array_elements(public.list_documents()->'folders') f where f->>'code' = 'LOA'`, true);
+}
+
 console.log('\nToday in the company (dashboard)');
 await expectValue('the Super Admin sees one card per section', OWNER,
   `select string_agg(x->>'key', ',' order by x->>'key') from jsonb_array_elements(public.get_company_today()->'sections') x`,
