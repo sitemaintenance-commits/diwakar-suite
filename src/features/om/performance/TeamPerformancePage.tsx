@@ -11,7 +11,7 @@ import { Award, CalendarDays, ChevronLeft, ChevronRight, Download, Gauge, ListCh
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
 import { fmtDate, fmtNumber, safeNum, todayIST } from '@/lib/format';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
 import { useCan } from '@/auth/AccessProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -90,21 +90,24 @@ export function TeamPerformancePage() {
   async function onExport() {
     if (!p?.records.length) return;
     try {
-      await exportCsv('om.performance', `technician-scores-${from}-to-${to}`, p.records, [
-        { header: 'Date', value: (r) => r.score_date },
-        { header: 'Site', value: (r) => r.site },
-        { header: 'Technician', value: (r) => r.technician },
-        { header: 'Attendance /20', value: (r) => r.attendance },
-        { header: 'Daily work /25', value: (r) => r.daily_work },
-        { header: 'Task assigned /10', value: (r) => r.task_assigned },
-        { header: 'Task status', value: (r) => r.task_status },
-        { header: 'Form submit /25', value: (r) => r.form_submit },
-        { header: 'Auto /80', value: (r) => r.auto_score },
-        { header: 'Monthly /20', value: (r) => r.monthly_review ?? '' },
-        { header: 'Total /100', value: (r) => r.total_score },
-        { header: 'Band', value: (r) => r.band },
-        { header: 'Remarks', value: (r) => r.remarks ?? '' },
-      ]);
+      await exportXlsx('om.performance', `team-performance-${from}-to-${to}`, p.records, [
+        { header: 'Date', value: (r) => fmtDate(r.score_date), width: 12 },
+        { header: 'Site', value: (r) => r.site, width: 16 },
+        { header: 'Technician', value: (r) => r.technician, width: 24 },
+        { header: 'Attendance /20', value: (r) => safeNum(r.attendance), width: 13 },
+        { header: 'Daily work /25', value: (r) => safeNum(r.daily_work), width: 13 },
+        { header: 'Task assigned /10', value: (r) => safeNum(r.task_assigned), width: 15 },
+        { header: 'Task status', value: (r) => (r.task_status === '—' ? '' : r.task_status), width: 15 },
+        { header: 'Form submit /25', value: (r) => safeNum(r.form_submit), width: 14 },
+        { header: 'Auto /80', value: (r) => safeNum(r.auto_score), width: 10 },
+        { header: 'Monthly /20', value: (r) => (r.monthly_review == null ? '' : safeNum(r.monthly_review)), width: 11 },
+        { header: 'Total /100', value: (r) => safeNum(r.total_score), width: 10 },
+        { header: 'Band', value: (r) => r.band, width: 10 },
+        { header: 'Remarks', value: (r) => r.remarks ?? '', width: 40 },
+      ], {
+        sheet: 'Team performance',
+        title: ['O&M TEAM PERFORMANCE', from === to ? fmtDate(from) : `${fmtDate(from)} to ${fmtDate(to)}`],
+      });
       toast.success('Exported.');
     } catch (e) {
       toast.error(errorMessage(e));
@@ -124,7 +127,7 @@ export function TeamPerformancePage() {
           can.export ? (
             <Button variant="outline" size="sm" onClick={onExport} disabled={!p?.records.length}>
               <Download className="mr-2 h-4 w-4" />
-              Export CSV
+              Download Excel
             </Button>
           ) : undefined
         }
