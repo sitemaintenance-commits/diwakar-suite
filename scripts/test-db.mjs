@@ -2602,6 +2602,13 @@ console.log('\nTeam Performance from the technicians\' Google Form');
   const r3 = await sync([row({ submitted_at: `${d}T23:00:00+05:30`, attendance: 0 })]);
   r3.kept_manual === 1 && (await score())[0].total_score === 98 ? ok('a score set by hand in the suite is kept') : bad('manual', JSON.stringify(r3));
   await expectError('only the sync (service key) may write form scores', OWNER, `select public.sync_tech_scores('[]'::jsonb)`, 'permission denied');
+  const ramjan = (await asSystem("select id from public.om_team_members where full_name = 'Ramjan Khan'")).rows[0].id;
+  await asSystem(`insert into public.om_member_aliases (member_id, alias) values ($1, 'RAMJAN HUSAN')`, [ramjan]);
+  const d2 = (await asSystem('select (current_date - 2)::text d')).rows[0].d;
+  await sync([row({ date: d2, submitted_at: `${d2}T18:00:00+05:30`, technician: 'Ramjan Husan' })]);
+  await expectValue('another spelling recorded for the member lands on the same person', OWNER,
+    `select member_id = $1 and technician_name = 'Ramjan Khan' from public.om_tech_scores where site_id = $2 and score_date = $3::date and deleted_at is null`,
+    true, [ramjan, site.Sadas, d2]);
 }
 
 console.log('\nToday in the company (dashboard)');
