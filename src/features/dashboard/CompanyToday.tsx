@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import {
-  ArrowRight, BadgeCheck, ClipboardList, FolderKanban, Gavel, Sun, Users, type LucideIcon,
+  ArrowUpRight, BadgeCheck, ClipboardList, FolderKanban, Gavel, Sun, Users, type LucideIcon,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { fmtDate } from '@/lib/format';
@@ -58,8 +58,8 @@ function Ring({ pct, status }: { pct: number; status: Light }) {
   const r = 22;
   const c = 2 * Math.PI * r;
   return (
-    <div className="relative h-14 w-14 shrink-0">
-      <svg viewBox="0 0 56 56" className="h-14 w-14 -rotate-90">
+    <div className="relative h-11 w-11 shrink-0">
+      <svg viewBox="0 0 56 56" className="h-11 w-11 -rotate-90">
         <circle cx="28" cy="28" r={r} fill="none" strokeWidth="5" className="stroke-slate-100" />
         <circle
           cx="28" cy="28" r={r} fill="none" strokeWidth="5" strokeLinecap="round"
@@ -67,7 +67,7 @@ function Ring({ pct, status }: { pct: number; status: Light }) {
           strokeDasharray={c} strokeDashoffset={c * (1 - pct / 100)}
         />
       </svg>
-      <span className="tabular absolute inset-0 flex items-center justify-center text-[11px] font-semibold text-slate-700">{pct}%</span>
+      <span className="tabular absolute inset-0 flex items-center justify-center text-[9px] font-semibold tracking-tight text-slate-700">{pct}%</span>
     </div>
   );
 }
@@ -82,10 +82,9 @@ function SectionCard({ s, index }: { s: Section; index: number }) {
       to={s.route}
       style={{ animationDelay: `${index * 60}ms` }}
       className={cn(
-        'card-rise group relative flex flex-col overflow-hidden rounded-xl border bg-card p-5 shadow-card',
-        'transition-all duration-300 ease-out hover:-translate-y-1 hover:border-primary/40',
-        'hover:shadow-[0_18px_40px_-16px_rgb(232_116_12/0.35)]',
-        chips.length > 0 && 'md:col-span-2 xl:col-span-1',
+        'card-rise group relative flex flex-col overflow-hidden rounded-xl border bg-card p-4 shadow-card',
+        'transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-primary/40',
+        'hover:shadow-[0_14px_32px_-14px_rgb(232_116_12/0.35)]',
       )}
     >
       {/* brand accent that sweeps in across the top, and a soft glow in the corner */}
@@ -93,37 +92,38 @@ function SectionCard({ s, index }: { s: Section; index: number }) {
       <span className="pointer-events-none absolute -right-14 -top-14 h-36 w-36 rounded-full bg-primary/10 opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100" />
 
       {/* header */}
-      <div className="relative flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-soft text-primary transition-all duration-300 group-hover:-rotate-6 group-hover:scale-110 group-hover:bg-primary group-hover:text-primary-foreground group-hover:shadow-md group-hover:shadow-primary/30">
-            <Icon className="h-5 w-5" />
+      <div className="relative flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary transition-all duration-300 group-hover:-rotate-6 group-hover:scale-110 group-hover:bg-primary group-hover:text-primary-foreground group-hover:shadow-md group-hover:shadow-primary/30">
+            <Icon className="h-4 w-4" />
           </span>
-          <h3 className="text-[15px] font-semibold tracking-tight">{s.title}</h3>
+          <h3 className="truncate text-sm font-semibold tracking-tight">{s.title}</h3>
+          <ArrowUpRight className="h-3.5 w-3.5 shrink-0 -translate-x-1 text-primary opacity-0 transition-all duration-300 group-hover:translate-x-0 group-hover:opacity-100" />
         </div>
-        <span className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset', TONE[s.status].pill)}>
+        <span className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset', TONE[s.status].pill)}>
           <span className={cn('h-1.5 w-1.5 rounded-full', TONE[s.status].dot, s.status === 'bad' && 'animate-pulse')} />
           {TONE[s.status].label}
         </span>
       </div>
 
       {/* key figure */}
-      <div className="relative mt-5 flex items-center justify-between gap-4">
+      <div className="relative mt-3 flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="tabular text-3xl font-semibold tracking-tight text-slate-900">
+          <p className="tabular text-2xl font-semibold leading-none tracking-tight text-slate-900">
             {f.value}
-            {f.of !== null && <span className="text-lg font-medium text-slate-400"> / {f.of}</span>}
+            {f.of !== null && <span className="text-sm font-medium text-slate-400"> / {f.of}</span>}
           </p>
-          <p className="mt-1 text-sm text-muted-foreground">{f.label}</p>
+          <p className="mt-1 truncate text-xs text-muted-foreground" title={f.label}>{f.label}</p>
         </div>
         {pct !== null && <Ring pct={pct} status={s.status} />}
       </div>
 
       {/* facts */}
       {s.facts.length > 0 && (
-        <ul className="relative mt-4 space-y-1.5 border-t border-dashed pt-4">
+        <ul className="relative mt-3 space-y-0.5 border-t border-dashed pt-2.5">
           {s.facts.map((fact) => (
-            <li key={fact} className="flex items-start gap-2 text-[13px] text-slate-600">
-              <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-slate-400 transition-colors group-hover:bg-primary" />
+            <li key={fact} className="flex items-start gap-1.5 text-xs leading-5 text-slate-600">
+              <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-slate-400 transition-colors group-hover:bg-primary" />
               {fact}
             </li>
           ))}
@@ -132,26 +132,16 @@ function SectionCard({ s, index }: { s: Section; index: number }) {
 
       {/* per-department detail */}
       {chips.length > 0 && (
-        <div className="relative mt-4 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+        <div className="relative mt-2.5 flex flex-wrap gap-1">
           {chips.map((c) => (
-            <div key={c.label} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs transition-colors group-hover:bg-primary-soft/60">
-              <span className="flex min-w-0 items-center gap-1.5">
-                <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', TONE[c.status].dot)} />
-                <span className="leading-tight text-slate-700">{c.label}</span>
-              </span>
-              <span className="tabular shrink-0 text-slate-500">{c.status === 'none' && !c.note ? 'Not filed' : c.note}</span>
-            </div>
+            <span key={c.label} title={`${c.label}: ${c.note || 'not filed'}`} className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-600 ring-1 ring-inset ring-slate-200/70 transition-colors group-hover:bg-primary-soft/60">
+              <span className={cn('h-1.5 w-1.5 rounded-full', TONE[c.status].dot)} />
+              {c.label}
+              <span className="tabular text-slate-400">{c.note || '—'}</span>
+            </span>
           ))}
         </div>
       )}
-
-      {/* footer */}
-      <div className="relative mt-auto flex items-center justify-between pt-5 text-xs">
-        <span className="text-muted-foreground transition-colors group-hover:text-foreground">Open {s.title}</span>
-        <span className="flex h-7 w-7 items-center justify-center rounded-full border text-slate-400 transition-all duration-300 group-hover:translate-x-0.5 group-hover:border-primary group-hover:bg-primary group-hover:text-primary-foreground">
-          <ArrowRight className="h-3.5 w-3.5" />
-        </span>
-      </div>
     </Link>
   );
 }
@@ -203,7 +193,7 @@ export function CompanyToday({ fallback }: { fallback?: ReactNode }) {
       </Card>
 
       {/* one card per section */}
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {sections.map((s, i) => <SectionCard key={s.key} s={s} index={i + 1} />)}
       </div>
     </section>
