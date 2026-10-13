@@ -248,3 +248,64 @@ export function parseProjectSheet(csv: string): ProjectUpdateRow[] {
   }
   return [...latest.values()];
 }
+
+export interface TechScoreRow {
+  site: string;
+  date: string;
+  submitted_at: string | null;
+  technician: string;
+  attendance: number;
+  daily_work: number;
+  task_assigned: number;
+  task_status: string | null;
+  form_submit: number;
+  monthly_review: number | null;
+  remarks: string | null;
+}
+
+/**
+ * The technicians' daily work tracker: one answer a row, scored as the O&M
+ * CRM did -- Present 20 (half day 10), any work written 25, task assigned
+ * "Yes" 10, form submitted "Yes" 25, and the monthly 20 if filled in the
+ * sheet. Keeps the latest answer per technician, site and day.
+ */
+export function parseTechScores(csv: string): TechScoreRow[] {
+  const rows = parseCsv(csv);
+  const h = rows.findIndex((r) => norm(r[0] ?? '') === 'timestamp');
+  if (h < 0) return [];
+  const head = rows[h].map(norm);
+  const col = (...words: string[]) => head.findIndex((x) => words.every((w) => x.includes(w)));
+  const c = {
+    tech: col('technician'), date: head.findIndex((x) => x === 'date' || x.startsWith('date')), site: col('site'),
+    attendance: col('attendance'), work: col('daily work'), task: col('task assigned', 'marks'),
+    status: col('status'), form: col('form submission'), remarks: col('remarks'), monthly: col('monthly score'),
+  };
+  if (c.task < 0) c.task = col('task assigned');
+  const yes = (s: string | undefined) => norm(s ?? '').startsWith('y');
+  const latest = new Map<string, TechScoreRow>();
+  for (const r of rows.slice(h + 1)) {
+    const date = isoDate(r[c.date] ?? '') ?? isoDate(r[0] ?? '');
+    const siteRaw = (r[c.site] ?? '').trim();
+    const tech = (r[c.tech] ?? '').replace(/\s+/g, ' ').trim();
+    if (!date || !siteRaw || !tech) continue;
+    const att = norm(r[c.attendance] ?? '');
+    const monthly = num(r[c.monthly]);
+    const row: TechScoreRow = {
+      site: siteKey(siteRaw),
+      date,
+      submitted_at: isoStamp(r[0] ?? ''),
+      technician: tech,
+      attendance: att.startsWith('present') ? 20 : att.includes('half') ? 10 : 0,
+      daily_work: (r[c.work] ?? '').trim() ? 25 : 0,
+      task_assigned: yes(r[c.task]) ? 10 : 0,
+      task_status: (r[c.status] ?? '').trim() || null,
+      form_submit: yes(r[c.form]) ? 25 : 0,
+      monthly_review: monthly !== null && monthly >= 0 && monthly <= 20 ? Math.round(monthly) : null,
+      remarks: nothing(r[c.remarks]),
+    };
+    const key = `${row.site.toLowerCase()}|${row.date}|${row.technician.toLowerCase()}`;
+    const prev = latest.get(key);
+    if (!prev || (row.submitted_at ?? '') >= (prev.submitted_at ?? '')) latest.set(key, row);
+  }
+  return [...latest.values()];
+}

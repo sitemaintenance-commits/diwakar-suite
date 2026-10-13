@@ -13,7 +13,7 @@
 // The sheet's id comes from setting generation_sheet ({sheet_id, from}).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders, json } from '../_shared/cors.ts';
-import { parseInsolation, parseProjectSheet, parseSheet, parseTabs, type SheetRow } from './parse.ts';
+import { parseInsolation, parseProjectSheet, parseSheet, parseTabs, parseTechScores, type SheetRow } from './parse.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
@@ -105,7 +105,23 @@ Deno.serve(async (req) => {
       }
     }
 
-    const summary = { at: new Date().toISOString(), by, tabs: read, rows: rows.length, ...(result as Record<string, unknown>), insolation, projects };
+    // The technicians' daily work tracker -> O&M Team Performance.
+    let team: Record<string, unknown> | null = null;
+    const { data: tpCfg } = await admin.rpc('tech_scores_sheet_config');
+    const tp = tpCfg as { sheet_id?: string; gid?: string } | null;
+    if (tp?.sheet_id) {
+      try {
+        let gid = tp.gid;
+        if (!gid) gid = parseTabs(await fetchText(`https://docs.google.com/spreadsheets/d/${tp.sheet_id}/edit`))[0]?.gid;
+        const tpRows = parseTechScores(await fetchText(`https://docs.google.com/spreadsheets/d/${tp.sheet_id}/export?format=csv&gid=${gid}`));
+        const { data: tpResult, error: tpErr } = await admin.rpc('sync_tech_scores', { p_rows: tpRows });
+        team = tpErr ? { error: tpErr.message } : { rows: tpRows.length, ...(tpResult as Record<string, unknown>) };
+      } catch (e) {
+        team = { error: e instanceof Error ? e.message : String(e) };
+      }
+    }
+
+    const summary = { at: new Date().toISOString(), by, tabs: read, rows: rows.length, ...(result as Record<string, unknown>), insolation, projects, team };
     await admin.rpc('record_generation_sheet_sync', { p_summary: summary });
     return json(req, { ok: true, ...summary });
   } catch (e) {

@@ -2577,6 +2577,33 @@ console.log('\nProject site updates from the engineers\' Google Form');
   await expectError('only the sync (service key) may write form answers', OWNER, `select public.sync_project_updates('[]'::jsonb)`, 'permission denied');
 }
 
+console.log('\nTeam Performance from the technicians\' Google Form');
+{
+  const d = (await asSystem('select (current_date - 3)::text d')).rows[0].d;
+  await asSystem(`insert into public.om_team_members (site_id, full_name, role_title, is_active) values ($1, 'Ramjan Khan', 'Technician', true)`, [site.Sadas]);
+  const sync = async (rows) => (await asSystem('select public.sync_tech_scores($1::jsonb) r', [JSON.stringify(rows)])).rows[0].r;
+  const score = async () => (await asSystem(`select total_score, member_id is not null as member, technician_name n, monthly_review, source, task_status
+     from public.om_tech_scores where site_id = $1 and score_date = $2::date and lower(technician_name) = 'ramjan khan' and deleted_at is null`, [site.Sadas, d])).rows;
+  const row = (over = {}) => ({ site: 'Sadas', date: d, submitted_at: `${d}T18:00:00+05:30`, technician: 'RAMJAN KHAN',
+    attendance: 20, daily_work: 25, task_assigned: 0, task_status: null, form_submit: 25, monthly_review: null, remarks: 'NO', ...over });
+
+  const r1 = await sync([row(), row({ site: 'Nowhere' })]);
+  const a = await score();
+  r1.added === 1 && r1.unknown_sites[0] === 'Nowhere' && a.length === 1 && a[0].total_score === 70 && a[0].member && a[0].n === 'Ramjan Khan'
+    ? ok('a form answer is scored (70/100) and matched to the site team member, whatever the name\'s case')
+    : bad('add', JSON.stringify({ r1, a }));
+  await asSystem(`update public.om_tech_scores set monthly_review = 18 where site_id = $1 and score_date = $2::date and lower(technician_name) = 'ramjan khan'`, [site.Sadas, d]);
+  const r2 = await sync([row({ submitted_at: `${d}T20:00:00+05:30`, task_assigned: 10, task_status: 'Completed', technician: 'Ramjan khan' })]);
+  const b = await score();
+  r2.updated === 1 && b.length === 1 && b[0].total_score === 98 && b[0].monthly_review === 18 && b[0].task_status === 'Completed'
+    ? ok('a later answer updates the same line (80) and keeps the reviewers\' monthly marks (+18 = 98)')
+    : bad('update', JSON.stringify({ r2, b }));
+  await asSystem(`update public.om_tech_scores set source = 'manual' where site_id = $1 and score_date = $2::date and lower(technician_name) = 'ramjan khan'`, [site.Sadas, d]);
+  const r3 = await sync([row({ submitted_at: `${d}T23:00:00+05:30`, attendance: 0 })]);
+  r3.kept_manual === 1 && (await score())[0].total_score === 98 ? ok('a score set by hand in the suite is kept') : bad('manual', JSON.stringify(r3));
+  await expectError('only the sync (service key) may write form scores', OWNER, `select public.sync_tech_scores('[]'::jsonb)`, 'permission denied');
+}
+
 console.log('\nToday in the company (dashboard)');
 await expectValue('the Super Admin sees one card per section', OWNER,
   `select string_agg(x->>'key', ',' order by x->>'key') from jsonb_array_elements(public.get_company_today()->'sections') x`,

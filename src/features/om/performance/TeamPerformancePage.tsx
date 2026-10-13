@@ -1,11 +1,13 @@
-// Team Performance — the daily technician score the O&M CRM kept in a
-// Google Form and a sheet. Eighty of the hundred marks are derived by the
-// database from the register, the task log and the daily field entry; the
-// last twenty are the reviewers' judgement and need APPROVE.
+// Team Performance — the daily technician score. The technicians' Google
+// Form ("Daily Solar Site Technician Work Tracker") is read every 30
+// minutes and scored as the O&M CRM did: attendance 20, daily work 25, task
+// assigned 10, form submitted 25; the last twenty are the reviewers'
+// month-end judgement and need APPROVE. Today / Last day / Previous jump
+// between single days, as the old CRM did.
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Award, Download, Gauge, ListChecks, TrendingUp, UserCheck } from 'lucide-react';
+import { Award, CalendarDays, ChevronLeft, ChevronRight, Download, Gauge, ListChecks, TrendingUp, UserCheck } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
 import { fmtDate, fmtNumber, safeNum, todayIST } from '@/lib/format';
@@ -52,7 +54,7 @@ function ScoreBar({ label, value, hint }: { label: string; value: number; hint?:
 function daysAgo(n: number) {
   const d = new Date(`${todayIST()}T00:00:00`);
   d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  return d.toLocaleDateString('en-CA');   // local date: toISOString would step back a day in India
 }
 
 export function TeamPerformancePage() {
@@ -64,6 +66,17 @@ export function TeamPerformancePage() {
   const [siteId, setSiteId] = useState('all');
   const perf = useTeamPerformance(from, to, siteId);
   const p = perf.data;
+  const today = todayIST();
+  const lastDay = daysAgo(1);
+  const oneDay = from === to;
+  /** Show a single day; Previous / Next step from the day shown. */
+  const showDay = (d: string) => { setFrom(d); setTo(d); };
+  const step = (n: number) => {
+    const d = new Date(`${oneDay ? from : to}T00:00:00`);
+    d.setDate(d.getDate() + n);
+    const iso = d.toLocaleDateString('en-CA');
+    if (iso <= today) showDay(iso);
+  };
 
   async function saveMonthly(row: TechScore, value: string) {
     const marks = value.trim() === '' ? null : Math.round(safeNum(value));
@@ -106,7 +119,7 @@ export function TeamPerformancePage() {
       <PageHeader
         icon={TrendingUp}
         title="Team Performance"
-        description="Each technician's day, scored out of 100 from the work the suite already records."
+        description="Each technician's day, scored out of 100 from the technicians' daily form (synced every 30 minutes)."
         actions={
           can.export ? (
             <Button variant="outline" size="sm" onClick={onExport} disabled={!p?.records.length}>
@@ -135,8 +148,14 @@ export function TeamPerformancePage() {
               options={[['all', 'All my sites'], ...(sites.data ?? []).map((s) => [s.id, s.name] as [string, string])]}
             />
           </label>
-          <div className="flex items-end text-xs text-muted-foreground">
-            {fmtDate(from)} – {fmtDate(to)}
+          <div className="flex flex-wrap items-end gap-1.5">
+            <Button size="sm" variant={oneDay && from === today ? 'default' : 'outline'} onClick={() => showDay(today)}>Today</Button>
+            <Button size="sm" variant={oneDay && from === lastDay ? 'default' : 'outline'} onClick={() => showDay(lastDay)}>Last day</Button>
+            <Button size="icon-sm" variant="outline" aria-label="Previous day" title="Previous day" onClick={() => step(-1)}><ChevronLeft /></Button>
+            <Button size="icon-sm" variant="outline" aria-label="Next day" title="Next day" disabled={oneDay && from >= today} onClick={() => step(1)}><ChevronRight /></Button>
+            <Button size="sm" variant={!oneDay && to === today && from === daysAgo(29) ? 'default' : 'ghost'} onClick={() => { setFrom(daysAgo(29)); setTo(today); }}>
+              <CalendarDays /> 30 days
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -154,7 +173,8 @@ export function TeamPerformancePage() {
       ) : (
         <>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <StatCard label="Scored days" value={fmtNumber(p?.record_count)} hint={`${fmtDate(from)} – ${fmtDate(to)}`} icon={ListChecks} />
+            <StatCard label={oneDay ? 'Records' : 'Scored days'} value={fmtNumber(p?.record_count)}
+              hint={oneDay ? `${fmtDate(from)}${from === today ? ' (today)' : from === lastDay ? ' (last day)' : ''}` : `${fmtDate(from)} – ${fmtDate(to)}`} icon={ListChecks} />
             <StatCard label="Average score" value={`${fmtNumber(p?.average, 1)}%`} icon={Gauge} tone="green" />
             <StatCard
               label="Best technician"
@@ -177,8 +197,8 @@ export function TeamPerformancePage() {
               <CardHeader>
                 <CardTitle>How the score is built</CardTitle>
                 <CardDescription>
-                  The first four criteria are read from the site register, the task log and the daily field entry. The last
-                  twenty marks are entered by a reviewer.
+                  The first four criteria come from each technician's daily form: present 20, work written 25, task assigned
+                  10, form submitted 25. The last twenty marks are entered by a reviewer at month end.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
