@@ -71,7 +71,10 @@ export function SendDocumentDialog({ doc, onClose }: { doc: SendableDoc | null; 
           setNotSetUp(true);
           return;
         }
-        throw new Error(payload?.error ?? error.message);
+        if (payload?.error) throw new Error(payload.error);
+        // No message from the service: it stopped part-way (time / memory limit or a network failure).
+        const status = error instanceof FunctionsHttpError ? (error.context as Response).status : null;
+        throw new Error(`The email service stopped before sending${status ? ` (status ${status})` : ''}. Try again; for a large file use Open in Gmail or Share file.`);
       }
       toast.success(`Sent to ${(data?.sent_to ?? list).join(', ')}`);
       onClose();

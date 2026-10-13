@@ -4,7 +4,9 @@
 // files downloaded through the storage policies, so nobody can send a file
 // they could not open themselves. Mail goes out from the company's Gmail
 // account (SMTP with an App Password, port 465 -- Supabase blocks 25 and
-// 587), with the person who pressed Send as Reply-To.
+// 587) through nodemailer, whose attachment encoding is native (a pure-JS
+// encoder ran out of the function's CPU time on a 7 MB PDF), with the
+// person who pressed Send as Reply-To.
 //
 // Secrets:
 //   SMTP_USER   the Gmail address, e.g. diwakarsolar.documents@gmail.com
@@ -14,7 +16,8 @@
 //
 // Body: { document_ids: string[], to: string[], cc?: string[], subject: string, message?: string }
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts';
+import nodemailer from 'npm:nodemailer@6.9.16';
+import { Buffer } from 'node:buffer';
 import { corsHeaders, json } from '../_shared/cors.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -84,8 +87,7 @@ Deno.serve(async (req) => {
       if (error || !blob) return json(req, { error: `Could not read ${d.file_name}.` }, 403);
       attachments.push({
         filename: d.file_name,
-        content: new Uint8Array(await blob.arrayBuffer()),
-        encoding: 'binary' as const,
+        content: Buffer.from(await blob.arrayBuffer()),
         contentType: d.mime_type || blob.type || 'application/octet-stream',
       });
     }
@@ -100,28 +102,30 @@ Deno.serve(async (req) => {
       <p style="color:#64748b;font-size:12px">Sent by ${esc(sender)}${replyTo ? ` (${esc(replyTo)})` : ''} from the Diwakar Solar Management Suite. Replies go to ${esc(sender)}.</p></div>`;
     const text = `${message ? message + '\n\n' : ''}Attached: ${docs.map((d) => d.file_name).join(', ')}\n\nSent by ${sender} from the Diwakar Solar Management Suite.`;
 
-    const client = new SMTPClient({
-      connection: { hostname: 'smtp.gmail.com', port: 465, tls: true, auth: { username: SMTP_USER, password: SMTP_PASS } },
+    const transport = nodemailer.createTransport({
+      host: 'smtp.gmail.com', port: 465, secure: true,
+      auth: { user: SMTP_USER, pass: SMTP_PASS },
+      connectionTimeout: 20000, greetingTimeout: 20000, socketTimeout: 60000,
     });
     try {
-      await client.send({
-        from: `${MAIL_NAME} <${SMTP_USER}>`,
+      await transport.sendMail({
+        from: { name: MAIL_NAME, address: SMTP_USER },
         to,
         cc: cc.length ? cc : undefined,
         replyTo,
         subject,
-        content: text,
+        text,
         html,
         attachments,
       });
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);
-      const hint = /auth|535|534|username|password/i.test(why)
+      const hint = /auth|535|534|username|password|credentials/i.test(why)
         ? 'Gmail refused the sign-in: check SMTP_USER and the App Password.'
         : why;
       return json(req, { error: `The email could not be sent. ${hint}` }, 502);
     } finally {
-      await client.close().catch(() => {});
+      transport.close();
     }
 
     // Who sent which files to whom, in the audit log.
