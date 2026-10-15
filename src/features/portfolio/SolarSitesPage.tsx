@@ -193,7 +193,7 @@ export function SolarSitesPage() {
                 />
               ) : (
                 <div>
-                  <Table wrapperClassName="max-h-[calc(100vh-19rem)] min-h-[16rem]">
+                  <Table wrapperClassName="max-h-[calc(100vh-22rem)] min-h-[12rem]">
                     <TableHeader>
                       <TableRow>
                         <TableHead>Plant</TableHead>

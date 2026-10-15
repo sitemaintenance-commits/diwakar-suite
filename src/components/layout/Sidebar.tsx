@@ -71,7 +71,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-16 shrink-0 items-center border-b px-5">
+      <div className="flex h-14 shrink-0 items-center border-b px-5">
         <BrandLockup brand={setting('brand_name', 'Diwakar Solar')} suite={setting('suite_name', 'Management Suite')} />
       </div>
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="Main">

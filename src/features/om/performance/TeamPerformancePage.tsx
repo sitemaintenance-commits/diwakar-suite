@@ -306,18 +306,16 @@ export function TeamPerformancePage() {
                   description="A score appears for each technician as soon as their site register for the day is submitted."
                 />
               ) : (
-                <div className="overflow-x-auto">
-                  <Table>
+                <div>
+                  <Table className="text-[13px]">
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Site</TableHead>
-                        <TableHead>Technician</TableHead>
-                        <TableHead className="text-right">Attendance</TableHead>
-                        <TableHead className="text-right">Daily work</TableHead>
-                        <TableHead className="text-right">Task</TableHead>
+                        <TableHead>Technician · site · date</TableHead>
+                        <TableHead className="text-right">Present /20</TableHead>
+                        <TableHead className="text-right">Work /25</TableHead>
+                        <TableHead className="text-right">Task /10</TableHead>
                         <TableHead>Task status</TableHead>
-                        <TableHead className="text-right">Form</TableHead>
+                        <TableHead className="text-right">Form /25</TableHead>
                         <TableHead className="text-right">Auto /80</TableHead>
                         <TableHead className="text-right">Monthly /20</TableHead>
                         <TableHead className="text-right">Total</TableHead>
@@ -327,15 +325,16 @@ export function TeamPerformancePage() {
                     <TableBody>
                       {p.records.map((r) => (
                         <TableRow key={r.id}>
-                          <TableCell className="whitespace-nowrap">{fmtDate(r.score_date)}</TableCell>
-                          <TableCell>{r.site}</TableCell>
-                          <TableCell className="font-medium">{r.technician}</TableCell>
-                          <TableCell className="tabular text-right">{r.attendance}/20</TableCell>
-                          <TableCell className="tabular text-right">{r.daily_work}/25</TableCell>
-                          <TableCell className="tabular text-right">{r.task_assigned}/10</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">{r.task_status}</TableCell>
-                          <TableCell className="tabular text-right">{r.form_submit}/25</TableCell>
-                          <TableCell className="tabular text-right font-medium">{r.auto_score}/80</TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            <div className="font-medium">{r.technician}</div>
+                            <div className="text-[11px] text-muted-foreground">{r.site} · {fmtDate(r.score_date)}</div>
+                          </TableCell>
+                          <TableCell className="tabular text-right">{r.attendance}</TableCell>
+                          <TableCell className="tabular text-right">{r.daily_work}</TableCell>
+                          <TableCell className="tabular text-right">{r.task_assigned}</TableCell>
+                          <TableCell className="max-w-[10rem] truncate text-muted-foreground" title={r.task_status ?? undefined}>{r.task_status}</TableCell>
+                          <TableCell className="tabular text-right">{r.form_submit}</TableCell>
+                          <TableCell className="tabular text-right font-medium">{r.auto_score}</TableCell>
                           <TableCell className="text-right">
                             {can.approve ? (
                               <Input
@@ -344,7 +343,7 @@ export function TeamPerformancePage() {
                                 max={20}
                                 defaultValue={r.monthly_review ?? ''}
                                 onBlur={(e) => saveMonthly(r, e.target.value)}
-                                className="tabular h-8 w-20 text-right"
+                                className="tabular h-7 w-16 text-right"
                               />
                             ) : (
                               <span className="tabular">{r.monthly_review === null ? '—' : `${r.monthly_review}/20`}</span>

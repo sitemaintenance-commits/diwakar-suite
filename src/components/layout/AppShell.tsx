@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, Outlet } from 'react-router';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { CalendarDays, LogOut, Menu, UserRound } from 'lucide-react';
+import { CalendarDays, LogOut, Menu, PanelLeftClose, PanelLeftOpen, UserRound } from 'lucide-react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { NotificationsBell } from '@/components/layout/NotificationsBell';
 import { Button } from '@/components/ui/button';
@@ -18,28 +18,40 @@ import { UserAvatar } from '@/components/common';
 import { useAuth } from '@/auth/AuthProvider';
 import { useAccess } from '@/auth/AccessProvider';
 import { TIMEZONE } from '@/lib/format';
+import { cn } from '@/lib/utils';
+
+// The menu stays pinned on wide screens (1280 px and up) and can be hidden
+// there to give tables the full width; on anything narrower it opens as a
+// drawer from the menu button, so pages are not squeezed beside it.
+const MENU_KEY = 'menu-hidden';
+const readMenuHidden = () => { try { return localStorage.getItem(MENU_KEY) === '1'; } catch { return false; } };
 
 export function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [menuHidden, setMenuHidden] = useState(readMenuHidden);
+  const toggleMenu = () => setMenuHidden((h) => {
+    try { localStorage.setItem(MENU_KEY, h ? '0' : '1'); } catch { /* not kept */ }
+    return !h;
+  });
 
   return (
     <div className="flex h-full min-h-screen">
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r bg-sidebar lg:block">
+      <aside className={cn('fixed inset-y-0 left-0 z-30 hidden w-64 border-r bg-sidebar', !menuHidden && 'xl:block')}>
         <Sidebar />
       </aside>
 
-      {/* Mobile drawer */}
+      {/* Drawer (narrow screens, or when the pinned menu is hidden) */}
       <Dialog open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="w-72 p-0 lg:hidden" aria-describedby={undefined}>
+        <SheetContent side="left" className="w-72 p-0" aria-describedby={undefined}>
           <DialogPrimitive.Title className="sr-only">Navigation</DialogPrimitive.Title>
           <Sidebar onNavigate={() => setMobileOpen(false)} />
         </SheetContent>
       </Dialog>
 
-      <div className="flex min-w-0 flex-1 flex-col lg:pl-64">
-        <Topbar onMenu={() => setMobileOpen(true)} />
-        <main className="flex-1 px-4 py-4 sm:px-6 lg:px-8 lg:py-5">
+      <div className={cn('flex min-w-0 flex-1 flex-col', !menuHidden && 'xl:pl-64')}>
+        <Topbar onMenu={() => setMobileOpen(true)} menuHidden={menuHidden} onToggleMenu={toggleMenu} />
+        <main className="flex-1 px-4 py-4 sm:px-6 lg:py-5">
           <div className="mx-auto w-full max-w-7xl">
             <Outlet />
           </div>
@@ -49,7 +61,7 @@ export function AppShell() {
   );
 }
 
-function Topbar({ onMenu }: { onMenu: () => void }) {
+function Topbar({ onMenu, menuHidden, onToggleMenu }: { onMenu: () => void; menuHidden: boolean; onToggleMenu: () => void }) {
   const { signOut } = useAuth();
   const { access } = useAccess();
   const profile = access?.profile;
@@ -63,9 +75,13 @@ function Topbar({ onMenu }: { onMenu: () => void }) {
   }).format(new Date());
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b bg-card/95 px-4 backdrop-blur sm:px-6 lg:px-8">
-      <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenu} aria-label="Open menu">
+    <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-card/95 px-4 backdrop-blur sm:px-6">
+      <Button variant="ghost" size="icon" className={cn(!menuHidden && 'xl:hidden')} onClick={onMenu} aria-label="Open menu">
         <Menu className="h-5 w-5" />
+      </Button>
+      <Button variant="ghost" size="icon" className="hidden xl:inline-flex" onClick={onToggleMenu}
+        aria-label={menuHidden ? 'Show the menu' : 'Hide the menu'} title={menuHidden ? 'Show the menu' : 'Hide the menu for more room'}>
+        {menuHidden ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
       </Button>
       <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex">
         <CalendarDays className="h-4 w-4" />

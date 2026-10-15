@@ -326,7 +326,7 @@ function PermissionMatrix({
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] text-sm">
+          <table className="w-full min-w-[720px] text-[13px]">
             <thead className="sticky top-0 bg-slate-50/95">
               <tr className="border-b">
                 <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Module</th>

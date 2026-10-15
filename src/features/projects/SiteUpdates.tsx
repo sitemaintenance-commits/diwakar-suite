@@ -266,16 +266,16 @@ export function SiteUpdateForm({ projectId }: { projectId?: string }) {
 
         <Section n="2" title="Running work status">
           <div className="overflow-x-auto rounded-lg border">
-            <Table>
+            <Table className="text-[13px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-8">#</TableHead>
-                  <TableHead className="min-w-[14rem]">Activity</TableHead>
+                  <TableHead className="min-w-[12rem]">Activity</TableHead>
                   <TableHead className="w-40">Status</TableHead>
-                  <TableHead className="w-24">Done</TableHead>
-                  <TableHead className="w-24">Total</TableHead>
-                  <TableHead className="w-24">Unit</TableHead>
-                  <TableHead className="min-w-[12rem]">Note</TableHead>
+                  <TableHead className="w-20">Done</TableHead>
+                  <TableHead className="w-20">Total</TableHead>
+                  <TableHead className="w-20">Unit</TableHead>
+                  <TableHead className="min-w-[10rem]">Note</TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
               </TableHeader>
@@ -283,7 +283,7 @@ export function SiteUpdateForm({ projectId }: { projectId?: string }) {
                 {activities.map((a, i) => (
                   <TableRow key={i}>
                     <TableCell className="tabular text-muted-foreground">{i + 1}</TableCell>
-                    <TableCell><Input className="h-8 w-full min-w-[14rem]" value={a.name} onChange={(e) => setActivity(i, { name: e.target.value })} /></TableCell>
+                    <TableCell><Input className="h-8 w-full min-w-[12rem]" value={a.name} onChange={(e) => setActivity(i, { name: e.target.value })} /></TableCell>
                     <TableCell><FilterSelect value={a.status} onChange={(v) => setActivity(i, { status: v as WorkStatus })} options={WORK_OPTIONS} /></TableCell>
                     <TableCell><Input className="h-8 w-20" inputMode="decimal" value={a.done ?? ''} onChange={(e) => setActivity(i, { done: e.target.value })} /></TableCell>
                     <TableCell><Input className="h-8 w-20" inputMode="decimal" value={a.total ?? ''} onChange={(e) => setActivity(i, { total: e.target.value })} /></TableCell>

@@ -284,7 +284,7 @@ export function SiteOperationsPage() {
               </Badge>
             </CardHeader>
             <CardContent className="p-0">
-              <Table>
+              <Table className="text-[13px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-12">S.No</TableHead>
@@ -490,7 +490,7 @@ function RegisterHistory({ canExport }: { canExport: boolean }) {
           {!s?.logs.length ? (
             <EmptyState icon={ClipboardCheck} title="No registers in this period" description="Registers appear here as soon as they are submitted." />
           ) : (
-            <Table>
+            <Table className="text-[13px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
@@ -519,7 +519,7 @@ function RegisterHistory({ canExport }: { canExport: boolean }) {
                     <TableCell>
                       <Badge variant={URGENCY[l.urgency].tone}>{URGENCY[l.urgency].label}</Badge>
                     </TableCell>
-                    <TableCell className="max-w-xs truncate text-sm text-muted-foreground">
+                    <TableCell className="max-w-[13rem] truncate text-muted-foreground" title={l.issues.join(', ') || undefined}>
                       {l.issues.length ? l.issues.join(', ') : '—'}
                     </TableCell>
                   </TableRow>
