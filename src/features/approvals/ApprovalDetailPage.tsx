@@ -470,21 +470,37 @@ const fmtValue = (v: unknown) => (v == null || v === '' ? '—' : typeof v === '
 
 function Timeline({ d, refresh }: { d: ApprovalDetail; refresh: () => Promise<void> }) {
   const [comment, setComment] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const canUpload = d.permissions.can_upload;
   const items = [...d.timeline].reverse();
 
+  /** Files picked here are added to the request's documents; the comment names them. */
   async function post() {
-    if (!comment.trim()) return;
+    if (!comment.trim() && !files.length) return;
     setBusy(true);
     try {
-      await addComment(d.request.id, comment);
+      for (const file of files) await uploadApprovalFile(d.request.id, file);
+      const attached = files.length ? `Attached: ${files.map((f) => f.name).join(', ')}` : '';
+      const text = [comment.trim(), attached].filter(Boolean).join('\n\n');
+      if (comment.trim()) await addComment(d.request.id, text);
+      if (files.length) toast.success(files.length > 1 ? `${files.length} documents added` : 'Document added');
       setComment('');
+      setFiles([]);
       await refresh();
     } catch (e) {
       toast.error(errorMessage(e));
+      await refresh();
     } finally {
       setBusy(false);
     }
+  }
+
+  function pick(list: FileList | null) {
+    if (!list?.length) return;
+    const names = new Set(files.map((f) => f.name + f.size));
+    setFiles([...files, ...Array.from(list).filter((f) => !names.has(f.name + f.size))].slice(0, 10));
   }
 
   return (
@@ -493,9 +509,32 @@ function Timeline({ d, refresh }: { d: ApprovalDetail; refresh: () => Promise<vo
       {d.request.status !== 'draft' && (
         <div className="mb-4 grid gap-2">
           <Textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Add a comment…" maxLength={4000} />
-          <Button size="sm" variant="outline" className="justify-self-end" disabled={busy || !comment.trim()} onClick={() => void post()}>
-            {busy ? <Loader2 className="animate-spin" /> : <MessageSquare />} Comment
-          </Button>
+          {files.length > 0 && (
+            <ul className="flex flex-wrap gap-1.5">
+              {files.map((f, i) => (
+                <li key={f.name + f.size} className="inline-flex max-w-full items-center gap-1.5 rounded-md border bg-muted/50 px-2 py-1 text-xs">
+                  <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{f.name}</span>
+                  <span className="shrink-0 text-muted-foreground">{fmtSize(f.size)}</span>
+                  <button type="button" aria-label={`Remove ${f.name}`} className="shrink-0 text-muted-foreground hover:text-destructive" disabled={busy}
+                    onClick={() => setFiles(files.filter((_, j) => j !== i))}><XCircle className="h-3.5 w-3.5" /></button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex items-center justify-end gap-2">
+            {canUpload && (
+              <>
+                <Button size="sm" variant="ghost" disabled={busy} onClick={() => fileRef.current?.click()}>
+                  <Paperclip /> Upload document
+                </Button>
+                <input ref={fileRef} type="file" multiple accept={FILE_ACCEPT} className="hidden" onChange={(e) => { pick(e.target.files); e.target.value = ''; }} />
+              </>
+            )}
+            <Button size="sm" variant="outline" disabled={busy || (!comment.trim() && !files.length)} onClick={() => void post()}>
+              {busy ? <Loader2 className="animate-spin" /> : <MessageSquare />} {files.length && !comment.trim() ? 'Upload' : 'Comment'}
+            </Button>
+          </div>
         </div>
       )}
       <ol className="relative grid gap-4 before:absolute before:bottom-2 before:left-[15px] before:top-2 before:w-px before:bg-border">
