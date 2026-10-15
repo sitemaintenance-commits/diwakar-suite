@@ -3,9 +3,15 @@
 // resubmitted. Attachments are uploaded once the request exists. Before
 // the first submission the requester chooses the approvers, in order; the
 // Accounts head is always the last level.
-import { useState } from 'react';
+//
+// What is typed is kept in this browser as it is typed, so closing the
+// form, leaving the page or coming back later finds it still filled in.
+// The copy is removed once the request is saved or submitted, or when the
+// user starts over. (Picked files cannot be kept; they are chosen again.)
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { FileText, Loader2, Lock, Paperclip, Plus, Save, Send, X } from 'lucide-react';
+import { FileText, Loader2, Lock, Paperclip, Plus, RotateCcw, Save, Send, X } from 'lucide-react';
+import { useAuth } from '@/auth/AuthProvider';
 import { errorMessage } from '@/lib/errors';
 import { todayIST } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -20,6 +26,31 @@ import {
 } from '@/features/approvals/api';
 
 const NONE = '__none__';
+const DRAFT_DAYS = 7;
+
+interface LocalDraft { f: RequestInput; chain: string[]; savedAt: number }
+function readDraft(key: string): LocalDraft | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const d = JSON.parse(raw) as LocalDraft;
+    if (!d?.f || Date.now() - d.savedAt > DRAFT_DAYS * 86_400_000) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    return d;
+  } catch {
+    return null;
+  }
+}
+function writeDraft(key: string, d: LocalDraft | null) {
+  try {
+    if (d) localStorage.setItem(key, JSON.stringify(d));
+    else localStorage.removeItem(key);
+  } catch {
+    /* storage full or blocked: the form still works, it just is not kept */
+  }
+}
 
 export function RequestForm({ open, request, onClose, onSaved }: {
   open: boolean;
@@ -39,20 +70,47 @@ export function RequestForm({ open, request, onClose, onSaved }: {
   const [chain, setChain] = useState<string[]>([]);
   const [busy, setBusy] = useState<'draft' | 'submit' | null>(null);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const [restored, setRestored] = useState<number | null>(null);
+  const { session } = useAuth();
+  const draftKey = `approval-form:${session?.user.id ?? 'anon'}:${request?.id ?? 'new'}`;
 
-  // Load the form when it opens (and once the caller's department is known).
+  const fromRequest = (r: ApprovalRequest): RequestInput => ({
+    category: r.category, priority: r.priority, title: r.title, details: r.details ?? '',
+    amount: r.amount == null ? '' : String(r.amount), needed_by: r.needed_by ?? '',
+    department_id: r.department_id ?? '', site_id: r.site_id ?? '', project_id: r.project_id ?? '', note: '',
+    include_final: r.include_final ?? true, post_content: r.post_content ?? '',
+  });
+
+  // Load the form when it opens (and once the caller's department is known),
+  // picking up whatever was typed last time if it was never saved.
   const key = open ? (request?.id ?? `new:${options.data ? 'ready' : 'wait'}`) : null;
   if (key && key !== loadedFor) {
     setLoadedFor(key);
     setFiles([]);
-    setChain(request ? request.chosen_approvers ?? [] : ['']);
-    setF(request ? {
-      category: request.category, priority: request.priority, title: request.title, details: request.details ?? '',
-      amount: request.amount == null ? '' : String(request.amount), needed_by: request.needed_by ?? '',
-      department_id: request.department_id ?? '', site_id: request.site_id ?? '', project_id: request.project_id ?? '', note: '',
-      include_final: request.include_final ?? true, post_content: request.post_content ?? '',
-    } : blank());
+    const kept = readDraft(draftKey);
+    setRestored(kept ? kept.savedAt : null);
+    setChain(kept ? (kept.chain.length ? kept.chain : ['']) : request ? request.chosen_approvers ?? [] : ['']);
+    setF(kept ? { ...blank(), ...kept.f } : request ? fromRequest(request) : blank());
   }
+
+  // Keep a copy of what is typed in this browser.
+  useEffect(() => {
+    if (!open || !loadedFor || busy) return;
+    const pristine = request ? JSON.stringify(f) === JSON.stringify(fromRequest(request))
+      : !f.title.trim() && !f.details.trim() && !f.amount && !(f.post_content ?? '').trim() && !chain.some(Boolean);
+    const t = window.setTimeout(() => writeDraft(draftKey, pristine ? null : { f, chain, savedAt: Date.now() }), 400);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f, chain, open, loadedFor]);
+
+  function startOver() {
+    writeDraft(draftKey, null);
+    setRestored(null);
+    setFiles([]);
+    setChain(request ? request.chosen_approvers ?? [] : ['']);
+    setF(request ? fromRequest(request) : blank());
+  }
+
   const set = <K extends keyof RequestInput>(k: K, v: RequestInput[K]) => setF((s) => ({ ...s, [k]: v }));
   const close = () => { if (!busy) { setLoadedFor(null); onClose(); } };
 
@@ -81,13 +139,14 @@ export function RequestForm({ open, request, onClose, onSaved }: {
       if (!submitted) await setApprovers(id, chain.filter(Boolean));
       for (const file of files) await uploadApprovalFile(id, file);
       if (submit) await saveRequest(f, id, true);
+      writeDraft(draftKey, null);
       toast.success(submit ? (returned ? 'Request resubmitted' : 'Request submitted for approval') : isNew ? 'Saved as draft' : 'Changes saved');
       setLoadedFor(null);
       onClose();
       onSaved(id);
     } catch (e) {
       toast.error(errorMessage(e));
-      if (isNew && id) { setLoadedFor(null); onClose(); onSaved(id); } // the draft exists: open it
+      if (isNew && id) { writeDraft(draftKey, null); setLoadedFor(null); onClose(); onSaved(id); } // the draft exists: open it
     } finally {
       setBusy(null);
     }
@@ -109,6 +168,16 @@ export function RequestForm({ open, request, onClose, onSaved }: {
                 : 'Choose who approves it, in order. It ends with the Accounts head.'}
           </DialogDescription>
         </DialogHeader>
+
+        {restored && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary-soft/60 px-3 py-2 text-xs">
+            <span>
+              <span className="font-semibold text-primary">Restored what you typed earlier</span>
+              <span className="text-muted-foreground"> · {new Date(restored).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}. Attached files need to be chosen again.</span>
+            </span>
+            <Button size="sm" variant="ghost" className="h-7 text-xs" disabled={!!busy} onClick={startOver}><RotateCcw /> Start over</Button>
+          </div>
+        )}
 
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Request type" required hint={submitted ? 'The type cannot change after submission.' : undefined}>
