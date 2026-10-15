@@ -23,7 +23,7 @@ import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { RequestForm } from '@/features/approvals/RequestForm';
 import {
   ACTION_LABEL, FILE_ACCEPT, LEVEL_STATUS, PRIORITIES, STATUS, actOnStep, addComment, approvalKeys, cancelRequest, categoryLabel,
-  completeRequest, deleteDocument, fileUrl, fmtSize, isImage, isPdf, reassignStep, reopenRequest, saveRequest, uploadApprovalFile,
+  completeRequest, deleteDocument, editStepComment, fileUrl, fmtSize, isImage, isPdf, reassignStep, reopenRequest, saveRequest, uploadApprovalFile,
   useApprovalDetail, useApprovalSettings,
   type ApprovalDetail, type ApprovalDocument, type ApprovalStep, type DocVersion, type TimelineEntry,
 } from '@/features/approvals/api';
@@ -59,6 +59,7 @@ type Dialogs =
   | { kind: 'cancel' | 'reopen' | 'complete' | 'submit' }
   | { kind: 'delete-doc'; doc: ApprovalDocument }
   | { kind: 'reassign'; step: ApprovalStep }
+  | { kind: 'edit-comment'; step: ApprovalStep }
   | null;
 
 function Detail({ d, refresh }: { d: ApprovalDetail; refresh: () => Promise<void> }) {
@@ -162,7 +163,7 @@ function Detail({ d, refresh }: { d: ApprovalDetail; refresh: () => Promise<void
               <ol className="mt-4 grid gap-3">
                 {steps.map((s) => (
                   <LevelRow key={s.id} s={s} canReassign={p.can_reassign && (s.status === 'pending' || s.status === 'locked')}
-                    onReassign={() => setDialog({ kind: 'reassign', step: s })} />
+                    onReassign={() => setDialog({ kind: 'reassign', step: s })} onEditComment={() => setDialog({ kind: 'edit-comment', step: s })} />
                 ))}
               </ol>
             ) : (
@@ -244,6 +245,13 @@ function Detail({ d, refresh }: { d: ApprovalDetail; refresh: () => Promise<void
           label="Reason (optional)" onClose={() => setDialog(null)}
           onConfirm={(c) => run(() => deleteDocument(dialog.doc.id, c), 'Document deleted')} />
       )}
+      {dialog?.kind === 'edit-comment' && (
+        <ReasonDialog title={`${dialog.step.comment ? 'Edit' : 'Add'} your comment · Level ${dialog.step.level_no}`}
+          confirmLabel="Save comment" initial={dialog.step.comment ?? ''} required={dialog.step.status !== 'approved'}
+          description={`Your decision (${LEVEL_STATUS[dialog.step.status]?.label ?? dialog.step.status}) stays as it is; only the comment changes. The edit shows in the timeline and the requester is told.`}
+          label={dialog.step.status === 'approved' ? 'Comment' : 'Reason'} onClose={() => setDialog(null)}
+          onConfirm={(c) => run(() => editStepComment(dialog.step.id, c), 'Comment saved')} />
+      )}
       {dialog?.kind === 'reassign' && (
         <ReassignDialog step={dialog.step} onClose={() => setDialog(null)}
           onConfirm={(target, reason) => run(() => reassignStep(dialog.step.id, target, reason), 'Approver changed')} />
@@ -279,7 +287,9 @@ const LEVEL_ICON: Record<string, { icon: typeof Circle; className: string }> = {
   cancelled: { icon: Ban, className: 'bg-slate-100 text-slate-500' },
 };
 
-function LevelRow({ s, canReassign, onReassign }: { s: ApprovalStep; canReassign: boolean; onReassign: () => void }) {
+function LevelRow({ s, canReassign, onReassign, onEditComment }: {
+  s: ApprovalStep; canReassign: boolean; onReassign: () => void; onEditComment: () => void;
+}) {
   const look = LEVEL_ICON[s.status] ?? LEVEL_ICON.locked;
   const Icon = look.icon;
   return (
@@ -299,7 +309,12 @@ function LevelRow({ s, canReassign, onReassign }: { s: ApprovalStep; canReassign
             {LEVEL_STATUS[s.status]?.label} by <span className="font-medium text-foreground">{s.acted_by_name}</span> ({s.acted_role}) · {fmtDateTime(s.acted_at)}
           </p>
         )}
-        {s.comment && <p className="mt-1 rounded bg-muted/60 px-2 py-1 text-xs">“{s.comment}”</p>}
+        {s.comment && <p className="mt-1 whitespace-pre-wrap rounded bg-muted/60 px-2 py-1 text-xs">“{s.comment}”</p>}
+        {s.can_edit_comment && (
+          <Button size="sm" variant="ghost" className="mt-1 h-7 px-2 text-xs" onClick={onEditComment}>
+            <Pencil /> {s.comment ? 'Edit comment' : 'Add comment'}
+          </Button>
+        )}
       </div>
       {canReassign && (
         <Button size="sm" variant="ghost" onClick={onReassign} className="shrink-0"><UserCog /> Change</Button>
@@ -444,6 +459,7 @@ const TIMELINE_LOOK: Record<string, { icon: typeof Circle; className: string }> 
   reopened: { icon: RotateCcw, className: 'bg-orange-100 text-orange-700' },
   reassigned: { icon: UserCog, className: 'bg-violet-100 text-violet-700' },
   commented: { icon: MessageSquare, className: 'bg-slate-100 text-slate-600' },
+  comment_edited: { icon: Pencil, className: 'bg-slate-100 text-slate-600' },
   document_added: { icon: Paperclip, className: 'bg-slate-100 text-slate-600' },
   document_version: { icon: Upload, className: 'bg-slate-100 text-slate-600' },
   document_deleted: { icon: Trash2, className: 'bg-slate-100 text-slate-600' },
@@ -452,7 +468,7 @@ const TIMELINE_LOOK: Record<string, { icon: typeof Circle; className: string }> 
 
 function timelineTitle(t: TimelineEntry) {
   const base = ACTION_LABEL[t.action] ?? t.action;
-  if (t.level_no && ['approved', 'rejected', 'returned', 'level_skipped', 'reassigned'].includes(t.action)) return `${base} · Level ${t.level_no}`;
+  if (t.level_no && ['approved', 'rejected', 'returned', 'level_skipped', 'reassigned', 'comment_edited'].includes(t.action)) return `${base} · Level ${t.level_no}`;
   return base;
 }
 
@@ -567,8 +583,9 @@ function Timeline({ d, refresh }: { d: ApprovalDetail; refresh: () => Promise<vo
 }
 
 // ------------------------------------------------------------------- dialogs
-function ReasonDialog({ title, description, label = 'Comment', required, noInput, confirmLabel, cancelLabel = 'Cancel', tone, onConfirm, onClose }: {
+function ReasonDialog({ title, description, label = 'Comment', required, noInput, confirmLabel, cancelLabel = 'Cancel', tone, initial = '', onConfirm, onClose }: {
   title: string;
+  initial?: string;
   description: string;
   label?: string;
   required?: boolean;
@@ -579,7 +596,7 @@ function ReasonDialog({ title, description, label = 'Comment', required, noInput
   onConfirm: (text: string) => Promise<void>;
   onClose: () => void;
 }) {
-  const [text, setText] = useState('');
+  const [text, setText] = useState(initial);
   const [busy, setBusy] = useState(false);
   const missing = required && !text.trim();
   async function confirm() {

@@ -75,6 +75,7 @@ export const ACTION_LABEL: Record<string, string> = {
   document_version: 'New document version',
   document_deleted: 'Document deleted',
   commented: 'Comment',
+  comment_edited: 'Comment edited',
 };
 
 export const ALLOWED_FILES = /\.(pdf|docx?|xlsx?|jpe?g|png)$/i;
@@ -219,6 +220,8 @@ export interface ApprovalStep {
   acted_role: string | null;
   acted_at: string | null;
   comment: string | null;
+  /** The caller decided this level and may still change its comment. */
+  can_edit_comment?: boolean;
 }
 
 export interface TimelineEntry {
@@ -367,6 +370,8 @@ export const cancelRequest = (id: string, reason: string) => rpc('approval_cance
 export const reopenRequest = (id: string, reason: string) => rpc('approval_reopen', { p_id: id, p_reason: reason });
 export const completeRequest = (id: string, note: string) => rpc('approval_complete', { p_id: id, p_note: note.trim() || null });
 export const addComment = (id: string, body: string) => rpc('approval_add_comment', { p_request: id, p_body: body });
+/** Changes the comment on a level the caller approved, rejected or returned. */
+export const editStepComment = (stepId: string, comment: string) => rpc('approval_edit_step_comment', { p_step: stepId, p_comment: comment });
 export const deleteDocument = (docId: string, reason: string) => rpc('approval_delete_document', { p_document: docId, p_reason: reason.trim() || null });
 export const reassignStep = (stepId: string, target: { employee?: string | null; role?: string | null }, reason: string) =>
   rpc('approval_reassign', { p_step: stepId, p_employee: target.employee ?? null, p_role: target.role ?? null, p_reason: reason.trim() || null });

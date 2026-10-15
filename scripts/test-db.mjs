@@ -2176,6 +2176,27 @@ console.log('\nApprovals (multi-level)');
   }
   await sysError('the timeline cannot be edited', `update public.approval_actions set comment = 'x' where request_id = $1`, 'cannot be changed', [A]);
   await sysError('nor deleted', `delete from public.approval_actions where request_id = $1`, 'cannot be changed', [A]);
+  {
+    const L2 = await stepOf(A, 2);
+    const mine = (await detail(FIN, A)).steps.find((x) => x.id === L2);
+    const theirs = (await detail(HEAD, A)).steps.find((x) => x.id === L2);
+    mine?.can_edit_comment === true && theirs?.can_edit_comment === false
+      ? ok('the approver may edit the comment on their own decision, nobody else')
+      : bad('can_edit_comment', JSON.stringify({ mine, theirs }));
+    await expectError('another approver cannot edit it', HEAD, `select public.approval_edit_step_comment($1, 'x')`, 'Only the person', [L2]);
+    await expectError('nor the requester', ASKER, `select public.approval_edit_step_comment($1, 'x')`, 'Only the person', [L2]);
+    await expectOk('the approver adds the comment they forgot', FIN, `select public.approval_edit_step_comment($1, 'Within budget')`, [L2]);
+    const d = await detail(ASKER, A);
+    const step = d.steps.find((x) => x.id === L2);
+    const last = d.timeline[d.timeline.length - 1];
+    step.comment === 'Within budget' && step.status === 'approved' && step.acted_by_name === 'Finance Person'
+      && last.action === 'comment_edited' && last.comment === 'Within budget' && last.level_no === 2
+      ? ok('only the comment changes; the edit is a new timeline entry')
+      : bad('edit comment', JSON.stringify({ step, last }));
+    (await unread(ASKER, 'approval.comment', A)) >= 1 ? ok('the requester is told the comment changed') : bad('edit notify', 'no notification');
+    await sysError('a decided level’s comment still cannot be changed directly',
+      `update public.approval_steps set comment = 'sneaky' where id = $1`, 'cannot be changed', [L2]);
+  }
   await expectError('the app cannot read the tables directly', ASKER, `select * from public.approval_steps`, 'permission denied');
   await expectOk('the requester marks it completed', ASKER, `select public.approval_complete($1, 'Fan replaced')`, [A]);
   await expectError('a completed request cannot be cancelled', ASKER, `select public.approval_cancel($1)`, 'cannot be cancelled', [A]);
