@@ -3,16 +3,21 @@
 // This sits outside O&M on purpose. Someone running the company wants to
 // know whether the plants are running, not to work a maintenance queue,
 // and should not need the O&M section to find out.
+//
+// Laid out to fit one screen: the day picker sits in the header, the
+// figures in one slim row, and the plants table scrolls inside its card
+// with the column names pinned.
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Download, Gauge, Sun, TriangleAlert, Zap } from 'lucide-react';
+import { Activity, Download, Gauge, Sun, TriangleAlert, Zap } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
 import { exportCsv } from '@/lib/export';
 import { fmtDate, fmtNumber, safeNum, todayIST } from '@/lib/format';
 import { useCan } from '@/auth/AccessProvider';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -37,6 +42,9 @@ interface Row {
   last_reading: string | null;
   month_cuf: number | null;
   specific_yield: number | null;
+  month_pr: number | null;
+  pr_days: number;
+  today_pr: number | null;
   reported_today: boolean;
   open_tickets: number;
   critical_tickets: number;
@@ -50,6 +58,7 @@ interface Portfolio {
   total_dc_kwp: number;
   today_kwh: number;
   month_kwh: number;
+  month_pr: number | null;
   reported_today: number;
   open_tickets: number;
   critical_tickets: number;
@@ -62,6 +71,9 @@ function energy(kwh: unknown) {
   if (v >= 1_000) return `${fmtNumber(v / 1_000, 1)} MWh`;
   return `${fmtNumber(v)} kWh`;
 }
+
+/** PR colour: 80 % and up is good, under 75 % wants a look. */
+const prTone = (v: number | null) => (v == null ? 'text-muted-foreground' : v >= 80 ? 'text-green-700' : v >= 75 ? 'text-amber-700' : 'text-red-700');
 
 function capacity(kwp: unknown) {
   const v = safeNum(kwp);
@@ -100,6 +112,8 @@ export function SolarSitesPage() {
         { header: 'Days reported', value: (r) => safeNum(r.days_reported) },
         { header: 'S.Y. (per day)', value: (r) => r.specific_yield ?? '' },
         { header: 'Month CUF %', value: (r) => r.month_cuf ?? '' },
+        { header: 'Month PR %', value: (r) => r.month_pr ?? '' },
+        { header: 'PR days (with insolation)', value: (r) => safeNum(r.pr_days) },
         { header: 'Open tickets', value: (r) => safeNum(r.open_tickets) },
       ]);
       toast.success('Exported.');
@@ -115,26 +129,19 @@ export function SolarSitesPage() {
         title="Solar Sites"
         description="Every plant at a glance — what it generated today, how the month is running, and anything asking for attention."
         actions={
-          can.export && (
-            <Button variant="outline" onClick={onExport} disabled={!rows.length}>
-              <Download /> Export CSV
-            </Button>
-          )
+          <>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              Day
+              <Input type="date" value={date} max={todayIST()} onChange={(e) => setDate(e.target.value)} className="h-9 w-40" />
+            </label>
+            {can.export && (
+              <Button variant="outline" onClick={onExport} disabled={!rows.length}>
+                <Download /> Export CSV
+              </Button>
+            )}
+          </>
         }
       />
-
-      <Card className="mb-6">
-        <CardContent className="flex flex-wrap items-end gap-3 p-4">
-          <label className="grid gap-1.5">
-            <span className="text-xs text-muted-foreground">Day</span>
-            <Input type="date" value={date} max={todayIST()} onChange={(e) => setDate(e.target.value)} className="w-44" />
-          </label>
-          <p className="text-xs text-muted-foreground">
-            The month runs from {fmtDate(d?.month_from)}. CUF and S.Y. use the days actually reported, so a
-            half-filled month does not read as a collapse.
-          </p>
-        </CardContent>
-      </Card>
 
       {q.isLoading ? (
         <Skeleton className="h-72 rounded-xl" />
@@ -144,10 +151,12 @@ export function SolarSitesPage() {
         </Card>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
             <StatCard label="Connected capacity" value={capacity(d?.total_dc_kwp)} hint={`${fmtNumber(d?.sites)} plant(s)`} icon={Sun} />
             <StatCard label="Generated today" value={energy(d?.today_kwh)} hint={`${fmtNumber(d?.reported_today)} of ${fmtNumber(d?.sites)} reported`} icon={Zap} tone="green" />
             <StatCard label="This month" value={energy(d?.month_kwh)} hint={`since ${fmtDate(d?.month_from)}`} icon={Gauge} tone="violet" />
+            <StatCard label="Fleet PR (month)" value={d?.month_pr == null ? '—' : `${fmtNumber(d.month_pr, 1)}%`}
+              hint="Days with insolation, weighted by DC" icon={Activity} tone="blue" />
             <StatCard
               label="Open tickets"
               value={fmtNumber(d?.open_tickets)}
@@ -158,22 +167,23 @@ export function SolarSitesPage() {
           </div>
 
           {silent.length > 0 && (
-            <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>
-                No reading yet for {fmtDate(d?.date)} from {silent.map((r) => r.name).join(', ')}. A plant with
-                no reading is not the same as a plant that generated nothing.
+            <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
+              title={`No reading yet: ${silent.map((r) => r.name).join(', ')}`}>
+              <TriangleAlert className="h-4 w-4 shrink-0" />
+              <span className="shrink-0 font-semibold">
+                {silent.length === rows.length ? 'No plant has' : `${silent.length} of ${rows.length} plants have not`} reported for {fmtDate(d?.date)} yet:
               </span>
+              <span className="truncate">{silent.map((r) => r.name).join(', ')}</span>
             </div>
           )}
 
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle>Plants</CardTitle>
-              <CardDescription>
-                Sites you have access to. A blank figure means nothing was recorded, not zero.
-              </CardDescription>
-            </CardHeader>
+          <Card className="mt-3 overflow-hidden">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b px-4 py-2.5">
+              <h2 className="text-sm font-semibold">Plants <span className="font-normal text-muted-foreground">· {rows.length}</span></h2>
+              <p className="text-xs text-muted-foreground">
+                Month from {fmtDate(d?.month_from)} · CUF, S.Y. and PR use the days reported · a dash means nothing recorded
+              </p>
+            </div>
             <CardContent className="p-0">
               {!rows.length ? (
                 <EmptyState
@@ -182,8 +192,8 @@ export function SolarSitesPage() {
                   description="Plants you are assigned to, with a capacity on record, appear here."
                 />
               ) : (
-                <div className="overflow-x-auto">
-                  <Table>
+                <div>
+                  <Table wrapperClassName="max-h-[calc(100vh-19rem)] min-h-[16rem]">
                     <TableHeader>
                       <TableRow>
                         <TableHead>Plant</TableHead>
@@ -193,6 +203,7 @@ export function SolarSitesPage() {
                         <TableHead className="text-right">Days</TableHead>
                         <TableHead className="text-right">S.Y.</TableHead>
                         <TableHead className="text-right">CUF %</TableHead>
+                        <TableHead className="text-right" title="Performance ratio on the days with an insolation reading">PR %</TableHead>
                         <TableHead className="text-right">Tickets</TableHead>
                         <TableHead>Last reading</TableHead>
                       </TableRow>
@@ -200,12 +211,12 @@ export function SolarSitesPage() {
                     <TableBody>
                       {rows.map((r) => (
                         <TableRow key={r.site_id}>
-                          <TableCell className="whitespace-nowrap">
-                            <div className="font-medium">{r.name}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {r.location ?? 'Location not set'}
-                              {r.inverter_count ? ` · ${fmtNumber(r.inverter_count)} inverters` : ''}
-                            </div>
+                          <TableCell className="whitespace-nowrap py-1.5">
+                            <span className="font-medium">{r.name}</span>
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              {r.location ?? ''}
+                              {r.inverter_count ? `${r.location ? ' · ' : ''}${fmtNumber(r.inverter_count)} inv` : ''}
+                            </span>
                           </TableCell>
                           <TableCell className="tabular text-right">{capacity(r.capacity_dc_kwp)}</TableCell>
                           <TableCell className="tabular text-right">
@@ -222,6 +233,10 @@ export function SolarSitesPage() {
                           </TableCell>
                           <TableCell className="tabular text-right">
                             {r.month_cuf === null ? '—' : fmtNumber(r.month_cuf, 2)}
+                          </TableCell>
+                          <TableCell className={cn('tabular text-right font-medium', prTone(r.month_pr))}
+                            title={r.month_pr == null ? 'No insolation recorded this month' : `${fmtNumber(r.pr_days)} day(s) with insolation${r.today_pr != null ? ` · today ${fmtNumber(r.today_pr, 1)}%` : ''}`}>
+                            {r.month_pr == null ? '—' : fmtNumber(r.month_pr, 1)}
                           </TableCell>
                           <TableCell className="text-right">
                             {r.open_tickets === 0 ? (

@@ -43,7 +43,7 @@ export function PageHeader({
   icon?: LucideIcon;
 }) {
   return (
-    <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div className="flex items-start gap-3">
         {Icon && (
           <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary sm:flex">
@@ -91,22 +91,22 @@ export function StatCard({
     red: 'bg-red-50 text-red-600',
   };
   return (
-    <Card className="p-5">
+    <Card className="px-4 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-muted-foreground">{label}</p>
+          <p className="text-xs font-medium text-muted-foreground sm:text-sm">{label}</p>
           {loading ? (
-            <Skeleton className="mt-2 h-8 w-20" />
+            <Skeleton className="mt-1.5 h-7 w-20" />
           ) : (
-            <p className="tabular mt-1 text-xl font-bold tracking-tight text-foreground [overflow-wrap:normal] sm:text-2xl">
+            <p className="tabular mt-0.5 text-xl font-bold tracking-tight text-foreground [overflow-wrap:normal]">
               {typeof value === 'number' ? fmtNumber(value) : value}
             </p>
           )}
-          {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
+          {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
         </div>
         {Icon && (
-          <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', tones[tone])}>
-            <Icon className="h-5 w-5" />
+          <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', tones[tone])}>
+            <Icon className="h-[18px] w-[18px]" />
           </div>
         )}
       </div>

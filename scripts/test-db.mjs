@@ -1640,6 +1640,18 @@ await expectValue('and it renders flat, because the group shares its label', OWN
     ? ok('the portfolio lists every plant that has a capacity on record')
     : bad('portfolio', JSON.stringify(p).slice(0, 200));
 }
+{
+  // PR = generation / (insolation x DC), only on days with an insolation reading.
+  await asSystem(`insert into public.generation_records (site_id, gen_date, generation_kwh, irradiation_kwh_m2)
+                  values ($1, '2025-03-10', 12000, 5.5), ($1, '2025-03-11', 11000, null)`, [site.Sadas]);
+  const dc = Number((await asSystem('select capacity_dc_kwp from public.solar_sites where site_id = $1', [site.Sadas])).rows[0].capacity_dc_kwp);
+  const p = (await as(OWNER, `select public.get_site_portfolio('2025-03-11') p`)).rows[0].p;
+  const row = p.rows.find((x) => x.site_id === site.Sadas);
+  const want = Math.round((12000 / (5.5 * dc)) * 1000) / 10;
+  Number(row?.month_pr) === want && Number(row?.pr_days) === 1 && row?.today_pr === null && p.month_pr !== null
+    ? ok('Solar Sites shows PR from the days that have insolation')
+    : bad('portfolio PR', JSON.stringify({ want, row, fleet: p.month_pr }));
+}
 await expectError('a sales user cannot open the portfolio', SALES,
   `select public.get_site_portfolio()`, 'sites.overview VIEW');
 // SECURITY DEFINER, so the site scope has to be applied inside the function.
