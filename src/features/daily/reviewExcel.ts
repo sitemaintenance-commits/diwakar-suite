@@ -5,7 +5,7 @@
 import { download, recordExport } from '@/lib/export';
 import { DEPARTMENT_HEADS } from '@/features/daily/heads';
 
-interface Metric { label: string; value: string }
+interface Metric { label: string; value: string; note?: string | null }
 interface Report {
   health: string;
   status: string;
@@ -32,7 +32,8 @@ const HEADER_FILL = 'FFFFEEDD';
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const keyNumbers = (r: Report | null) => (r?.metrics ?? []).filter((m) => m.label).map((m) => `${m.label}: ${m.value}`).join('\n');
+const keyNumbers = (r: Report | null) => (r?.metrics ?? []).filter((m) => m.label)
+  .map((m) => `${m.label}: ${m.value}${m.note ? ` — ${m.note}` : ''}`).join('\n');
 // Issues and tomorrow's plan are no longer asked for; older reports that have
 // them keep them under the day's remarks so nothing is lost.
 const keyRemarks = (r: Report | null) => [
@@ -171,7 +172,7 @@ export async function downloadReviewDay(moduleKey: string, day: ReviewDay, brand
   const founderRows: Cell[][] = [...founder].map(([text, names]) => [date, names.length === reported.length ? text : `${text} (${names.join(', ')})`]);
   const headlineRows: Cell[][] = (day.headline?.metrics ?? []).filter((m) => m.label).map((m) => [date, m.label, m.value]);
   const metricRows: Cell[][] = reported.flatMap((d) =>
-    d.today!.metrics.filter((m) => m.label).map((m) => [date, d.name, reportedBy(d.name, d.today), m.label, m.value] as Cell[]));
+    d.today!.metrics.filter((m) => m.label).map((m) => [date, d.name, reportedBy(d.name, d.today), m.label, m.value, m.note ?? ''] as Cell[]));
 
   await recordExport(moduleKey, `Exported the Department Review for ${day.date} (${depts.length} departments)`);
   const { default: ExcelJS } = await import('exceljs');
@@ -188,8 +189,8 @@ export async function downloadReviewDay(moduleKey: string, day: ReviewDay, brand
     widths: [19, 48, 27], rows: headlineRows.length ? headlineRows : [[date, '', '']] });
   addSheet(wb, { ...base, name: 'Founder remarks', heading: 'Founder Remarks', headers: ['Review date', 'Remarks and action points'],
     widths: [19, 95], rows: founderRows.length ? founderRows : [[date, '']] });
-  addSheet(wb, { ...base, name: 'Department metrics', heading: 'Department key numbers', headers: ['Review date', 'Department', 'Reported by', 'Metric', 'Value'],
-    widths: [19, 32, 24, 35, 24], rows: metricRows });
+  addSheet(wb, { ...base, name: 'Department metrics', heading: 'Department key numbers', headers: ['Review date', 'Department', 'Reported by', 'Metric', 'Value', 'Additional information'],
+    widths: [19, 32, 24, 35, 24, 48], rows: metricRows });
 
   const buf = await wb.xlsx.writeBuffer();
   download(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `diwakar-daily-review-${day.date}.xlsx`);

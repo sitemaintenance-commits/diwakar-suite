@@ -2,7 +2,8 @@
 //   Daily Reports      file / edit one report per department per day
 //   Review Summary     the day, another day beside it when one is chosen, plus the month view
 //   Management Review  CCM and Founder remarks, mark reviewed / returned
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -43,6 +44,18 @@ const REPORT_STATUS: Record<string, { label: string; tone: BadgeTone }> = {
   reviewed: { label: 'Reviewed', tone: 'success' },
   returned: { label: 'Returned', tone: 'destructive' },
 };
+
+/** A text box that grows with what is typed, so the whole text is always visible. */
+function GrowingText({ className, value, ...props }: React.ComponentProps<typeof Textarea>) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight + 2}px`;
+  }, [value]);
+  return <Textarea ref={ref} rows={1} value={value} className={cn('min-h-8 resize-none overflow-hidden py-1.5 leading-snug', className)} {...props} />;
+}
 
 interface Metric {
   label: string;
@@ -483,18 +496,18 @@ function ReportEditor({
             <div className="grid gap-2">
               {metrics.map((m, i) => (
                 <div key={i} className="grid gap-1.5 rounded-lg border border-transparent p-0.5 focus-within:border-border focus-within:bg-muted/30">
-                <div className="flex gap-2">
-                  <Input
+                <div className="flex items-start gap-2">
+                  <GrowingText
                     value={m.label}
-                    onChange={(e) => setMetrics((ms) => ms.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))}
+                    onChange={(e) => setMetrics((ms) => ms.map((x, j) => (j === i ? { ...x, label: e.target.value.replace(/\n/g, ' ') } : x)))}
                     placeholder="Label (e.g. Collections today ₹)"
-                    className="h-8"
+                    className="flex-1 text-sm"
                   />
-                  <Input
+                  <GrowingText
                     value={m.value}
                     onChange={(e) => setMetrics((ms) => ms.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))}
                     placeholder="Value"
-                    className="h-8 w-40"
+                    className="w-48 shrink-0 text-sm sm:w-56"
                   />
                   <Button
                     variant="ghost"
@@ -507,13 +520,12 @@ function ReportEditor({
                     <Trash2 />
                   </Button>
                 </div>
-                <Textarea
-                  rows={1}
+                <GrowingText
                   value={m.note ?? ''}
                   onChange={(e) => setMetrics((ms) => ms.map((x, j) => (j === i ? { ...x, note: e.target.value } : x)))}
                   placeholder="Additional information (optional)"
                   maxLength={2000}
-                  className="min-h-8 resize-y py-1.5 text-xs"
+                  className="text-xs"
                 />
                 </div>
               ))}

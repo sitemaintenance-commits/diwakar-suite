@@ -4,7 +4,7 @@
 import { fmtDate } from '@/lib/format';
 import { DEPARTMENT_HEADS } from '@/features/daily/heads';
 
-interface Metric { label: string; value: string }
+interface Metric { label: string; value: string; note?: string | null }
 interface Report {
   health: string;
   status: string;
@@ -67,7 +67,7 @@ export function printDayReview(review: PrintableReview, company: string) {
     const [label, color] = HEALTH[r.health] ?? [r.health, '#475569'];
     const metrics = r.metrics?.filter((m) => m.label)?.length
       ? r.metrics.filter((m) => m.label)
-          .map((m) => `<div class="number"><span>${esc(m.label)}</span><b>${para(m.value)}</b></div>`).join('')
+          .map((m) => `<div class="number"><span>${esc(m.label)}</span><b>${para(m.value)}</b>${m.note ? `<small>${para(m.note)}</small>` : ''}</div>`).join('')
       : '<span class="muted">—</span>';
     const reportedBy = DEPARTMENT_HEADS[d.name] ?? r.reporter;
     return `<section class="dept">
@@ -114,6 +114,7 @@ export function printDayReview(review: PrintableReview, company: string) {
   .number { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 2px 0; }
   .number + .number { border-top: 1px solid #f1f5f9; }
   .number span { color: #475569; }
+  .number small { grid-column: 1 / -1; color: #64748b; font-size: 11px; white-space: pre-line; }
   .number b { font-weight: 500; }
   footer { margin-top: 16px; color: #94a3b8; font-size: 10px; }
   @media print { body { margin: 0; } @page { margin: 12mm; } }
