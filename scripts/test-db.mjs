@@ -2770,6 +2770,18 @@ console.log('\nProcurement');
   await expectOk('a vendor bill can name its order', OWNER, `update public.vendor_bills set po_id = $1 where id = $2`, [po, BILL]);
 }
 
+console.log('\nLocal conveyance, Jaipur site, custom folders');
+{
+  await expectOk('a local conveyance request can be raised', OWNER,
+    'select public.approval_save($1::jsonb)', [JSON.stringify({ category: 'local_conveyance', title: 'Auto to the DISCOM office', amount: '350' })]);
+  await expectValue('Jaipur site can be chosen', OWNER, `select count(*)::int from public.sites where name = 'Jaipur site'`, 1);
+  const f1 = (await as(RAHUL, `select public.create_document_folder('  Site   photos ') v`)).rows[0].v;
+  f1.name === 'Site photos' && f1.code === 'SITEPHOTOS' && !f1.existing ? ok('anyone signed in creates a folder of their own name') : bad('folder', JSON.stringify(f1));
+  const f2 = (await as(OWNER, `select public.create_document_folder('site photos') v`)).rows[0].v;
+  f2.id === f1.id && f2.existing ? ok('the same name gives the same folder') : bad('folder dup', JSON.stringify(f2));
+  await expectError('a folder needs a real name', RAHUL, `select public.create_document_folder('x')`, '2 to 80');
+}
+
 console.log('\nStorage (avatars)');
 await expectOk('user uploads own avatar', RAHUL, `insert into storage.objects (bucket_id, name) values ('avatars', $1 || '/photo.png')`, [RAHUL]);
 await expectError('user cannot upload into another user folder', RAHUL, `insert into storage.objects (bucket_id, name) values ('avatars', $1 || '/photo.png')`, 'row-level security', [ADMIN]);

@@ -22,7 +22,7 @@ import { ConfirmDialog, EmptyState, ErrorState, Field, SearchInput, TableSkeleto
 import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { useSites } from '@/features/admin/api';
 import {
-  BLOCKED_FILE, DOC_CATEGORIES, MAX_FILE_BYTES, canPreview, docKeys, fetchDocuments, openDocument, removeDocument,
+  BLOCKED_FILE, DOC_CATEGORIES, MAX_FILE_BYTES, canPreview, createDocumentFolder, docKeys, fetchDocuments, openDocument, removeDocument,
   updateDocument, uploadSectionDocument, useDocumentList, type DocFolder, type LibraryDoc,
 } from '@/features/documents/api';
 import { SendDocumentDialog } from '@/features/documents/SendDocumentDialog';
@@ -30,6 +30,63 @@ import { SendDocumentDialog } from '@/features/documents/SendDocumentDialog';
 const ALL = '__all__';
 const NONE = '__none__';
 const AUTO = '__auto__';
+const NEW_FOLDER = '__new_folder__';
+
+/** The folder dropdown, with "+ New folder…" at the end to create one by name. */
+function FolderPicker({ value, onChange, folders, first }: {
+  value: string;
+  onChange: (id: string) => void;
+  folders: DocFolder[];
+  first: [string, string];
+}) {
+  const qc = useQueryClient();
+  const [asking, setAsking] = useState(false);
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [made, setMade] = useState<{ id: string; name: string }[]>([]);
+  const all = [...folders, ...made.filter((m) => !folders.some((f) => f.id === m.id))];
+
+  async function create() {
+    if (name.trim().length < 2) return toast.error('Give the folder a name.');
+    setBusy(true);
+    try {
+      const f = await createDocumentFolder(name);
+      setMade((m) => [...m, { id: f.id, name: f.name }]);
+      onChange(f.id);
+      toast.success(f.existing ? `“${f.name}” already exists; chosen` : `Folder “${f.name}” created`);
+      await qc.invalidateQueries({ queryKey: docKeys.all });
+      setAsking(false);
+      setName('');
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <FilterSelect value={value} onChange={(v) => (v === NEW_FOLDER ? setAsking(true) : onChange(v))}
+        options={[first, ...all.map((f) => [f.id, f.name] as [string, string]), [NEW_FOLDER, '+ New folder…']]} />
+      <Dialog open={asking} onOpenChange={(o) => !busy && setAsking(o)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>New folder</DialogTitle>
+            <DialogDescription>Everyone with Documents can see the folder and file into it.</DialogDescription>
+          </DialogHeader>
+          <Field label="Folder name">
+            <Input autoFocus value={name} maxLength={80} onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void create(); }} placeholder="e.g. Site photos, Insurance, Land papers" />
+          </Field>
+          <DialogFooter>
+            <Button variant="outline" disabled={busy} onClick={() => setAsking(false)}>Cancel</Button>
+            <Button disabled={busy} onClick={() => void create()}>{busy && <Loader2 className="animate-spin" />} Create folder</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
 const PAGE = 50;
 // Sections whose work is tied to a plant: offer the plant on upload.
 const PLANT_GROUPS = new Set(['operations', 'portfolio', 'projects']);
@@ -221,9 +278,8 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
                       options={groupModules.map((m) => [m.key, m.label] as [string, string])} />
                   </Field>
                 )}
-                <Field label="Folder" hint="Automatic files it by its name: LOA, PPA, DPR…">
-                  <FilterSelect value={upFolder} onChange={setUpFolder}
-                    options={[[AUTO, 'Automatic, from the file name'], ...(list.data?.folders ?? []).map((f) => [f.id, f.name] as [string, string])]} />
+                <Field label="Folder" hint="Automatic files it by its name: LOA, PPA, DPR… or make a new folder">
+                  <FolderPicker value={upFolder} onChange={setUpFolder} folders={list.data?.folders ?? []} first={[AUTO, 'Automatic, from the file name']} />
                 </Field>
                 <Field label="Document type">
                   <Input list="doc-categories" value={upCategory} onChange={(e) => setUpCategory(e.target.value)} placeholder="e.g. Report, Invoice" />
@@ -447,8 +503,7 @@ function EditDocumentDialog({ doc, categories, folders, onClose }: { doc: Librar
         </DialogHeader>
         <div className="grid gap-3">
           <Field label="Folder">
-            <FilterSelect value={folderId} onChange={setFolderId}
-              options={[[NONE, 'No folder'], ...folders.map((f) => [f.id, f.name] as [string, string])]} />
+            <FolderPicker value={folderId} onChange={setFolderId} folders={folders} first={[NONE, 'No folder']} />
           </Field>
           <Field label="Document type">
             <Input list="doc-categories-edit" value={category} onChange={(e) => setCategory(e.target.value)} />

@@ -59,6 +59,13 @@ export interface DocFilters {
   offset?: number;
 }
 
+/** Creates a folder of the given name, or returns the one that already has it. */
+export async function createDocumentFolder(name: string): Promise<{ id: string; code: string; name: string; existing: boolean }> {
+  const { data, error } = await supabase.rpc('create_document_folder', { p_name: name });
+  if (error) throw error;
+  return data as { id: string; code: string; name: string; existing: boolean };
+}
+
 export const docKeys = {
   all: ['library-documents'] as const,
   list: (f: DocFilters) => ['library-documents', f] as const,

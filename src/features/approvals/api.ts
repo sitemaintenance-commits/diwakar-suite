@@ -16,6 +16,7 @@ export const CATEGORIES: Record<string, string> = {
   payment: 'Payment',
   reimbursement: 'Reimbursement',
   travel: 'Travel',
+  local_conveyance: 'Local conveyance',
   leave: 'Leave',
   procurement: 'Procurement',
   project: 'Project',
@@ -24,7 +25,7 @@ export const CATEGORIES: Record<string, string> = {
   other: 'Other',
 };
 /** Types that have the Accounts head approve last unless the requester unticks it. */
-export const ACCOUNTS_LAST_BY_DEFAULT = new Set(['purchase', 'payment', 'reimbursement', 'procurement']);
+export const ACCOUNTS_LAST_BY_DEFAULT = new Set(['purchase', 'payment', 'reimbursement', 'local_conveyance', 'procurement']);
 /** Types raised before the multi-level upgrade; shown, not offered. */
 const LEGACY_CATEGORIES: Record<string, string> = { advance: 'Advance', equipment: 'IT / equipment' };
 export const categoryLabel = (c: string) => CATEGORIES[c] ?? LEGACY_CATEGORIES[c] ?? c;
