@@ -33,7 +33,7 @@ import { FollowUpsPage } from '@/features/crm/followups/FollowUpsPage';
 import { ProjectsPage } from '@/features/projects/ProjectsPage';
 import { ProjectDetailPage } from '@/features/projects/ProjectDetailPage';
 import { VendorsSection } from '@/features/projects/VendorsSection';
-import { SiteUpdatesPage } from '@/features/projects/SiteUpdates';
+import { FiledDprPage, SiteUpdatesPage } from '@/features/projects/SiteUpdates';
 import {
   MaterialsPage, ProjectApprovalsPage, ProjectTasksPage,
 } from '@/features/projects/PortfolioPages';
@@ -110,6 +110,7 @@ export const router = createBrowserRouter([
           { index: true, element: guard('projects.projects', <ProjectsPage />) },
           { path: 'vendors', element: guard('projects.vendors', <VendorsSection />) },
           { path: 'updates', element: guard('projects.updates', <SiteUpdatesPage />) },
+          { path: 'filed-dpr', element: guard('projects.dpr_filed', <FiledDprPage />) },
           { path: 'tasks', element: guard('projects.milestones', <ProjectTasksPage />) },
           { path: 'approvals', element: guard('projects.approvals', <ProjectApprovalsPage />) },
           { path: 'materials', element: guard('projects.materials', <MaterialsPage />) },

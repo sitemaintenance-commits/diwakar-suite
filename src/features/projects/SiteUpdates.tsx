@@ -7,8 +7,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Link } from 'react-router';
 import {
-  AlertTriangle, Camera, ClipboardCheck, Copy, Download, Loader2, Plus, Printer, Send, Trash2,
+  AlertTriangle, Camera, ClipboardCheck, Copy, Download, FileText, Loader2, Plus, Printer, Send, Trash2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
@@ -101,16 +102,7 @@ export function dprText(u: SiteUpdate) {
   out.push('2️⃣ Running Work Status...');
   (u.activities ?? []).forEach((a, i) => out.push(`${i + 1}. ${a.name} :- ${activityStatus(a)}`));
   out.push('');
-  out.push('*Today Work*');
-  lines(u.work_description).forEach((l, i) => out.push(`${i + 1}. ${l}`));
-  out.push('');
-  out.push('*Tomorrow Work Plan*');
-  lines(u.tomorrow_plan).forEach((l, i) => out.push(`${i + 1}. ${l}`));
-  out.push('');
-  out.push(`5️⃣ General Notes / Observations.... ${u.remarks ?? ''}`.trimEnd());
-  if (u.challenges) out.push(`Challenges: ${u.challenges}`);
-  out.push('');
-  out.push(`6️⃣ Safety rules is followed by team... ${u.safety_followed == null ? '—' : u.safety_followed ? 'Yes' : 'No'}${u.safety_note ? ` (${u.safety_note})` : ''}`);
+  out.push(`3️⃣ Remarks.... ${u.remarks ?? ''}`.trimEnd());
   out.push('');
   out.push(`📸 Photos Attached:- ${u.photos ? `Yes (${u.photos})` : 'No'}`);
   if (u.engineer_name) out.push(`— ${u.engineer_name}`);
@@ -187,9 +179,7 @@ export function SiteUpdateForm({ projectId }: { projectId?: string }) {
 
   async function save() {
     if (!project) return toast.error('Choose the site.');
-    if (!work.trim()) return toast.error("Write today's work.");
     if (materialsReceived === '') return toast.error('Say whether materials were received today.');
-    if (safety === '') return toast.error('Say whether the safety rules were followed.');
     setBusy(true);
     try {
       const { data: id, error } = await supabase.rpc('save_project_update', {
@@ -314,27 +304,8 @@ export function SiteUpdateForm({ projectId }: { projectId?: string }) {
         </Section>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <Section n="3" title="Today's work">
-            <Textarea rows={5} value={work} onChange={(e) => setWork(e.target.value)} placeholder={'One item per line\nPurlin installation work\nPrecast wire fencing'} />
-          </Section>
-          <Section n="4" title="Tomorrow's work plan">
-            <Textarea rows={5} value={tomorrow} onChange={(e) => setTomorrow(e.target.value)} placeholder={'One item per line\nModule installation\nOuter earthing'} />
-          </Section>
-        </div>
-
-        <Section n="5" title="General notes / observations">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes" />
-            <Textarea rows={2} value={challenges} onChange={(e) => setChallenges(e.target.value)} placeholder="Challenges / hold-ups (rain, approvals, material)" />
-          </div>
-        </Section>
-
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <Section n="6" title="Safety rules followed by the team?">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <FilterSelect value={safety} onChange={setSafety} options={YES_NO} />
-              <Input className="sm:col-span-2" value={safetyNote} onChange={(e) => setSafetyNote(e.target.value)} placeholder="e.g. PPE not available" />
-            </div>
+          <Section n="3" title="Remarks">
+            <Textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything to report about today's work at site" />
           </Section>
           <Section n="📸" title="Photos">
             <input ref={photoRef} type="file" accept="image/*" multiple capture="environment"
@@ -424,19 +395,18 @@ function DprView({ dpr }: { dpr: SiteUpdate }) {
           ))}
         </ol>
       ) : <p className="text-sm text-muted-foreground">—</p>)}
-      <div className="grid gap-3 sm:grid-cols-2">
-        {block("3 · Today's work", list(dpr.work_description))}
-        {block("4 · Tomorrow's plan", list(dpr.tomorrow_plan))}
-      </div>
-      {block('5 · General notes / observations', (
-        <div className="text-sm">
-          <p className="whitespace-pre-line">{dpr.remarks ?? '—'}</p>
-          {dpr.challenges && <p className="mt-1 whitespace-pre-line text-amber-700">Challenges: {dpr.challenges}</p>}
+      {block('3 · Remarks', <p className="whitespace-pre-line text-sm">{dpr.remarks ?? '—'}</p>)}
+      {/* Reports filed before the form was simplified keep what they had. */}
+      {(dpr.work_description || dpr.tomorrow_plan) && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {dpr.work_description && block("Today's work", list(dpr.work_description))}
+          {dpr.tomorrow_plan && block("Tomorrow's plan", list(dpr.tomorrow_plan))}
         </div>
-      ))}
-      {block('6 · Safety rules followed', (
+      )}
+      {dpr.challenges && block('Challenges', <p className="whitespace-pre-line text-sm text-amber-700">{dpr.challenges}</p>)}
+      {dpr.safety_followed != null && block('Safety rules followed', (
         <p className={`text-sm ${dpr.safety_followed === false ? 'font-medium text-destructive' : ''}`}>
-          {dpr.safety_followed == null ? '—' : dpr.safety_followed ? 'Yes' : 'No'}{dpr.safety_note ? ` — ${dpr.safety_note}` : ''}
+          {dpr.safety_followed ? 'Yes' : 'No'}{dpr.safety_note ? ` — ${dpr.safety_note}` : ''}
         </p>
       ))}
     </div>
@@ -512,8 +482,6 @@ export function SiteUpdatesTable({ rows, showProject }: { rows: SiteUpdate[]; sh
   if (!rows.length) {
     return <EmptyState icon={ClipboardCheck} title="No DPRs" description="The day's report appears here once it is filed." />;
   }
-  const safetyBadge = (b: boolean | null) =>
-    b == null ? <span className="text-muted-foreground">—</span> : <Badge variant={b ? 'success' : 'destructive'}>{b ? 'Yes' : 'No'}</Badge>;
   return (
     <>
       <div className="overflow-x-auto">
@@ -523,10 +491,8 @@ export function SiteUpdatesTable({ rows, showProject }: { rows: SiteUpdate[]; sh
               <TableHead>Date</TableHead>
               {showProject && <TableHead>Site</TableHead>}
               <TableHead>Engineer</TableHead>
-              <TableHead>Today's work</TableHead>
-              <TableHead>Tomorrow's plan</TableHead>
+              <TableHead>Remarks</TableHead>
               <TableHead>Materials</TableHead>
-              <TableHead>Safety</TableHead>
               <TableHead className="text-right">Photos</TableHead>
             </TableRow>
           </TableHeader>
@@ -536,10 +502,8 @@ export function SiteUpdatesTable({ rows, showProject }: { rows: SiteUpdate[]; sh
                 <TableCell className="whitespace-nowrap">{fmtDate(u.update_date)}</TableCell>
                 {showProject && <TableCell className="whitespace-nowrap font-medium">{u.project}</TableCell>}
                 <TableCell className="whitespace-nowrap text-sm">{u.engineer_name ?? '—'}</TableCell>
-                <TableCell className="min-w-[16rem] max-w-[24rem] text-sm"><span className="line-clamp-3 whitespace-pre-line">{u.work_description ?? '—'}</span></TableCell>
-                <TableCell className="min-w-[12rem] max-w-[18rem] text-sm text-muted-foreground"><span className="line-clamp-3 whitespace-pre-line">{u.tomorrow_plan ?? '—'}</span></TableCell>
+                <TableCell className="min-w-[16rem] max-w-[24rem] text-sm"><span className="line-clamp-3 whitespace-pre-line">{u.remarks ?? u.work_description ?? '—'}</span></TableCell>
                 <TableCell className="text-sm">{u.materials_received == null ? '—' : u.materials_received ? 'Yes' : 'No'}</TableCell>
-                <TableCell>{safetyBadge(u.safety_followed)}</TableCell>
                 <TableCell className="tabular text-right">{u.photos ? <span className="inline-flex items-center gap-1"><Camera className="h-3.5 w-3.5" />{u.photos}</span> : '—'}</TableCell>
               </TableRow>
             ))}
@@ -573,7 +537,33 @@ export function ProjectSiteUpdates({ projectId, canFile }: { projectId: string; 
 }
 
 // ------------------------------------------------------------------ page
+/** Site Updates (DPR): the form, and which sites have not reported today. */
 export function SiteUpdatesPage() {
+  const list = useSiteUpdates(todayIST(), todayIST(), null);
+  const missing = list.data?.missing_today ?? [];
+  return (
+    <>
+      <PageHeader
+        icon={ClipboardCheck}
+        title="Site Updates (DPR)"
+        description="The site engineer's Daily Progress Report for each project site. Filed reports are under Filed DPRs."
+        actions={<Button variant="outline" asChild><Link to="/projects/filed-dpr"><FileText /> Filed DPRs</Link></Button>}
+      />
+      {missing.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <AlertTriangle className="h-4 w-4" />
+          <span className="font-medium">No DPR yet today:</span>
+          {missing.map((m) => <Badge key={m.id} variant="warning">{m.name}</Badge>)}
+        </div>
+      )}
+      {list.isLoading ? <TableSkeleton cols={4} /> : list.data?.can_file ? <SiteUpdateForm />
+        : <Card><EmptyState icon={ClipboardCheck} title="You cannot file DPRs" description="Filed reports can be read under Filed DPRs." /></Card>}
+    </>
+  );
+}
+
+/** Filed DPRs: every report filed, with filters, print and Excel. */
+export function FiledDprPage() {
   const [from, setFrom] = useState(daysBefore(todayIST(), 30));
   const [to, setTo] = useState(todayIST());
   const [site, setSite] = useState(ALL);
@@ -590,9 +580,8 @@ export function SiteUpdatesPage() {
         { header: 'Materials received', value: (r) => (r.materials_received == null ? '' : r.materials_received ? 'Yes' : 'No'), width: 10 },
         { header: 'Material items', value: (r) => r.materials_items ?? '', width: 30 },
         { header: 'Running work status', value: (r) => (r.activities ?? []).map((a, i) => `${i + 1}. ${a.name} :- ${activityStatus(a)}`).join('\n'), width: 60 },
-        { header: "Today's work", value: (r) => r.work_description ?? '', width: 50 },
-        { header: "Tomorrow's plan", value: (r) => r.tomorrow_plan ?? '', width: 40 },
-        { header: 'Notes', value: (r) => r.remarks ?? '', width: 30 },
+        { header: 'Remarks', value: (r) => r.remarks ?? '', width: 40 },
+        { header: "Today's work (older reports)", value: (r) => r.work_description ?? '', width: 40 },
         { header: 'Challenges', value: (r) => r.challenges ?? '', width: 30 },
         { header: 'Safety followed', value: (r) => (r.safety_followed == null ? '' : r.safety_followed ? 'Yes' : 'No'), width: 10 },
         { header: 'Safety note', value: (r) => r.safety_note ?? '', width: 24 },
@@ -608,8 +597,8 @@ export function SiteUpdatesPage() {
     <>
       <PageHeader
         icon={ClipboardCheck}
-        title="Site Updates (DPR)"
-        description="The site engineer's Daily Progress Report for each project site — filled here, read and printed by the head."
+        title="Filed DPRs"
+        description="Every Daily Progress Report filed, site by site — open one to read, copy for WhatsApp or print."
         actions={
           <>
             <Button variant="outline" onClick={() => printDpr(rows)} disabled={!rows.length}><Printer /> Print all</Button>
@@ -625,8 +614,6 @@ export function SiteUpdatesPage() {
           {missing.map((m) => <Badge key={m.id} variant="warning">{m.name}</Badge>)}
         </div>
       )}
-
-      {list.data?.can_file && <SiteUpdateForm />}
 
       <Card>
         <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:flex-wrap sm:items-end">

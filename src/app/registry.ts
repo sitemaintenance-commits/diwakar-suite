@@ -114,6 +114,7 @@ export const BUILT_MODULES = new Set<string>([
   'crm.followups',
   'projects.projects',
   'projects.updates',
+  'projects.dpr_filed',
   'projects.milestones',
   'projects.approvals',
   'projects.materials',

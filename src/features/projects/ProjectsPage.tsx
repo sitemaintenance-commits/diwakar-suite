@@ -1,6 +1,5 @@
-// Projects — the Project CRM dashboard and the site list in one page:
-// the portfolio tiles, execution progress per site, the capacity
-// comparison and the project master.
+// Projects — the portfolio tiles (each opens the page behind it) and the
+// project master.
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
@@ -65,7 +64,6 @@ export function ProjectsPage() {
     );
   }, [d, search, stage]);
 
-  const maxCap = Math.max(...(d?.projects ?? []).map((p) => safeNum(p.capacity_kwp)), 1);
 
   async function create() {
     if (!form.name.trim()) return toast.error('A project name is required.');
@@ -153,115 +151,20 @@ export function ProjectsPage() {
         </Card>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <StatCard label="Projects" value={fmtNumber(d?.project_count)} hint={`${fmtNumber(d?.commissioned)} commissioned`} icon={FolderKanban} />
-            <StatCard label="Portfolio capacity" value={fmtCapacity(d?.capacity_kwp)} hint={`${fmtNumber(d?.capacity_ac_kw)} kW AC`} icon={Sun} tone="amber" />
-            <StatCard label="Average progress" value={`${fmtNumber(d?.average_progress)}%`} hint="Across every project" icon={Gauge} tone="green" />
-            <StatCard label="Open tasks" value={fmtNumber(d?.open_tasks)} hint={`${fmtNumber(d?.overdue_tasks)} overdue`} icon={ListChecks} tone={safeNum(d?.overdue_tasks) > 0 ? 'red' : 'slate'} />
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Tile to="#project-sites"><StatCard label="Projects" value={fmtNumber(d?.project_count)} hint={`${fmtNumber(d?.commissioned)} commissioned`} icon={FolderKanban} /></Tile>
+            <Tile to="#project-sites"><StatCard label="Portfolio capacity" value={fmtCapacity(d?.capacity_kwp)} hint={`${fmtNumber(d?.capacity_ac_kw)} kW AC`} icon={Sun} tone="amber" /></Tile>
+            <Tile to="/projects/tasks"><StatCard label="Average progress" value={`${fmtNumber(d?.average_progress)}%`} hint="Across every project" icon={Gauge} tone="green" /></Tile>
+            <Tile to="/projects/tasks"><StatCard label="Open tasks" value={fmtNumber(d?.open_tasks)} hint={`${fmtNumber(d?.overdue_tasks)} overdue`} icon={ListChecks} tone={safeNum(d?.overdue_tasks) > 0 ? 'red' : 'slate'} /></Tile>
+            <Tile to="/projects/approvals"><StatCard label="Approvals pending" value={fmtNumber(d?.approvals_pending)} icon={ShieldCheck} tone="violet" /></Tile>
+            <Tile to="/projects/materials"><StatCard label="Material lines open" value={fmtNumber(d?.materials_open)} hint={`${fmtNumber(d?.material_shortage)} shortage`} icon={Blocks} tone="blue" /></Tile>
+            <Tile to="/projects/vendors?tab=bills"><StatCard label="Vendor bills waiting" value={fmtNumber(d?.bills_waiting)} hint={fmtINR(d?.bills_waiting_value, true)}
+              icon={TriangleAlert} tone={safeNum(d?.bills_waiting) > 0 ? 'amber' : 'slate'} /></Tile>
+            <Tile to="/projects/vendors?tab=payments"><StatCard label="Client outstanding" value={fmtINR(d?.client_outstanding, true)}
+              hint={`${fmtINR(d?.client_received, true)} received`} icon={Handshake} tone="green" /></Tile>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <StatCard label="Approvals pending" value={fmtNumber(d?.approvals_pending)} icon={ShieldCheck} tone="violet" />
-            <StatCard label="Material lines open" value={fmtNumber(d?.materials_open)} hint={`${fmtNumber(d?.material_shortage)} shortage`} icon={Blocks} tone="blue" />
-            <StatCard
-              label="Vendor bills waiting"
-              value={fmtNumber(d?.bills_waiting)}
-              hint={fmtINR(d?.bills_waiting_value, true)}
-              icon={TriangleAlert}
-              tone={safeNum(d?.bills_waiting) > 0 ? 'amber' : 'slate'}
-            />
-            <StatCard
-              label="Client outstanding"
-              value={fmtINR(d?.client_outstanding, true)}
-              hint={`${fmtINR(d?.client_received, true)} received`}
-              icon={Handshake}
-              tone="green"
-            />
-          </div>
-
-          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Execution progress</CardTitle>
-                <CardDescription>Completed tasks against the plan for each project</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-3">
-                {d?.projects.length ? (
-                  d.projects.map((p) => (
-                    <Link key={p.id} to={`/projects/${p.id}`} className="grid gap-1 rounded-lg p-1 transition hover:bg-muted">
-                      <div className="flex items-baseline justify-between gap-2 text-sm">
-                        <span className="truncate font-medium">{p.name}</span>
-                        <span className="tabular shrink-0 text-muted-foreground">
-                          {stageOf(p.stage).label} · {fmtNumber(p.progress)}%
-                        </span>
-                      </div>
-                      <div className="h-2 rounded-full bg-muted">
-                        <div
-                          className={`h-2 rounded-full ${safeNum(p.progress) >= 100 ? 'bg-green-500' : 'bg-primary'}`}
-                          style={{ width: `${Math.max(1, Math.min(100, safeNum(p.progress)))}%` }}
-                        />
-                      </div>
-                    </Link>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">No projects yet.</p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Capacity by project</CardTitle>
-                <CardDescription>DC capacity, largest first</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-3">
-                {d?.projects.length ? (
-                  [...d.projects]
-                    .sort((a, b) => safeNum(b.capacity_kwp) - safeNum(a.capacity_kwp))
-                    .map((p) => (
-                      <div key={p.id} className="grid gap-1">
-                        <div className="flex items-baseline justify-between gap-2 text-sm">
-                          <span className="truncate">{p.name}</span>
-                          <span className="tabular shrink-0 text-muted-foreground">
-                            {fmtNumber(p.capacity_kwp)} kWp · {fmtNumber(p.capacity_ac_kw)} AC
-                          </span>
-                        </div>
-                        <div className="h-2 rounded-full bg-muted">
-                          <div className="h-2 rounded-full bg-primary" style={{ width: `${Math.max(1, (safeNum(p.capacity_kwp) / maxCap) * 100)}%` }} />
-                        </div>
-                      </div>
-                    ))
-                ) : (
-                  <p className="text-sm text-muted-foreground">No projects yet.</p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {d?.attention.length ? (
-            <Card className="mt-6">
-              <CardHeader>
-                <CardTitle>Tasks needing attention</CardTitle>
-                <CardDescription>The next items due across every project</CardDescription>
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {d.attention.map((t) => {
-                  const overdue = t.due_date && new Date(t.due_date) < new Date(new Date().toDateString());
-                  return (
-                    <div key={t.id} className="rounded-lg border px-3 py-2">
-                      <p className="truncate text-sm font-medium">{t.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {t.project} · {t.due_date ? fmtDate(t.due_date) : 'No due date'}
-                        {overdue && <span className="ml-1 text-destructive">overdue</span>}
-                      </p>
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          ) : null}
-
-          <Card className="mt-6">
+          <Card className="mt-4 scroll-mt-20" id="project-sites">
             <CardHeader className="flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle>Project sites</CardTitle>
@@ -405,4 +308,17 @@ export function ProjectsPage() {
       </Dialog>
     </>
   );
+}
+
+/** A summary tile that opens the page behind it (or scrolls to a part of this one). */
+function Tile({ to, children }: { to: string; children: React.ReactNode }) {
+  const cls = 'block rounded-xl transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-2 [&>*]:h-full';
+  if (to.startsWith('#')) {
+    return (
+      <a href={to} className={cls} onClick={(e) => { e.preventDefault(); document.querySelector(to)?.scrollIntoView({ behavior: 'smooth' }); }}>
+        {children}
+      </a>
+    );
+  }
+  return <Link to={to} className={cls}>{children}</Link>;
 }
