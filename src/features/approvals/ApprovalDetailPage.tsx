@@ -177,7 +177,13 @@ function Detail({ d, refresh }: { d: ApprovalDetail; refresh: () => Promise<void
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
               <Meta label="Type">{categoryLabel(r.category)}</Meta>
               <Meta label="Needed by">{r.needed_by ? fmtDate(r.needed_by) : '—'}</Meta>
-              <Meta label="Project / site">{r.project ?? r.site ?? '—'}</Meta>
+              <Meta label={r.source_type ? 'Linked to' : 'Project / site'}>
+                {r.project_id ? (
+                  <Link to={`/projects/${r.project_id}`} className="text-primary hover:underline">
+                    {r.source_type === 'vendor_bill' ? 'Vendor bill · ' : r.source_type === 'project_approval' ? 'Project approval · ' : ''}{r.project ?? 'Project'}
+                  </Link>
+                ) : (r.site ?? '—')}
+              </Meta>
               <Meta label="Submitted">{r.submitted_at ? fmtDateTime(r.submitted_at) : '—'}</Meta>
               {r.decided_at && <Meta label={r.status === 'rejected' ? 'Rejected' : 'Approved'}>{fmtDateTime(r.decided_at)}</Meta>}
               {r.completed_at && <Meta label="Completed">{fmtDateTime(r.completed_at)}</Meta>}

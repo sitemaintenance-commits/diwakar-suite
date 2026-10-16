@@ -21,6 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ConfirmDialog, EmptyState, ErrorState, Field, PageHeader, StatCard } from '@/components/common';
 import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { ProjectSiteUpdates } from '@/features/projects/SiteUpdates';
+import { LinkedApproval, ProjectRequestsTab, isOpenRequest, useProjectLinks, useRequestFromProject } from '@/features/projects/ApprovalLinks';
 import { SitePicker, usePortfolio } from '@/features/projects/portfolio';
 import {
   useApprovals, useBills, useMaterials, usePayments, useProject, useProjectTasks,
@@ -120,6 +121,7 @@ export function ProjectDetailPage() {
           <TabsTrigger value="plan">Plan</TabsTrigger>
           <TabsTrigger value="updates">Daily updates</TabsTrigger>
           <TabsTrigger value="approvals">Approvals</TabsTrigger>
+          <TabsTrigger value="requests">Approval requests</TabsTrigger>
           <TabsTrigger value="materials">Materials</TabsTrigger>
           <TabsTrigger value="bills">Vendor bills</TabsTrigger>
           <TabsTrigger value="money">Client payments</TabsTrigger>
@@ -127,6 +129,7 @@ export function ProjectDetailPage() {
         <TabsContent value="plan"><PlanTab projectId={p.id} /></TabsContent>
         <TabsContent value="updates"><ProjectSiteUpdates projectId={p.id} canFile={canFileUpdates} /></TabsContent>
         <TabsContent value="approvals"><ApprovalsTab projectId={p.id} /></TabsContent>
+        <TabsContent value="requests"><ProjectRequestsTab projectId={p.id} projectName={`${p.project_code} · ${p.name}`} /></TabsContent>
         <TabsContent value="materials"><MaterialsTab projectId={p.id} /></TabsContent>
         <TabsContent value="bills"><BillsTab projectId={p.id} /></TabsContent>
         <TabsContent value="money"><PaymentsTab projectId={p.id} /></TabsContent>
@@ -260,6 +263,10 @@ export function ApprovalsTab({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
   const portfolio = usePortfolio(projectId);
   const approvals = useApprovals(projectId);
+  const links = useProjectLinks(portfolio.all ? null : projectId);
+  const req = useRequestFromProject();
+  const single = useProject(portfolio.all ? undefined : projectId);
+  const projectLabel = (pid: string) => (portfolio.all ? portfolio.name(pid) : single.data ? `${single.data.project_code} · ${single.data.name}` : 'this project');
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ kind: APPROVAL_KINDS[0], authority: '', reference_no: '', applied_on: '', expected_on: '', status: 'not_started', remarks: '' });
 
@@ -319,6 +326,7 @@ export function ApprovalsTab({ projectId }: { projectId: string }) {
                 <TableHead>Applied</TableHead>
                 <TableHead>Expected</TableHead>
                 <TableHead className="w-44">Status</TableHead>
+                <TableHead>Internal approval</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -340,6 +348,23 @@ export function ApprovalsTab({ projectId }: { projectId: string }) {
                     ) : (
                       <Badge variant={APPROVAL[a.status].tone}>{APPROVAL[a.status].label}</Badge>
                     )}
+                  </TableCell>
+                  <TableCell>
+                    <LinkedApproval
+                      link={links.forSource('project_approval', a.id)}
+                      canRequest={req.canRequest}
+                      onRequest={() => req.open({
+                        source: { type: 'project_approval', id: a.id },
+                        context: `${a.kind} · ${projectLabel(a.project_id)}`,
+                        prefill: {
+                          category: 'project',
+                          project_id: a.project_id,
+                          title: `${a.kind} — ${projectLabel(a.project_id)}`.slice(0, 200),
+                          details: [a.authority && `Authority: ${a.authority}`, a.reference_no && `Reference: ${a.reference_no}`,
+                            a.expected_on && `Expected by ${fmtDate(a.expected_on)}`, a.remarks].filter(Boolean).join('\n'),
+                        },
+                      })}
+                    />
                   </TableCell>
                 </TableRow>
               ))}
@@ -380,6 +405,7 @@ export function ApprovalsTab({ projectId }: { projectId: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {req.dialog}
     </Card>
   );
 }
@@ -550,6 +576,10 @@ export function BillsTab({ projectId }: { projectId: string }) {
   const portfolio = usePortfolio(projectId);
   const bills = useBills(projectId);
   const vendors = useVendors();
+  const links = useProjectLinks(portfolio.all ? null : projectId);
+  const req = useRequestFromProject();
+  const single = useProject(portfolio.all ? undefined : projectId);
+  const projectLabel = (pid: string) => (portfolio.all ? portfolio.name(pid) : single.data ? `${single.data.project_code} · ${single.data.name}` : 'this project');
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ vendor_id: '', bill_no: '', bill_date: todayIST(), amount: '', deductions: '', description: '' });
 
@@ -611,11 +641,15 @@ export function BillsTab({ projectId }: { projectId: string }) {
                   <TableHead className="text-right">Deductions</TableHead>
                   <TableHead className="text-right">Net payable</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Internal approval</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {bills.data.map((b) => (
+                {bills.data.map((b) => {
+                  const link = links.forSource('vendor_bill', b.id);
+                  const waiting = isOpenRequest(link);
+                  return (
                   <TableRow key={b.id}>
                     {portfolio.all && <TableCell className="whitespace-nowrap text-sm font-medium">{portfolio.name(b.project_id)}</TableCell>}
                     <TableCell>
@@ -629,13 +663,34 @@ export function BillsTab({ projectId }: { projectId: string }) {
                     <TableCell>
                       <Badge variant={BILL[b.status].tone}>{BILL[b.status].label}</Badge>
                     </TableCell>
+                    <TableCell>
+                      {(link || b.status === 'submitted' || b.status === 'pm_approved') ? (
+                        <LinkedApproval
+                          link={link}
+                          canRequest={req.canRequest}
+                          onRequest={() => req.open({
+                            source: { type: 'vendor_bill', id: b.id },
+                            context: `Vendor bill ${b.bill_no} · ${vendorName(b.vendor_id)} · ${projectLabel(b.project_id)}`,
+                            prefill: {
+                              category: 'payment',
+                              project_id: b.project_id,
+                              amount: String(b.net_amount ?? b.amount ?? ''),
+                              title: `Vendor bill ${b.bill_no} — ${vendorName(b.vendor_id)}`.slice(0, 200),
+                              details: [`Project: ${projectLabel(b.project_id)}`, `Bill date: ${fmtDate(b.bill_date)}`,
+                                `Amount ₹${b.amount}, deductions ₹${b.deductions}, net payable ₹${b.net_amount}`, b.description].filter(Boolean).join('\n'),
+                            },
+                          })}
+                        />
+                      ) : <span className="text-xs text-muted-foreground">—</span>}
+                    </TableCell>
                     <TableCell className="text-right">
-                      {b.status === 'submitted' && canBill.approve && (
+                      {waiting && <span className="text-xs text-muted-foreground">Decided in Approvals</span>}
+                      {!waiting && b.status === 'submitted' && canBill.approve && (
                         <Button size="sm" variant="outline" onClick={() => move(b.id, 'pm_approved')}>
                           PM approve
                         </Button>
                       )}
-                      {b.status === 'pm_approved' && canPay.approve && (
+                      {!waiting && b.status === 'pm_approved' && canPay.approve && (
                         <Button size="sm" variant="outline" onClick={() => move(b.id, 'accounts_approved')}>
                           Accounts approve
                         </Button>
@@ -648,7 +703,8 @@ export function BillsTab({ projectId }: { projectId: string }) {
                       {b.status === 'paid' && <span className="text-xs text-muted-foreground">{b.paid_on ? fmtDate(b.paid_on) : ''}</span>}
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
@@ -692,6 +748,7 @@ export function BillsTab({ projectId }: { projectId: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {req.dialog}
     </Card>
   );
 }

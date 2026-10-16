@@ -190,6 +190,9 @@ export interface ApprovalRequest {
   site: string | null;
   project_id: string | null;
   project: string | null;
+  /** The project approval or vendor bill this request was raised for. */
+  source_type?: ApprovalSourceType | null;
+  source_id?: string | null;
   workflow_name: string | null;
   round: number;
   current_level: number | null;
@@ -341,6 +344,43 @@ export interface RequestInput {
   note?: string;
   include_final?: boolean;
   post_content?: string;
+}
+
+/** What a request raised from a project is about. */
+export type ApprovalSourceType = 'project_approval' | 'vendor_bill';
+export interface ApprovalSource { type: ApprovalSourceType; id: string }
+
+/** Links a request the caller raised to the project approval or vendor bill it is about. */
+export async function linkApprovalSource(requestId: string, source: ApprovalSource) {
+  const { error } = await supabase.rpc('approval_link_source', { p_request: requestId, p_type: source.type, p_id: source.id });
+  if (error) throw error;
+}
+
+export interface ProjectApprovalRequest {
+  id: string;
+  request_no: string;
+  title: string;
+  category: string;
+  status: RequestStatus;
+  amount: number | null;
+  project_id: string;
+  source_type: ApprovalSourceType | null;
+  source_id: string | null;
+  requester: string | null;
+  created_at: string;
+  current_approver: string | null;
+}
+
+/** Approval requests for one project, or every project the caller can see (null). */
+export function useProjectApprovalRequests(projectId: string | null) {
+  return useQuery({
+    queryKey: ['approvals', 'project', projectId ?? 'all'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('project_approval_requests', { p_project: projectId });
+      if (error) throw error;
+      return (data ?? []) as ProjectApprovalRequest[];
+    },
+  });
 }
 
 /** Saves a request (new or edited); submit sends it for approval. Returns its id. */

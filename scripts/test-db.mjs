@@ -2679,6 +2679,34 @@ await expectError('export event requires EXPORT permission', RAHUL, `select publ
 }
 await expectValue('Admin can read audit log', ADMIN, `select count(*) > 10 from public.audit_logs`, true);
 
+console.log('\nProject approvals through the Approvals section');
+{
+  const one = async (uid, sql, params) => (await as(uid, sql, params)).rows[0]?.v;
+  const bill = (await asSystem(`insert into public.vendor_bills (project_id, vendor_id, bill_no, amount, deductions)
+                                values ($1, $2, 'LNK-1', 50000, 0) returning id`, [PRJ, VEND])).rows[0].id;
+  const bill2 = (await asSystem(`insert into public.vendor_bills (project_id, vendor_id, bill_no, amount, deductions)
+                                 values ($1, $2, 'LNK-2', 9000, 0) returning id`, [PRJ, VEND])).rows[0].id;
+  const pa = (await asSystem(`insert into public.project_approvals (project_id, kind) values ($1, 'DISCOM feasibility') returning id`, [PRJ])).rows[0].id;
+  const R = await one(OWNER, 'select public.approval_save($1::jsonb) v', [JSON.stringify({ category: 'payment', title: 'Pay vendor bill LNK-1', amount: '50000' })]);
+  await expectError('someone else cannot link the request', SALES, `select public.approval_link_source($1, 'vendor_bill', $2)`, 'Only the requester', [R, bill]);
+  await expectOk('the requester links it to the vendor bill', OWNER, `select public.approval_link_source($1, 'vendor_bill', $2)`, [R, bill]);
+  await expectValue('the request now belongs to the bill’s project', OWNER,
+    `select ((public.approval_detail($1)->'request'->>'project_id') = $2::text)::text || ' / ' || (public.approval_detail($1)->'request'->>'source_type')`, 'true / vendor_bill', [R, PRJ]);
+  const list = await one(OWNER, 'select public.project_approval_requests($1) v', [PRJ]);
+  list.some((x) => x.id === R && x.source_id === bill)
+    ? ok('the project lists its approval requests with what they are linked to')
+    : bad('project list', JSON.stringify(list).slice(0, 200));
+  await asSystem(`update public.approval_requests set status = 'approved' where id = $1`, [R]);
+  await expectValue('approving the request moves the bill to Accounts approved', OWNER,
+    `select status::text from public.vendor_bills where id = $1`, 'accounts_approved', [bill]);
+  const R2 = await one(OWNER, 'select public.approval_save($1::jsonb) v', [JSON.stringify({ category: 'payment', title: 'Pay vendor bill LNK-2' })]);
+  await expectOk('a second request links to another bill', OWNER, `select public.approval_link_source($1, 'vendor_bill', $2)`, [R2, bill2]);
+  await asSystem(`update public.approval_requests set status = 'rejected' where id = $1`, [R2]);
+  await expectValue('rejecting it rejects the bill', OWNER, `select status::text from public.vendor_bills where id = $1`, 'rejected', [bill2]);
+  const R3 = await one(OWNER, 'select public.approval_save($1::jsonb) v', [JSON.stringify({ category: 'project', title: 'Apply for DISCOM feasibility' })]);
+  await expectOk('a request can be linked to a statutory project approval', OWNER, `select public.approval_link_source($1, 'project_approval', $2)`, [R3, pa]);
+}
+
 console.log('\nStorage (avatars)');
 await expectOk('user uploads own avatar', RAHUL, `insert into storage.objects (bucket_id, name) values ('avatars', $1 || '/photo.png')`, [RAHUL]);
 await expectError('user cannot upload into another user folder', RAHUL, `insert into storage.objects (bucket_id, name) values ('avatars', $1 || '/photo.png')`, 'row-level security', [ADMIN]);

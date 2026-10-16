@@ -21,8 +21,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field } from '@/components/common';
 import { FilterSelect } from '@/features/admin/users/UsersPage';
 import {
-  ACCOUNTS_LAST_BY_DEFAULT, CATEGORIES, FILE_ACCEPT, PRIORITIES, checkFile, fmtSize, saveRequest, setApprovers, uploadApprovalFile, useFormOptions,
-  type ApprovalRequest, type Priority, type RequestInput,
+  ACCOUNTS_LAST_BY_DEFAULT, CATEGORIES, FILE_ACCEPT, PRIORITIES, checkFile, fmtSize, linkApprovalSource, saveRequest, setApprovers, uploadApprovalFile, useFormOptions,
+  type ApprovalRequest, type ApprovalSource, type Priority, type RequestInput,
 } from '@/features/approvals/api';
 
 const NONE = '__none__';
@@ -52,12 +52,18 @@ function writeDraft(key: string, d: LocalDraft | null) {
   }
 }
 
-export function RequestForm({ open, request, onClose, onSaved }: {
+export function RequestForm({ open, request, onClose, onSaved, prefill, source, context }: {
   open: boolean;
   /** The request being edited; null for a new one. */
   request: ApprovalRequest | null;
   onClose: () => void;
   onSaved: (id: string) => void;
+  /** A new request raised from somewhere else starts filled in with this. */
+  prefill?: Partial<RequestInput>;
+  /** The project approval or vendor bill a new request is about; it is linked once saved. */
+  source?: ApprovalSource;
+  /** One line saying what the request is linked to, shown at the top. */
+  context?: string;
 }) {
   const options = useFormOptions(open);
   const blank = (): RequestInput => ({
@@ -72,7 +78,7 @@ export function RequestForm({ open, request, onClose, onSaved }: {
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const [restored, setRestored] = useState<number | null>(null);
   const { session } = useAuth();
-  const draftKey = `approval-form:${session?.user.id ?? 'anon'}:${request?.id ?? 'new'}`;
+  const draftKey = `approval-form:${session?.user.id ?? 'anon'}:${request?.id ?? (source ? `${source.type}:${source.id}` : 'new')}`;
 
   const fromRequest = (r: ApprovalRequest): RequestInput => ({
     category: r.category, priority: r.priority, title: r.title, details: r.details ?? '',
@@ -90,7 +96,7 @@ export function RequestForm({ open, request, onClose, onSaved }: {
     const kept = readDraft(draftKey);
     setRestored(kept ? kept.savedAt : null);
     setChain(kept ? (kept.chain.length ? kept.chain : ['']) : request ? request.chosen_approvers ?? [] : ['']);
-    setF(kept ? { ...blank(), ...kept.f } : request ? fromRequest(request) : blank());
+    setF(kept ? { ...blank(), ...prefill, ...kept.f } : request ? fromRequest(request) : { ...blank(), ...prefill });
   }
 
   // Keep a copy of what is typed in this browser.
@@ -108,7 +114,7 @@ export function RequestForm({ open, request, onClose, onSaved }: {
     setRestored(null);
     setFiles([]);
     setChain(request ? request.chosen_approvers ?? [] : ['']);
-    setF(request ? fromRequest(request) : blank());
+    setF(request ? fromRequest(request) : { ...blank(), ...prefill });
   }
 
   const set = <K extends keyof RequestInput>(k: K, v: RequestInput[K]) => setF((s) => ({ ...s, [k]: v }));
@@ -136,6 +142,7 @@ export function RequestForm({ open, request, onClose, onSaved }: {
     try {
       // Files go up first against a saved draft, so a failed upload never leaves a submitted request without them.
       id = await saveRequest(f, id, false);
+      if (isNew && source) await linkApprovalSource(id, source);
       if (!submitted) await setApprovers(id, chain.filter(Boolean));
       for (const file of files) await uploadApprovalFile(id, file);
       if (submit) await saveRequest(f, id, true);
@@ -169,6 +176,11 @@ export function RequestForm({ open, request, onClose, onSaved }: {
           </DialogDescription>
         </DialogHeader>
 
+        {context && (
+          <div className="rounded-lg border bg-muted/40 px-3 py-2 text-xs">
+            <span className="font-semibold">Linked to</span> <span className="text-muted-foreground">{context}</span>
+          </div>
+        )}
         {restored && (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary-soft/60 px-3 py-2 text-xs">
             <span>
