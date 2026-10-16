@@ -131,11 +131,13 @@ export function RequestForm({ open, request, onClose, onSaved, prefill, source, 
   const accounts = options.data?.final_approver ?? null;
   const final = marketing ? options.data?.marketing_approver ?? null : f.include_final ? accounts : null;
   const nameOf = (id: string) => approvers.find((a) => a.employee_id === id)?.name ?? 'Approver';
+  const chosenApprovers = chain.filter(Boolean);
+  const approvalRoute = [...chosenApprovers.map(nameOf), final?.name].filter(Boolean) as string[];
 
   async function save(submit: boolean) {
     if (f.title.trim().length < 3) return toast.error('Give the request a title.');
     if (f.amount && Number.isNaN(Number(f.amount.replace(/[,\s₹]/g, '')))) return toast.error('The amount should be a number.');
-    if (submit && !submitted && chain.filter(Boolean).length === 0) return toast.error('Choose at least one approver.');
+    if (submit && !submitted && approvalRoute.length === 0) return toast.error('Choose at least one approver.');
     if (submit && f.category === 'marketing' && !(f.post_content ?? '').trim()) return toast.error('Write the post content.');
     if (submit && f.category === 'local_conveyance' && !f.conveyance_mode) return toast.error('Choose the mode of conveyance.');
     setBusy(submit ? 'submit' : 'draft');
@@ -144,7 +146,7 @@ export function RequestForm({ open, request, onClose, onSaved, prefill, source, 
       // Files go up first against a saved draft, so a failed upload never leaves a submitted request without them.
       id = await saveRequest(f, id, false);
       if (isNew && source) await linkApprovalSource(id, source);
-      if (!submitted) await setApprovers(id, chain.filter(Boolean));
+      if (!submitted) await setApprovers(id, chosenApprovers);
       for (const file of files) await uploadApprovalFile(id, file);
       if (submit) await saveRequest(f, id, true);
       writeDraft(draftKey, null);
@@ -171,9 +173,9 @@ export function RequestForm({ open, request, onClose, onSaved, prefill, source, 
           <DialogDescription>
             {returned && request.decision_note
               ? `Returned for changes: ${request.decision_note}`
-              : chain.filter(Boolean).length
-                ? `Goes to ${[...chain.filter(Boolean).map(nameOf), final?.name].filter(Boolean).join(' → ')}, one after the other.`
-                : 'Choose who approves it, in order. It ends with the Accounts head.'}
+              : approvalRoute.length
+                ? `Goes to ${approvalRoute.join(' → ')}, one after the other.`
+                : 'Choose who approves it, in order.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -237,8 +239,10 @@ export function RequestForm({ open, request, onClose, onSaved, prefill, source, 
                 ...(options.data?.sites ?? []).map((s) => [`s:${s.id}`, `Site · ${s.name}`] as [string, string])]} />
           </Field>
           {!submitted && (
-            <Field label="Approvers, in order" required className="sm:col-span-2"
-              hint="Each one approves after the one before. You can see who has approved and who is left on the request.">
+            <Field label="Approvers, in order" required={!final} className="sm:col-span-2"
+              hint={final
+                ? `${final.name} can be the only approver. Add others here only if they should approve before ${final.name}.`
+                : 'Each one approves after the one before. You can see who has approved and who is left on the request.'}>
               <ol className="grid gap-2">
                 {chain.map((id, i) => (
                   <li key={i} className="flex items-center gap-2">
@@ -253,7 +257,7 @@ export function RequestForm({ open, request, onClose, onSaved, prefill, source, 
                 ))}
                 {marketing && final && (
                   <li className="flex items-center gap-2 rounded-lg bg-muted/50 px-2 py-2 text-sm">
-                    <span className="w-6 text-center font-semibold text-muted-foreground">{chain.length + 1}</span>
+                    <span className="w-6 text-center font-semibold text-muted-foreground">{chosenApprovers.length + 1}</span>
                     <Lock className="h-3.5 w-3.5 text-muted-foreground" />
                     <span className="flex-1"><span className="font-medium">{final.name}</span> — {final.title} <span className="text-xs text-muted-foreground">(always last for marketing)</span></span>
                   </li>
@@ -261,7 +265,7 @@ export function RequestForm({ open, request, onClose, onSaved, prefill, source, 
                 {!marketing && accounts && (
                   <li>
                     <label className="flex cursor-pointer items-center gap-2 rounded-lg bg-muted/50 px-2 py-2 text-sm">
-                      <span className="w-6 text-center font-semibold text-muted-foreground">{f.include_final ? chain.length + 1 : ''}</span>
+                      <span className="w-6 text-center font-semibold text-muted-foreground">{f.include_final ? chosenApprovers.length + 1 : ''}</span>
                       <input type="checkbox" className="h-4 w-4 accent-[var(--color-primary,#ea580c)]" checked={!!f.include_final}
                         onChange={(e) => set('include_final', e.target.checked)} />
                       <span className="flex-1"><span className="font-medium">{accounts.name}</span> — {accounts.title} <span className="text-xs text-muted-foreground">(approves last — optional)</span></span>
