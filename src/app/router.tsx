@@ -52,6 +52,9 @@ import { ApprovalsPage } from '@/features/approvals/ApprovalsPage';
 import { ApprovalDetailPage } from '@/features/approvals/ApprovalDetailPage';
 import { WorkflowSettingsPage } from '@/features/approvals/WorkflowSettingsPage';
 import { registerPageHeaderExtra } from '@/components/common';
+import {
+  GoodsReceiptsPage, InventoryPage, ProcurementOverviewPage, PurchaseOrdersPage, RequisitionsPage,
+} from '@/features/procurement/pages';
 
 // Every section's page header carries its Documents button.
 registerPageHeaderExtra(SectionDocumentsButton);
@@ -113,6 +116,20 @@ export const router = createBrowserRouter([
           { path: 'vendor-bills', element: <Navigate to="/projects/vendors?tab=bills" replace /> },
           { path: 'client-payments', element: <Navigate to="/projects/vendors?tab=payments" replace /> },
           { path: ':id', element: guard('projects.projects', <ProjectDetailPage />) },
+        ],
+      },
+
+      // Procurement: requisitions, orders, receipts, stores; the vendor master lives here too.
+      {
+        path: 'procurement',
+        element: <Outlet />,
+        children: [
+          { index: true, element: guard('proc.dashboard', <ProcurementOverviewPage />) },
+          { path: 'requisitions', element: guard('proc.requisitions', <RequisitionsPage />) },
+          { path: 'orders', element: guard('proc.orders', <PurchaseOrdersPage />) },
+          { path: 'receipts', element: guard('proc.receipts', <GoodsReceiptsPage />) },
+          { path: 'inventory', element: guard('proc.inventory', <InventoryPage />) },
+          { path: 'vendors', element: guard('projects.vendors', <VendorsSection />) },
         ],
       },
 

@@ -347,7 +347,7 @@ export interface RequestInput {
 }
 
 /** What a request raised from a project is about. */
-export type ApprovalSourceType = 'project_approval' | 'vendor_bill';
+export type ApprovalSourceType = 'project_approval' | 'vendor_bill' | 'requisition' | 'purchase_order';
 export interface ApprovalSource { type: ApprovalSourceType; id: string }
 
 /** Links a request the caller raised to the project approval or vendor bill it is about. */

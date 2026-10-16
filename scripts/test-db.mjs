@@ -1670,10 +1670,10 @@ await expectValue('O&M holds only O&M modules', OWNER,
   `select count(*)::int from public.modules m
    join public.module_groups g on g.id = m.group_id
    where g.key = 'operations' and m.key not like 'om.%'`, 0);
-await expectValue('Projects and Vendors sit in their own group', OWNER,
+await expectValue('Projects sit in their own group; Vendors moved to Procurement', OWNER,
   `select count(*)::int from public.modules m
    join public.module_groups g on g.id = m.group_id
-   where g.key = 'projects' and m.key in ('projects.projects','projects.vendors')`, 2);
+   where (g.key = 'projects' and m.key = 'projects.projects') or (g.key = 'procurement' and m.key = 'projects.vendors')`, 2);
 await expectValue('Daily Review is its own group again, not part of HR', OWNER,
   `select g.key from public.modules m
    join public.module_groups g on g.id = m.group_id where m.key = 'daily.review'`, 'daily_review');
@@ -2705,6 +2705,69 @@ console.log('\nProject approvals through the Approvals section');
   await expectValue('rejecting it rejects the bill', OWNER, `select status::text from public.vendor_bills where id = $1`, 'rejected', [bill2]);
   const R3 = await one(OWNER, 'select public.approval_save($1::jsonb) v', [JSON.stringify({ category: 'project', title: 'Apply for DISCOM feasibility' })]);
   await expectOk('a request can be linked to a statutory project approval', OWNER, `select public.approval_link_source($1, 'project_approval', $2)`, [R3, pa]);
+}
+
+console.log('\nProcurement');
+{
+  const one = async (uid, sql, params) => (await as(uid, sql, params)).rows[0]?.v;
+  await expectValue('Procurement is its own section with five pages and the vendors', OWNER,
+    `select count(*)::int from public.modules m join public.module_groups g on g.id = m.group_id where g.key = 'procurement' and m.show_in_nav`, 6);
+  const item = await one(OWNER, `insert into public.proc_items (name, category, uom, gst_rate, min_stock) values ('MC4 connector pair', 'BOS', 'pair', 18, 200) returning id v`);
+  await expectValue('items get a code', OWNER, `select code like 'ITM-%' from public.proc_items where id = $1`, true, [item]);
+  await expectError('a sales user cannot see the stores', SALES, `select public.proc_dashboard()`, 'procurement');
+
+  // requisition -> approval
+  const req = await one(OWNER, `insert into public.proc_requisitions (title, project_id) values ('Connectors for Deegod', $1) returning id v`, [PRJ]);
+  await expectOk('a requisition has item lines', OWNER,
+    `insert into public.proc_requisition_lines (requisition_id, item_id, description, qty, uom, est_rate) values ($1, $2, 'MC4 connector pair', 500, 'pair', 45)`, [req, item]);
+  const R = await one(OWNER, 'select public.approval_save($1::jsonb) v', [JSON.stringify({ category: 'procurement', title: 'PR: Connectors for Deegod', amount: '22500' })]);
+  await expectOk('it is sent through the Approvals section', OWNER, `select public.approval_link_source($1, 'requisition', $2)`, [R, req]);
+  await expectValue('and shows as submitted', OWNER, `select status from public.proc_requisitions where id = $1`, 'submitted', [req]);
+  await asSystem(`update public.approval_requests set status = 'approved' where id = $1`, [R]);
+  await expectValue('approving the request approves the requisition', OWNER, `select status from public.proc_requisitions where id = $1`, 'approved', [req]);
+  const listed = await one(OWNER, 'select public.proc_approval_requests() v');
+  listed.some((x) => x.source_id === req) ? ok('procurement lists its linked approval requests') : bad('proc list', JSON.stringify(listed).slice(0, 160));
+
+  // purchase order
+  const po = await one(OWNER, `insert into public.proc_purchase_orders (vendor_id, requisition_id, project_id, delivery_date)
+                                values ($1, $2, $3, current_date - 1) returning id v`, [VEND, req, PRJ]);
+  const line = await one(OWNER, `insert into public.proc_po_lines (po_id, item_id, description, qty, uom, rate, gst_rate)
+                                  values ($1, $2, 'MC4 connector pair', 500, 'pair', 42, 18) returning id v`, [po, item]);
+  await expectValue('an order line works out amount and GST', OWNER, `select amount::text || ' + ' || tax::text from public.proc_po_lines where id = $1`, '21000.00 + 3780.00', [line]);
+  await expectError('an order cannot be issued before it is approved', OWNER, `update public.proc_purchase_orders set status = 'issued' where id = $1`, 'once it is approved', [po]);
+  const R2 = await one(OWNER, 'select public.approval_save($1::jsonb) v', [JSON.stringify({ category: 'purchase', title: 'PO for connectors', amount: '24780' })]);
+  await expectOk('the order is linked to its approval', OWNER, `select public.approval_link_source($1, 'purchase_order', $2)`, [R2, po]);
+  await asSystem(`update public.approval_requests set status = 'approved' where id = $1`, [R2]);
+  await expectValue('approving it approves the order', OWNER, `select status from public.proc_purchase_orders where id = $1`, 'approved', [po]);
+  await expectError('an approved order’s lines are fixed', OWNER, `update public.proc_po_lines set rate = 50 where id = $1`, 'cannot change', [line]);
+  await expectOk('it is issued to the vendor', OWNER, `update public.proc_purchase_orders set status = 'issued' where id = $1`, [po]);
+  const dash1 = await one(OWNER, 'select public.proc_dashboard() v');
+  dash1.overdue.some((x) => x.id === po) && Number(dash1.low_stock.find((x) => x.id === item)?.stock) === 0
+    ? ok('the overview flags the overdue delivery and the item below its minimum')
+    : bad('dashboard', JSON.stringify(dash1).slice(0, 300));
+
+  // goods receipt
+  const grn = await one(OWNER, `insert into public.proc_receipts (po_id, challan_no) values ($1, 'CH-77') returning id v`, [po]);
+  await expectOk('a receipt records what arrived and what was accepted', OWNER,
+    `insert into public.proc_receipt_lines (receipt_id, po_line_id, qty_received, qty_accepted) values ($1, $2, 300, 290)`, [grn, line]);
+  await expectValue('the order line counts the accepted quantity', OWNER, `select received_qty::int from public.proc_po_lines where id = $1`, 290, [line]);
+  await expectValue('the order is partly received', OWNER, `select status from public.proc_purchase_orders where id = $1`, 'partially_received', [po]);
+  await expectValue('the accepted quantity is in stock', OWNER, `select sum(qty)::int from public.proc_stock_moves where item_id = $1`, 290, [item]);
+  await expectError('a posted receipt cannot be edited', OWNER, `update public.proc_receipt_lines set qty_accepted = 300 where receipt_id = $1`, 'cannot be changed', [grn]);
+  const grn2 = await one(OWNER, `insert into public.proc_receipts (po_id) values ($1) returning id v`, [po]);
+  await expectError('more than the order (plus 10%) cannot be received', OWNER,
+    `insert into public.proc_receipt_lines (receipt_id, po_line_id, qty_received, qty_accepted) values ($1, $2, 300, 300)`, 'ordered quantity', [grn2, line]);
+  await expectOk('the rest arrives', OWNER,
+    `insert into public.proc_receipt_lines (receipt_id, po_line_id, qty_received, qty_accepted) values ($1, $2, 210, 210)`, [grn2, line]);
+  await expectValue('and the order is received', OWNER, `select status from public.proc_purchase_orders where id = $1`, 'received', [po]);
+
+  // stores
+  await expectOk('stock is issued to the project', OWNER, `select public.proc_issue_stock($1, 120, null, $2, null, null, 'Block A')`, [item, PRJ]);
+  await expectError('more than is in stock cannot be issued', OWNER, `select public.proc_issue_stock($1, 9999)`, 'in stock', [item]);
+  const st = await one(OWNER, 'select public.proc_stock() v');
+  Number(st.find((x) => x.item_id === item && x.site_id === null)?.qty) === 380
+    ? ok('stock on hand is receipts less issues') : bad('stock', JSON.stringify(st));
+  await expectOk('a vendor bill can name its order', OWNER, `update public.vendor_bills set po_id = $1 where id = $2`, [po, BILL]);
 }
 
 console.log('\nStorage (avatars)');

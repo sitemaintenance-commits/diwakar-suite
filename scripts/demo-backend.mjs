@@ -456,6 +456,18 @@ await asUser(OWNER, async (tx) => {
 // ---------------------------------------------------------------- PostgREST-ish reads
 // Canned reads that return the shapes the app requests (embeds included).
 const READ_SQL = {
+  // Procurement
+  proc_items: `select * from public.proc_items where deleted_at is null order by name`,
+  proc_requisitions: `select r.*, coalesce((select json_agg(l order by l.sort_order) from public.proc_requisition_lines l where l.requisition_id = r.id), '[]') as lines
+                      from public.proc_requisitions r where r.deleted_at is null order by r.created_at desc`,
+  proc_requisition_lines: `select * from public.proc_requisition_lines order by sort_order`,
+  proc_purchase_orders: `select p.*, coalesce((select json_agg(l order by l.sort_order) from public.proc_po_lines l where l.po_id = p.id), '[]') as lines
+                         from public.proc_purchase_orders p where p.deleted_at is null order by p.po_date desc, p.created_at desc`,
+  proc_po_lines: `select * from public.proc_po_lines order by sort_order`,
+  proc_receipts: `select r.*, coalesce((select json_agg(l) from public.proc_receipt_lines l where l.receipt_id = r.id), '[]') as lines
+                  from public.proc_receipts r where r.deleted_at is null order by r.receipt_date desc, r.created_at desc`,
+  proc_receipt_lines: `select * from public.proc_receipt_lines`,
+  proc_stock_moves: `select * from public.proc_stock_moves order by move_date desc, created_at desc`,
   // Phase 3 — projects
   projects: `select * from public.projects where deleted_at is null order by capacity_kwp desc`,
   project_tasks: `select * from public.project_tasks where deleted_at is null order by sort_order`,
