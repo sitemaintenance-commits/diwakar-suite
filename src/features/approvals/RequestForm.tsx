@@ -132,7 +132,9 @@ export function RequestForm({ open, request, onClose, onSaved, prefill, source, 
   const final = marketing ? options.data?.marketing_approver ?? null : f.include_final ? accounts : null;
   const nameOf = (id: string) => approvers.find((a) => a.employee_id === id)?.name ?? 'Approver';
   const chosenApprovers = chain.filter(Boolean);
-  const approvalRoute = [...chosenApprovers.map(nameOf), final?.name].filter(Boolean) as string[];
+  // The final approver approves once, even when also picked in the list.
+  const approvalRoute = [...chosenApprovers.map(nameOf), final && !chosenApprovers.includes(final.employee_id) ? final.name : null]
+    .filter(Boolean) as string[];
 
   async function save(submit: boolean) {
     if (f.title.trim().length < 3) return toast.error('Give the request a title.');

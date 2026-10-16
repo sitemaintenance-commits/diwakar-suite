@@ -2374,9 +2374,16 @@ console.log('\nApprovals - chosen approvers, then the Accounts head');
   const stepOf = async (id, level) => (await asSystem(
     `select id from public.approval_steps where request_id = $1 and level_no = $2 and round = (select round from public.approval_requests where id = $1)`, [id, level])).rows[0].id;
 
-  await expectValue('the form offers the approver list, without the Accounts head, who always comes last', ASKER,
-    `select (select bool_and(x->>'employee_id' <> $1::text) from jsonb_array_elements(public.approval_form_options()->'approvers') x)
-        and public.approval_form_options()->'final_approver'->>'title' = 'Accounts (final)'`, true, [accountsEmp]);
+  await expectValue('the form offers the approver list and names the Accounts head as the final approver', ASKER,
+    `select public.approval_form_options()->'final_approver'->>'title' = 'Accounts (final)'`, true);
+  {
+    // Nobody chosen, Accounts last ticked: the Accounts head alone -- not the default workflow.
+    const req = { category: 'purchase', title: 'Pen drives for the office', amount: '900' };
+    const only = await val(ASKER, `select public.approval_save($1::jsonb) v`, [JSON.stringify(req)]);
+    await as(ASKER, 'select public.approval_save($1::jsonb, $2, true)', [JSON.stringify(req), only]);
+    const steps = (await asSystem(`select string_agg(name, ' → ' order by level_no) v from public.approval_steps where request_id = $1`, [only])).rows[0].v;
+    steps === 'Accounts (final)' ? ok('with only the Accounts head, the request has that one level') : bad('only final', steps);
+  }
   const R = await val(ASKER, `select public.approval_save($1::jsonb) v`,
     [JSON.stringify({ category: 'purchase', title: 'Safety shoes for the Sadas team', amount: '9,600', priority: 'urgent' })]);
   await expectError('approvers come from the approver list', ASKER, `select public.approval_set_approvers($1, $2::uuid[])`, 'approver list', [R, [otherEmp]]);
