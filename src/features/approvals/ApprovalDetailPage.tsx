@@ -22,10 +22,10 @@ import { ErrorState, Field, TableSkeleton } from '@/components/common';
 import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { RequestForm } from '@/features/approvals/RequestForm';
 import {
-  ACTION_LABEL, FILE_ACCEPT, LEVEL_STATUS, PRIORITIES, STATUS, actOnStep, addComment, approvalKeys, cancelRequest, categoryLabel,
+  ACTION_LABEL, CONVEYANCE_MODES, FILE_ACCEPT, LEVEL_STATUS, PRIORITIES, STATUS, actOnStep, addComment, approvalKeys, cancelRequest, categoryLabel,
   completeRequest, deleteDocument, editStepComment, fileUrl, fmtSize, isImage, isPdf, reassignStep, reopenRequest, saveRequest, uploadApprovalFile,
   useApprovalDetail, useApprovalSettings,
-  type ApprovalDetail, type ApprovalDocument, type ApprovalStep, type DocVersion, type TimelineEntry,
+  type ApprovalDetail, type ApprovalDocument, type ApprovalStep, type DocVersion, type RequestInput, type TimelineEntry,
 } from '@/features/approvals/api';
 
 export function ApprovalDetailPage() {
@@ -177,6 +177,7 @@ function Detail({ d, refresh }: { d: ApprovalDetail; refresh: () => Promise<void
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
               <Meta label="Type">{categoryLabel(r.category)}</Meta>
               <Meta label="Needed by">{r.needed_by ? fmtDate(r.needed_by) : '—'}</Meta>
+              {r.conveyance_mode && <Meta label="Mode of conveyance">{CONVEYANCE_MODES[r.conveyance_mode] ?? r.conveyance_mode}</Meta>}
               <Meta label={r.source_type ? 'Linked to' : 'Project / site'}>
                 {r.project_id ? (
                   <Link to={`/projects/${r.project_id}`} className="text-primary hover:underline">
@@ -267,11 +268,11 @@ function Detail({ d, refresh }: { d: ApprovalDetail; refresh: () => Promise<void
   );
 }
 
-const toInput = (d: ApprovalDetail) => ({
+const toInput = (d: ApprovalDetail): RequestInput => ({
   category: d.request.category, priority: d.request.priority, title: d.request.title, details: d.request.details ?? '',
   amount: d.request.amount == null ? '' : String(d.request.amount), needed_by: d.request.needed_by ?? '',
   department_id: d.request.department_id ?? '', site_id: d.request.site_id ?? '', project_id: d.request.project_id ?? '',
-  include_final: d.request.include_final ?? true, post_content: d.request.post_content ?? '',
+  include_final: d.request.include_final ?? true, post_content: d.request.post_content ?? '', conveyance_mode: d.request.conveyance_mode ?? '' as const,
 });
 
 function Meta({ label, children }: { label: string; children: ReactNode }) {

@@ -2774,6 +2774,18 @@ console.log('\nLocal conveyance, Jaipur site, custom folders');
 {
   await expectOk('a local conveyance request can be raised', OWNER,
     'select public.approval_save($1::jsonb)', [JSON.stringify({ category: 'local_conveyance', title: 'Auto to the DISCOM office', amount: '350' })]);
+  {
+    const req = { category: 'local_conveyance', title: 'Bike to the Jaipur site', amount: '180' };
+    const id = (await as(OWNER, 'select public.approval_save($1::jsonb) v', [JSON.stringify(req)])).rows[0].v;
+    await expectError('it cannot be submitted without the mode of conveyance', OWNER,
+      'select public.approval_save($1::jsonb, $2, true)', 'mode of conveyance', [JSON.stringify(req), id]);
+    await expectError('the mode is car or bike', OWNER,
+      'select public.approval_save($1::jsonb, $2)', 'car or bike', [JSON.stringify({ ...req, conveyance_mode: 'truck' }), id]);
+    await expectOk('bike is saved', OWNER, 'select public.approval_save($1::jsonb, $2)', [JSON.stringify({ ...req, conveyance_mode: 'bike' }), id]);
+    await expectValue('and shown on the request', OWNER, `select public.approval_detail($1)->'request'->>'conveyance_mode'`, 'bike', [id]);
+    await expectOk('another type keeps no mode', OWNER, 'select public.approval_save($1::jsonb, $2)', [JSON.stringify({ ...req, category: 'travel', conveyance_mode: 'bike' }), id]);
+    await expectValue('the mode is cleared', OWNER, `select coalesce(public.approval_detail($1)->'request'->>'conveyance_mode', 'none')`, 'none', [id]);
+  }
   await expectValue('Jaipur site can be chosen', OWNER, `select count(*)::int from public.sites where name = 'Jaipur site'`, 1);
   const f1 = (await as(RAHUL, `select public.create_document_folder('  Site   photos ') v`)).rows[0].v;
   f1.name === 'Site photos' && f1.code === 'SITEPHOTOS' && !f1.existing ? ok('anyone signed in creates a folder of their own name') : bad('folder', JSON.stringify(f1));

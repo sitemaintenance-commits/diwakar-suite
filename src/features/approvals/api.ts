@@ -25,6 +25,9 @@ export const CATEGORIES: Record<string, string> = {
   other: 'Other',
 };
 /** Types that have the Accounts head approve last unless the requester unticks it. */
+export type ConveyanceMode = 'car' | 'bike';
+export const CONVEYANCE_MODES: Record<ConveyanceMode, string> = { car: 'Car', bike: 'Bike' };
+
 export const ACCOUNTS_LAST_BY_DEFAULT = new Set(['purchase', 'payment', 'reimbursement', 'local_conveyance', 'procurement']);
 /** Types raised before the multi-level upgrade; shown, not offered. */
 const LEGACY_CATEGORIES: Record<string, string> = { advance: 'Advance', equipment: 'IT / equipment' };
@@ -174,6 +177,8 @@ export interface ApprovalRequest {
   include_final?: boolean;
   /** Marketing & social media: the post's text, approved together with the post PDF. */
   post_content?: string | null;
+  /** Local conveyance: how the trip was made. */
+  conveyance_mode?: ConveyanceMode | null;
   category: string;
   title: string;
   details: string | null;
@@ -345,6 +350,7 @@ export interface RequestInput {
   note?: string;
   include_final?: boolean;
   post_content?: string;
+  conveyance_mode?: ConveyanceMode | '';
 }
 
 /** What a request raised from a project is about. */

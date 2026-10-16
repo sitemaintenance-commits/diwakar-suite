@@ -21,7 +21,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field } from '@/components/common';
 import { FilterSelect } from '@/features/admin/users/UsersPage';
 import {
-  ACCOUNTS_LAST_BY_DEFAULT, CATEGORIES, FILE_ACCEPT, PRIORITIES, checkFile, fmtSize, linkApprovalSource, saveRequest, setApprovers, uploadApprovalFile, useFormOptions,
+  ACCOUNTS_LAST_BY_DEFAULT, CATEGORIES, CONVEYANCE_MODES, FILE_ACCEPT, PRIORITIES, checkFile, fmtSize, linkApprovalSource, saveRequest, setApprovers, uploadApprovalFile, useFormOptions,
   type ApprovalRequest, type ApprovalSource, type Priority, type RequestInput,
 } from '@/features/approvals/api';
 
@@ -69,7 +69,7 @@ export function RequestForm({ open, request, onClose, onSaved, prefill, source, 
   const blank = (): RequestInput => ({
     category: 'purchase', priority: 'normal', title: '', details: '', amount: '', needed_by: '',
     department_id: options.data?.my_department_id ?? '', site_id: '', project_id: '', note: '',
-    include_final: true, post_content: '',
+    include_final: true, post_content: '', conveyance_mode: '',
   });
   const [f, setF] = useState<RequestInput>(blank);
   const [files, setFiles] = useState<File[]>([]);
@@ -84,7 +84,7 @@ export function RequestForm({ open, request, onClose, onSaved, prefill, source, 
     category: r.category, priority: r.priority, title: r.title, details: r.details ?? '',
     amount: r.amount == null ? '' : String(r.amount), needed_by: r.needed_by ?? '',
     department_id: r.department_id ?? '', site_id: r.site_id ?? '', project_id: r.project_id ?? '', note: '',
-    include_final: r.include_final ?? true, post_content: r.post_content ?? '',
+    include_final: r.include_final ?? true, post_content: r.post_content ?? '', conveyance_mode: r.conveyance_mode ?? '',
   });
 
   // Load the form when it opens (and once the caller's department is known),
@@ -137,6 +137,7 @@ export function RequestForm({ open, request, onClose, onSaved, prefill, source, 
     if (f.amount && Number.isNaN(Number(f.amount.replace(/[,\s₹]/g, '')))) return toast.error('The amount should be a number.');
     if (submit && !submitted && chain.filter(Boolean).length === 0) return toast.error('Choose at least one approver.');
     if (submit && f.category === 'marketing' && !(f.post_content ?? '').trim()) return toast.error('Write the post content.');
+    if (submit && f.category === 'local_conveyance' && !f.conveyance_mode) return toast.error('Choose the mode of conveyance.');
     setBusy(submit ? 'submit' : 'draft');
     let id = request?.id ?? null;
     try {
@@ -211,6 +212,12 @@ export function RequestForm({ open, request, onClose, onSaved, prefill, source, 
           <Field label="Request details" className="sm:col-span-2" hint="Why it is needed, quantities, vendor, dates.">
             <Textarea rows={4} value={f.details} onChange={(e) => set('details', e.target.value)} />
           </Field>
+          {f.category === 'local_conveyance' && (
+            <Field label="Mode of conveyance" required>
+              <FilterSelect value={f.conveyance_mode || ''} onChange={(v) => set('conveyance_mode', v as RequestInput['conveyance_mode'])}
+                placeholder="Car or bike" options={Object.entries(CONVEYANCE_MODES).map(([k, v]) => [k, v] as [string, string])} />
+            </Field>
+          )}
           <Field label="Amount (₹)">
             <Input inputMode="decimal" value={f.amount} onChange={(e) => set('amount', e.target.value)} placeholder="0" />
           </Field>
