@@ -602,8 +602,10 @@ await expectOk('O&M files its daily report with metrics', RAHUL,
                         'work_completed', 'Cleaned 4 blocks at Sadas; inverter 2 reset.',
                         'issues', 'Inverter 2 tripping repeatedly — OEM engineer required.',
                         'next_day_plan', 'String testing at Bassi.', 'status', 'submitted'),
-     '[{"label":"Generation (kWh)","value":"36,500"},{"label":"Open tickets","value":"3"}]'::jsonb)`, [deptOm]);
+     '[{"label":"Generation (kWh)","value":"36,500"},{"label":"Open tickets","value":"3","note":"  1 critical at Bassi  "}]'::jsonb)`, [deptOm]);
 await expectValue('the report carries its metrics', RAHUL, `select count(*)::int from public.daily_report_items`, 2);
+await expectValue('a row keeps its optional note, trimmed; a row without one has none', RAHUL,
+  `select string_agg(label || '=' || coalesce(note, '-'), ', ' order by sort_order) from public.daily_report_items`, 'Generation (kWh)=-, Open tickets=1 critical at Bassi');
 await expectValue('submitting stamps the time', RAHUL, `select submitted_at is not null from public.daily_reports`, true);
 await expectError('only one report per department per day', RAHUL,
   `select public.save_daily_report(jsonb_build_object('department_id', $1::text, 'work_completed', 'duplicate'), '[]'::jsonb)`,

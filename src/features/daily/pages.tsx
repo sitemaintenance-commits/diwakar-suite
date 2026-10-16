@@ -47,6 +47,8 @@ const REPORT_STATUS: Record<string, { label: string; tone: BadgeTone }> = {
 interface Metric {
   label: string;
   value: string;
+  /** Optional additional information under the row. */
+  note?: string | null;
 }
 
 /**
@@ -277,9 +279,12 @@ export function DailyReportsPage() {
                     {d.today.metrics.length > 0 && (
                       <dl className="grid gap-1 text-sm">
                         {d.today.metrics.map((m, i) => (
-                          <div key={i} className="flex justify-between gap-3">
-                            <dt className="text-muted-foreground">{m.label}</dt>
-                            <dd className="tabular font-medium">{m.value}</dd>
+                          <div key={i}>
+                            <div className="flex justify-between gap-3">
+                              <dt className="text-muted-foreground">{m.label}</dt>
+                              <dd className="tabular font-medium">{m.value}</dd>
+                            </div>
+                            {m.note && <p className="mt-0.5 whitespace-pre-wrap text-xs text-muted-foreground/90">{m.note}</p>}
                           </div>
                         ))}
                       </dl>
@@ -407,7 +412,7 @@ function ReportEditor({
     const r = entry!.report;
     const hasContent = Boolean(
       work.trim()
-      || metrics.some((m) => m.value.trim())
+      || metrics.some((m) => m.value.trim() || (m.note ?? '').trim())
       || r?.issues?.trim()
       || r?.next_day_plan?.trim()
       || r?.remarks?.trim()
@@ -441,7 +446,9 @@ function ReportEditor({
         status,
       },
       // A default label without a value is only a prompt, not a filed update.
-      p_items: metrics.filter((m) => m.label.trim() && m.value.trim()),
+      p_items: metrics
+        .filter((m) => m.label.trim() && (m.value.trim() || (m.note ?? '').trim()))
+        .map((m) => ({ label: m.label, value: m.value, note: (m.note ?? '').trim() || null })),
       p_id: entry!.report?.id ?? null,
     });
     setBusy(false);
@@ -475,7 +482,8 @@ function ReportEditor({
             <p className="mb-2 text-sm font-medium">Department updates</p>
             <div className="grid gap-2">
               {metrics.map((m, i) => (
-                <div key={i} className="flex gap-2">
+                <div key={i} className="grid gap-1.5 rounded-lg border border-transparent p-0.5 focus-within:border-border focus-within:bg-muted/30">
+                <div className="flex gap-2">
                   <Input
                     value={m.label}
                     onChange={(e) => setMetrics((ms) => ms.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))}
@@ -498,6 +506,15 @@ function ReportEditor({
                   >
                     <Trash2 />
                   </Button>
+                </div>
+                <Textarea
+                  rows={1}
+                  value={m.note ?? ''}
+                  onChange={(e) => setMetrics((ms) => ms.map((x, j) => (j === i ? { ...x, note: e.target.value } : x)))}
+                  placeholder="Additional information (optional)"
+                  maxLength={2000}
+                  className="min-h-8 resize-y py-1.5 text-xs"
+                />
                 </div>
               ))}
               <Button variant="outline" size="sm" className="w-fit" onClick={() => setMetrics((ms) => [...ms, { label: '', value: '' }])}>
@@ -676,9 +693,12 @@ export function ReviewSummaryPage() {
                         </TableCell>
                         <TableCell className="text-sm">
                           {(d.today?.metrics ?? []).map((m, i) => (
-                            <div key={i} className="whitespace-nowrap">
-                              <span className="text-muted-foreground">{m.label}: </span>
-                              <span className="tabular font-medium">{m.value}</span>
+                            <div key={i}>
+                              <div className="whitespace-nowrap">
+                                <span className="text-muted-foreground">{m.label}: </span>
+                                <span className="tabular font-medium">{m.value}</span>
+                              </div>
+                              {m.note && <div className="max-w-xs whitespace-pre-wrap text-xs text-muted-foreground">{m.note}</div>}
                             </div>
                           ))}
                         </TableCell>
@@ -884,9 +904,10 @@ export function ManagementReviewPage() {
                 {d.today!.metrics.length > 0 && (
                   <div className="flex flex-wrap gap-4">
                     {d.today!.metrics.map((m, i) => (
-                      <div key={i}>
+                      <div key={i} className="max-w-[16rem]">
                         <div className="text-xs text-muted-foreground">{m.label}</div>
                         <div className="tabular font-semibold">{m.value}</div>
+                        {m.note && <div className="mt-0.5 whitespace-pre-wrap text-xs text-muted-foreground">{m.note}</div>}
                       </div>
                     ))}
                   </div>
