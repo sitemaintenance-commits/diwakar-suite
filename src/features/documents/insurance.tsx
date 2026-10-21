@@ -35,6 +35,18 @@ export function insuranceStatus(end?: string | null) {
   return { due: `Renewal due in ${days} day(s)`, status: 'Active', tone: 'success' as const, days };
 }
 
+/** A big number of days left; red within 2 days or expired, amber within 15. */
+export function DaysLeft({ days }: { days: number | null }) {
+  if (days == null) return <span className="text-muted-foreground">—</span>;
+  const tone = days <= 2 ? 'bg-red-100 text-red-700' : days <= 15 ? 'bg-amber-100 text-amber-800' : days <= 30 ? 'bg-yellow-50 text-yellow-800' : 'bg-green-50 text-green-700';
+  return (
+    <span className={cn('inline-flex min-w-[3.5rem] flex-col items-center rounded-lg px-2 py-1 leading-none', tone)}>
+      <span className="tabular text-base font-bold">{days < 0 ? -days : days}</span>
+      <span className="mt-0.5 text-[10px] font-medium">{days < 0 ? 'days ago' : days === 0 ? 'today' : days === 1 ? 'day left' : 'days left'}</span>
+    </span>
+  );
+}
+
 /** The policy fields, shown in the upload form and the edit dialog when the type is Insurance. */
 export function InsuranceFields({ value, onChange, sites }: {
   value: InsuranceDetails;
@@ -104,6 +116,7 @@ export function InsuranceTable({ rows, onOpen, onDownload, onSend, onEdit, onDel
             <TableHead>Policy number</TableHead>
             <TableHead>Start</TableHead>
             <TableHead>End</TableHead>
+            <TableHead className="text-center">Days left</TableHead>
             <TableHead>Insurer</TableHead>
             <TableHead>Due status</TableHead>
             <TableHead>Status</TableHead>
@@ -127,6 +140,7 @@ export function InsuranceTable({ rows, onOpen, onDownload, onSend, onEdit, onDel
                 <TableCell className="tabular max-w-[12rem] break-all text-xs">{x.policy_no || '—'}</TableCell>
                 <TableCell className="whitespace-nowrap">{x.start_date ? fmtDate(x.start_date) : '—'}</TableCell>
                 <TableCell className="whitespace-nowrap">{end ? fmtDate(end) : '—'}</TableCell>
+                <TableCell className="text-center"><DaysLeft days={st.days} /></TableCell>
                 <TableCell className="max-w-[12rem]">{x.insurer || '—'}</TableCell>
                 <TableCell className={cn('whitespace-nowrap', st.tone === 'destructive' && 'font-medium text-red-700', st.tone === 'warning' && 'text-amber-700')}>{st.due}</TableCell>
                 <TableCell><Badge variant={st.tone}>{st.status}</Badge></TableCell>

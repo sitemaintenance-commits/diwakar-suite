@@ -26,7 +26,7 @@ import {
   updateDocument, uploadSectionDocument, useDocumentList, type DocFolder, type LibraryDoc,
 } from '@/features/documents/api';
 import { SendDocumentDialog } from '@/features/documents/SendDocumentDialog';
-import { InsuranceFields, InsuranceTable, isInsurance, type InsuranceDetails } from '@/features/documents/insurance';
+import { InsuranceFields, InsuranceTable, insuranceStatus, isInsurance, type InsuranceDetails } from '@/features/documents/insurance';
 
 const ALL = '__all__';
 const NONE = '__none__';
@@ -395,6 +395,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
                       <p className="truncate text-sm font-medium">{d.file_name}</p>
                       {d.folder && <Badge variant="default"><Folder className="h-3 w-3" />{d.folder}</Badge>}
                       {d.category && <Badge variant="secondary">{d.category}</Badge>}
+                      {d.details?.end_date && (() => { const st = insuranceStatus(d.details.end_date); return st.days != null && st.days >= 0 ? <Badge variant={st.tone}>{st.days === 0 ? 'Ends today' : `${st.days} day${st.days === 1 ? '' : 's'} left`}</Badge> : null; })()}
                       {d.expiry === 'expired' && <Badge variant="destructive"><AlertTriangle className="mr-1 h-3 w-3" />Expired {fmtDate(d.valid_until)}</Badge>}
                       {d.expiry === 'expiring' && <Badge variant="warning">Expires {fmtDate(d.valid_until)}</Badge>}
                       {d.entity_type !== 'section' && <Badge variant="outline">Attached to a {d.entity_type}</Badge>}

@@ -2801,6 +2801,26 @@ console.log('\nLocal conveyance, Jaipur site, custom folders');
   await expectError('a folder needs a real name', RAHUL, `select public.create_document_folder('x')`, '2 to 80');
 }
 
+console.log('\nInsurance renewal alerts');
+{
+  const mk = async (days, name) => (await asSystem(`insert into public.documents (module_key, entity_type, category, file_name, storage_path, created_by, details)
+      values ('documents', 'section', 'Insurance', $2, 'documents/section/' || $2, $3,
+              jsonb_build_object('policy_no', 'P-' || $1, 'project_name', 'Bassi', 'end_date', ((now() at time zone 'Asia/Kolkata')::date + $1::int)::text))
+      returning id`, [days, name, RAHUL])).rows[0].id;
+  const d15 = await mk(15, 'policy-15.pdf');
+  await mk(10, 'policy-10.pdf');
+  await mk(2, 'policy-2.pdf');
+  await mk(7, 'policy-7.pdf');
+  const count = async () => Number((await asSystem(`select count(*) n from public.notifications where kind = 'document.expiring' and user_id = $1`, [RAHUL])).rows[0].n);
+  await asSystem('select app.send_document_expiry_alerts()');
+  (await count()) === 3 ? ok('alerts go out 15, 10 and 2 days before the end, not on other days') : bad('alerts', String(await count()));
+  await asSystem('select app.send_document_expiry_alerts()');
+  (await count()) === 3 ? ok('and each only once') : bad('alerts twice', String(await count()));
+  const t = (await asSystem(`select title from public.notifications where kind = 'document.expiring' and entity_id = $1 and user_id = $2`, [d15, RAHUL])).rows[0]?.title;
+  t === 'Insurance renewal due in 15 days' ? ok('the alert says how many days are left') : bad('alert title', t);
+  await expectError('the app cannot run the alert job', RAHUL, 'select app.send_document_expiry_alerts()', 'permission denied');
+}
+
 console.log('\nStorage (avatars)');
 await expectOk('user uploads own avatar', RAHUL, `insert into storage.objects (bucket_id, name) values ('avatars', $1 || '/photo.png')`, [RAHUL]);
 await expectError('user cannot upload into another user folder', RAHUL, `insert into storage.objects (bucket_id, name) values ('avatars', $1 || '/photo.png')`, 'row-level security', [ADMIN]);
