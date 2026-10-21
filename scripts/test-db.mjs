@@ -2656,7 +2656,7 @@ console.log('\nTeam Performance from the technicians\' Google Form');
 console.log('\nToday in the company (dashboard)');
 await expectValue('the Super Admin sees one card per section', OWNER,
   `select string_agg(x->>'key', ',' order by x->>'key') from jsonb_array_elements(public.get_company_today()->'sections') x`,
-  'approvals,departments,hr,om,projects,tenders');
+  'approvals,departments,hr,insurance,om,procurement,projects,tenders');
 await expectValue('each card has a traffic light and a headline', OWNER,
   `select bool_and(x->>'status' in ('good','ok','bad') and length(x->>'headline') > 0)
    from jsonb_array_elements(public.get_company_today()->'sections') x`, true);
