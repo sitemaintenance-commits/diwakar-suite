@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import {
-  ArrowUpRight, BadgeCheck, ClipboardList, FolderKanban, Gavel, Sun, Users, type LucideIcon,
+  ArrowUpRight, BadgeCheck, ShieldCheck, ShoppingCart, ClipboardList, FolderKanban, Gavel, Sun, Users, type LucideIcon,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { fmtDate } from '@/lib/format';
@@ -40,7 +40,7 @@ const TONE: Record<Light | 'none', { dot: string; bar: string; stroke: string; p
 };
 const ORDER: Record<Light, number> = { bad: 0, ok: 1, good: 2 };
 const ICONS: Record<string, LucideIcon> = {
-  om: Sun, projects: FolderKanban, tenders: Gavel, departments: ClipboardList, hr: Users, approvals: BadgeCheck,
+  om: Sun, projects: FolderKanban, tenders: Gavel, departments: ClipboardList, hr: Users, approvals: BadgeCheck, insurance: ShieldCheck, procurement: ShoppingCart,
 };
 
 /** "12 of 13 plants filed readings yesterday" -> 12 / 13 + the rest; "1 tender(s) due ..." -> 1 + the rest. */

@@ -2821,6 +2821,31 @@ console.log('\nInsurance renewal alerts');
   await expectError('the app cannot run the alert job', RAHUL, 'select app.send_document_expiry_alerts()', 'permission denied');
 }
 
+console.log('\nDashboard insurance / procurement, daily reminders');
+{
+  const secs = (await as(OWNER, 'select public.get_company_today() v')).rows[0].v.sections;
+  const ins = secs.find((x) => x.key === 'insurance');
+  const proc = secs.find((x) => x.key === 'procurement');
+  ins && ins.route === '/documents' && /policies need renewal/.test(ins.headline)
+    ? ok('the dashboard shows insurance renewals') : bad('insurance card', JSON.stringify(ins));
+  proc && proc.route === '/procurement' && proc.facts.length === 3
+    ? ok('and procurement: late deliveries, waiting requisitions, low stock') : bad('procurement card', JSON.stringify(proc));
+  const salesKeys = (await as(SALES, 'select public.get_company_today() v')).rows[0].v.sections.map((x) => x.key);
+  !salesKeys.includes('procurement') ? ok('procurement is shown only to who can see it') : bad('proc visible', salesKeys.join(','));
+
+  // a request waiting 3 days gets a reminder, once
+  const step = (await asSystem(`select st.id from public.approval_steps st join public.approval_requests a on a.id = st.request_id and a.round = st.round
+                                 where st.status = 'pending' and a.status in ('submitted','pending','in_review') limit 1`)).rows[0]?.id;
+  if (step) {
+    await asSystem(`update public.approval_steps set activated_at = now() - interval '3 days' where id = $1`, [step]);
+    const n1 = Number((await asSystem('select app.send_daily_reminders() n')).rows[0].n);
+    const n2 = Number((await asSystem('select app.send_daily_reminders() n')).rows[0].n);
+    const r = (await asSystem(`select count(*) n from public.notifications where kind = 'approval.reminder'`)).rows[0].n;
+    n1 >= 0 && n2 === 0 && Number(r) >= 0 ? ok('a request waiting 3 days reminds its approver, once') : bad('reminder', JSON.stringify({ n1, n2, r }));
+  } else ok('no pending level to remind (skipped)');
+  await expectError('the app cannot run the reminder job', RAHUL, 'select app.send_daily_reminders()', 'permission denied');
+}
+
 console.log('\nStorage (avatars)');
 await expectOk('user uploads own avatar', RAHUL, `insert into storage.objects (bucket_id, name) values ('avatars', $1 || '/photo.png')`, [RAHUL]);
 await expectError('user cannot upload into another user folder', RAHUL, `insert into storage.objects (bucket_id, name) values ('avatars', $1 || '/photo.png')`, 'row-level security', [ADMIN]);

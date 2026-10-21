@@ -32,7 +32,7 @@ interface Notification {
 
 const KEY = ['notifications'] as const;
 /** Kinds that ask the user to act: they pop up instead of a toast. */
-const NEEDS_ACTION = new Set(['approval.waiting', 'approval.unassigned']);
+const NEEDS_ACTION = new Set(['approval.waiting', 'approval.unassigned', 'approval.reminder']);
 const BASE_TITLE = typeof document !== 'undefined' ? document.title : '';
 const canNotify = () => typeof window !== 'undefined' && 'Notification' in window;
 
