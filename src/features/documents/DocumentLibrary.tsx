@@ -32,6 +32,8 @@ const ALL = '__all__';
 const NONE = '__none__';
 const AUTO = '__auto__';
 const NEW_FOLDER = '__new_folder__';
+const insuranceFolder = (folders: DocFolder[], id: string | null | undefined) =>
+  Boolean(id && folders.find((f) => f.id === id && /insur/i.test(`${f.name} ${f.code}`)));
 /** Only the filled-in fields, trimmed. */
 const cleanDetails = (d: InsuranceDetails): Record<string, string> =>
   Object.fromEntries(Object.entries(d).map(([k, v]) => [k, String(v ?? '').trim()]).filter(([, v]) => v));
@@ -177,6 +179,8 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
     setQueue((q) => [...q, ...ok].slice(0, 20));
   }
 
+  const upInsurance = isInsurance(upCategory) || insuranceFolder(list.data?.folders ?? [], upFolder);
+
   async function uploadAll() {
     if (!target) return toast.error(moduleKey ? 'No section.' : 'Choose the category and section the documents belong to.');
     if (!queue.length) return;
@@ -185,10 +189,10 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
     for (const [i, file] of queue.entries()) {
       try {
         await uploadSectionDocument({
-          moduleKey: target, file, category: upCategory.trim() || null, notes: upNotes.trim() || null,
-          validUntil: (isInsurance(upCategory) && upIns.end_date) || upValid || null, siteId: showPlant && upSite !== NONE ? upSite : null,
+          moduleKey: target, file, category: upCategory.trim() || (upInsurance ? 'Insurance' : null), notes: upNotes.trim() || null,
+          validUntil: (upInsurance && upIns.end_date) || upValid || null, siteId: showPlant && upSite !== NONE ? upSite : null,
           folderId: upFolder === AUTO ? null : upFolder,
-          details: isInsurance(upCategory) ? cleanDetails(upIns) : {},
+          details: upInsurance ? cleanDetails(upIns) : {},
         });
       } catch (e) {
         failed.push(file);
@@ -300,7 +304,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
                 <Field label="Valid until" hint="For certificates, insurance, licences">
                   <Input type="date" value={upValid} onChange={(e) => setUpValid(e.target.value)} />
                 </Field>
-                {isInsurance(upCategory) && <InsuranceFields value={upIns} onChange={setUpIns} sites={sites.data ?? []} />}
+                {upInsurance && <InsuranceFields value={upIns} onChange={setUpIns} sites={sites.data ?? []} />}
                 <Field label="Notes" className="sm:col-span-2">
                   <Input value={upNotes} onChange={(e) => setUpNotes(e.target.value)} placeholder="What it is, which work or period it covers" />
                 </Field>
@@ -365,7 +369,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
       ) : !rows.length ? (
         <EmptyState icon={Paperclip} title={search || mine || expiring || category !== ALL ? 'No documents match' : 'No documents yet'}
           description={canUpload ? 'Reports, photos, bills, certificates, drawings: add them above so the team can find them.' : undefined} />
-      ) : category !== ALL && isInsurance(category) ? (
+      ) : (category !== ALL && isInsurance(category)) || insuranceFolder(list.data?.folders ?? [], folder) ? (
         <>
           <InsuranceTable rows={rows}
             onOpen={(d) => void openDocument(d, !canPreview(d)).catch((e) => toast.error(errorMessage(e)))}
@@ -401,7 +405,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
                       {d.uploaded_by ?? 'Unknown'} · {fmtDate(d.created_at)}
                       {d.size_bytes ? ` · ${fmtSize(d.size_bytes)}` : ''}
                     </p>
-                    {isInsurance(d.category) && d.details?.policy_no && (
+                    {d.details?.policy_no && (
                       <p className="mt-0.5 text-xs text-slate-600">Policy {d.details.policy_no}{d.details.insurer ? ` · ${d.details.insurer}` : ''}{d.details.project_name ? ` · ${d.details.project_name}` : ''}</p>
                     )}
                     {d.notes && <p className="mt-0.5 text-xs text-slate-600">{d.notes}</p>}
@@ -510,9 +514,9 @@ function EditDocumentDialog({ doc, categories, folders, onClose }: { doc: Librar
     if (!doc) return;
     setBusy(true);
     try {
-      const insurance = isInsurance(category);
+      const insurance = isInsurance(category) || insuranceFolder(folders, folderId);
       await updateDocument(doc.id, {
-        category: category.trim() || null, notes: notes.trim() || null,
+        category: category.trim() || (insurance ? 'Insurance' : null), notes: notes.trim() || null,
         valid_until: (insurance && ins.end_date) || valid || null, folder_id: folderId === NONE ? null : folderId,
         details: insurance ? cleanDetails(ins) : {},
       });
@@ -541,7 +545,7 @@ function EditDocumentDialog({ doc, categories, folders, onClose }: { doc: Librar
             <Input list="doc-categories-edit" value={category} onChange={(e) => setCategory(e.target.value)} />
             <datalist id="doc-categories-edit">{categories.map((c) => <option key={c} value={c} />)}</datalist>
           </Field>
-          {isInsurance(category) && <InsuranceFields value={ins} onChange={setIns} sites={sites.data ?? []} />}
+          {(isInsurance(category) || insuranceFolder(folders, folderId)) && <InsuranceFields value={ins} onChange={setIns} sites={sites.data ?? []} />}
           <Field label="Valid until" hint="Leave empty if it does not expire">
             <Input type="date" value={valid} onChange={(e) => setValid(e.target.value)} />
           </Field>
