@@ -26,11 +26,15 @@ import {
   updateDocument, uploadSectionDocument, useDocumentList, type DocFolder, type LibraryDoc,
 } from '@/features/documents/api';
 import { SendDocumentDialog } from '@/features/documents/SendDocumentDialog';
+import { InsuranceFields, InsuranceTable, isInsurance, type InsuranceDetails } from '@/features/documents/insurance';
 
 const ALL = '__all__';
 const NONE = '__none__';
 const AUTO = '__auto__';
 const NEW_FOLDER = '__new_folder__';
+/** Only the filled-in fields, trimmed. */
+const cleanDetails = (d: InsuranceDetails): Record<string, string> =>
+  Object.fromEntries(Object.entries(d).map(([k, v]) => [k, String(v ?? '').trim()]).filter(([, v]) => v));
 
 /** The folder dropdown, with "+ New folder…" at the end to create one by name. */
 function FolderPicker({ value, onChange, folders, first }: {
@@ -156,6 +160,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
   const [upValid, setUpValid] = useState('');
   const [upSite, setUpSite] = useState(NONE);
   const [upFolder, setUpFolder] = useState(AUTO);
+  const [upIns, setUpIns] = useState<InsuranceDetails>({});
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
   const targetModule = modules.find((m) => m.key === target);
@@ -181,8 +186,9 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
       try {
         await uploadSectionDocument({
           moduleKey: target, file, category: upCategory.trim() || null, notes: upNotes.trim() || null,
-          validUntil: upValid || null, siteId: showPlant && upSite !== NONE ? upSite : null,
+          validUntil: (isInsurance(upCategory) && upIns.end_date) || upValid || null, siteId: showPlant && upSite !== NONE ? upSite : null,
           folderId: upFolder === AUTO ? null : upFolder,
+          details: isInsurance(upCategory) ? cleanDetails(upIns) : {},
         });
       } catch (e) {
         failed.push(file);
@@ -196,6 +202,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
     if (!failed.length) {
       setUpNotes('');
       setUpValid('');
+      setUpIns({});
     }
     setUploading(null);
     await qc.invalidateQueries({ queryKey: docKeys.all });
@@ -293,6 +300,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
                 <Field label="Valid until" hint="For certificates, insurance, licences">
                   <Input type="date" value={upValid} onChange={(e) => setUpValid(e.target.value)} />
                 </Field>
+                {isInsurance(upCategory) && <InsuranceFields value={upIns} onChange={setUpIns} sites={sites.data ?? []} />}
                 <Field label="Notes" className="sm:col-span-2">
                   <Input value={upNotes} onChange={(e) => setUpNotes(e.target.value)} placeholder="What it is, which work or period it covers" />
                 </Field>
@@ -357,6 +365,19 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
       ) : !rows.length ? (
         <EmptyState icon={Paperclip} title={search || mine || expiring || category !== ALL ? 'No documents match' : 'No documents yet'}
           description={canUpload ? 'Reports, photos, bills, certificates, drawings: add them above so the team can find them.' : undefined} />
+      ) : category !== ALL && isInsurance(category) ? (
+        <>
+          <InsuranceTable rows={rows}
+            onOpen={(d) => void openDocument(d, !canPreview(d)).catch((e) => toast.error(errorMessage(e)))}
+            onDownload={(d) => void openDocument(d, true).catch((e) => toast.error(errorMessage(e)))}
+            onSend={setSending} onEdit={setEditing} onDelete={setRemoving} />
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>{fmtNumber(rows.length)} of {fmtNumber(list.data?.total)} policies</span>
+            {rows.length < (list.data?.total ?? 0) && (
+              <Button variant="outline" size="sm" onClick={() => setLimit((l) => l + PAGE)} disabled={list.isFetching}>Show more</Button>
+            )}
+          </div>
+        </>
       ) : (
         <>
           <ul className="divide-y rounded-lg border">
@@ -380,6 +401,9 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
                       {d.uploaded_by ?? 'Unknown'} · {fmtDate(d.created_at)}
                       {d.size_bytes ? ` · ${fmtSize(d.size_bytes)}` : ''}
                     </p>
+                    {isInsurance(d.category) && d.details?.policy_no && (
+                      <p className="mt-0.5 text-xs text-slate-600">Policy {d.details.policy_no}{d.details.insurer ? ` · ${d.details.insurer}` : ''}{d.details.project_name ? ` · ${d.details.project_name}` : ''}</p>
+                    )}
                     {d.notes && <p className="mt-0.5 text-xs text-slate-600">{d.notes}</p>}
                   </div>
                   <div className="flex shrink-0 items-center">
@@ -469,6 +493,8 @@ function EditDocumentDialog({ doc, categories, folders, onClose }: { doc: Librar
   const [category, setCategory] = useState('');
   const [notes, setNotes] = useState('');
   const [valid, setValid] = useState('');
+  const [ins, setIns] = useState<InsuranceDetails>({});
+  const sites = useSites();
   const [busy, setBusy] = useState(false);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
   if (doc && loadedFor !== doc.id) {
@@ -477,13 +503,19 @@ function EditDocumentDialog({ doc, categories, folders, onClose }: { doc: Librar
     setFolderId(doc.folder_id ?? NONE);
     setNotes(doc.notes ?? '');
     setValid(doc.valid_until ?? '');
+    setIns((doc.details ?? {}) as InsuranceDetails);
   }
 
   async function save() {
     if (!doc) return;
     setBusy(true);
     try {
-      await updateDocument(doc.id, { category: category.trim() || null, notes: notes.trim() || null, valid_until: valid || null, folder_id: folderId === NONE ? null : folderId });
+      const insurance = isInsurance(category);
+      await updateDocument(doc.id, {
+        category: category.trim() || null, notes: notes.trim() || null,
+        valid_until: (insurance && ins.end_date) || valid || null, folder_id: folderId === NONE ? null : folderId,
+        details: insurance ? cleanDetails(ins) : {},
+      });
       toast.success('Details saved');
       await qc.invalidateQueries({ queryKey: docKeys.all });
       onClose();
@@ -509,6 +541,7 @@ function EditDocumentDialog({ doc, categories, folders, onClose }: { doc: Librar
             <Input list="doc-categories-edit" value={category} onChange={(e) => setCategory(e.target.value)} />
             <datalist id="doc-categories-edit">{categories.map((c) => <option key={c} value={c} />)}</datalist>
           </Field>
+          {isInsurance(category) && <InsuranceFields value={ins} onChange={setIns} sites={sites.data ?? []} />}
           <Field label="Valid until" hint="Leave empty if it does not expire">
             <Input type="date" value={valid} onChange={(e) => setValid(e.target.value)} />
           </Field>

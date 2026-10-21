@@ -23,6 +23,8 @@ export interface LibraryDoc {
   folder_id: string | null;
   folder: string | null;
   valid_until: string | null;
+  /** Structured details, e.g. an insurance policy's company, policy number and dates. */
+  details?: Record<string, string> | null;
   expiry: 'expired' | 'expiring' | 'valid' | null;
   site_id: string | null;
   site: string | null;
@@ -126,6 +128,7 @@ export async function uploadSectionDocument(opts: {
   siteId?: string | null;
   /** A folder chosen by hand; otherwise the database files it by the file name. */
   folderId?: string | null;
+  details?: Record<string, string> | null;
 }) {
   if (BLOCKED_FILE.test(opts.file.name)) throw new Error(`${opts.file.name}: programs and web pages cannot be uploaded.`);
   if (opts.file.size > MAX_FILE_BYTES) throw new Error(`${opts.file.name} is larger than 50 MB.`);
@@ -142,6 +145,7 @@ export async function uploadSectionDocument(opts: {
     valid_until: opts.validUntil || null,
     site_id: opts.siteId || null,
     folder_id: opts.folderId || null,
+    details: opts.details ?? {},
     file_name: opts.file.name,
     storage_path: path,
     mime_type: opts.file.type || null,
@@ -153,7 +157,7 @@ export async function uploadSectionDocument(opts: {
   }
 }
 
-export async function updateDocument(id: string, patch: { category: string | null; notes: string | null; valid_until: string | null; folder_id?: string | null }) {
+export async function updateDocument(id: string, patch: { category: string | null; notes: string | null; valid_until: string | null; folder_id?: string | null; details?: Record<string, string> }) {
   const { error } = await supabase.from('documents').update(patch).eq('id', id);
   if (error) throw error;
 }
