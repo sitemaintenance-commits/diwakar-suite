@@ -113,7 +113,8 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
   const qc = useQueryClient();
   const docsPerm = useCan('documents');
   const modules = useMemo(
-    () => (access?.modules ?? []).filter((m) => m.route && m.key !== 'dashboard' && m.key !== 'documents' && can(m.key, 'view')),
+    // Every section, whether or not you can open it: the section libraries are open to everyone with Documents.
+    () => (access?.modules ?? []).filter((m) => m.route && m.is_enabled && m.key !== 'dashboard' && m.key !== 'documents' && (can(m.key, 'view') || can('documents', 'view'))),
     [access, can],
   );
 

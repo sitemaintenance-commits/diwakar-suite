@@ -1907,8 +1907,8 @@ console.log('\nDocuments in every section');
     `select (public.list_documents(null, 'all', null, null, false, false, 50, 0, 'crm')->>'total')::int`, 0);
   await expectValue('each document says which category it belongs to', TECH,
     `select public.list_documents('om.performance')->'rows'->0->>'group_label'`, 'O&M');
-  await expectValue('someone who cannot open the section does not see them', SALES,
-    `select (public.list_documents('om.performance')->>'total')::int`, 0);
+  await expectValue('the section library is open to everyone with Documents, even without the section', SALES,
+    `select (public.list_documents('om.performance')->>'total')::int > 0`, true);
   await expectValue('every role may open the Documents page', SALES,
     `select public.get_my_access()->'permissions' ? 'documents'`, true);
   await expectOk('the uploader deletes their own document', TECH,
@@ -2844,6 +2844,22 @@ console.log('\nDashboard insurance / procurement, daily reminders');
     n1 >= 0 && n2 === 0 && Number(r) >= 0 ? ok('a request waiting 3 days reminds its approver, once') : bad('reminder', JSON.stringify({ n1, n2, r }));
   } else ok('no pending level to remind (skipped)');
   await expectError('the app cannot run the reminder job', RAHUL, 'select app.send_daily_reminders()', 'permission denied');
+}
+
+console.log('\nDocuments page covers every section');
+{
+  const canDocs = (await as(SALES, `select public.has_permission('documents', 'view') v`)).rows[0].v;
+  const canProj = (await as(SALES, `select public.has_permission('projects.projects', 'view') v`)).rows[0].v;
+  if (canDocs && !canProj) {
+    await expectOk('someone without Projects files a document in the Projects library', SALES,
+      `insert into public.documents (module_key, entity_type, file_name, storage_path, created_by)
+       values ('projects.projects', 'section', 'site-layout.pdf', 'projects.projects/section/x-site-layout.pdf', auth.uid())`);
+    await expectValue('and sees it on the Documents page', SALES,
+      `select count(*)::int from jsonb_array_elements(public.list_documents('projects.projects')->'rows') r where r->>'file_name' = 'site-layout.pdf'`, 1);
+    await expectError('but still cannot attach files to a project record', SALES,
+      `insert into public.documents (module_key, entity_type, entity_id, file_name, storage_path, created_by)
+       values ('projects.projects', 'project', gen_random_uuid(), 'x.pdf', 'projects.projects/project/x.pdf', auth.uid())`, 'row-level security');
+  } else ok(`skipped: sales docs=${canDocs} projects=${canProj}`);
 }
 
 console.log('\nStorage (avatars)');
