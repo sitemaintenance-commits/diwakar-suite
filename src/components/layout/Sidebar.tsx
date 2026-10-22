@@ -68,6 +68,18 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   // The desktop sidebar opens sections as hover flyouts; the phone drawer
   // (which passes onNavigate) has no hover, so it expands them in place.
   const flyouts = !onNavigate;
+  // Five quick clicks on the copyright line open the credits.
+  const navigate = useNavigate();
+  const taps = useRef<number[]>([]);
+  const tap = () => {
+    const now = Date.now();
+    taps.current = [...taps.current.filter((t) => now - t < 2500), now];
+    if (taps.current.length >= 5) {
+      taps.current = [];
+      onNavigate?.();
+      navigate('/credits');
+    }
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -84,7 +96,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           return flyouts ? <FlyoutGroup key={g.key} group={g} /> : <AccordionGroup key={g.key} group={g} onNavigate={onNavigate} />;
         })}
       </nav>
-      <div className="border-t px-5 py-3 text-[11px] text-muted-foreground">
+      <div className="select-none border-t px-5 py-3 text-[11px] text-muted-foreground" onClick={tap}>
         © {new Date().getFullYear()} {setting('company_name', 'Diwakar Renewable & Infra Pvt. Ltd.')}
       </div>
     </div>

@@ -52,6 +52,7 @@ import { ApprovalsPage } from '@/features/approvals/ApprovalsPage';
 import { ApprovalDetailPage } from '@/features/approvals/ApprovalDetailPage';
 import { WorkflowSettingsPage } from '@/features/approvals/WorkflowSettingsPage';
 import { registerPageHeaderExtra } from '@/components/common';
+import { CreditsPage } from '@/pages/CreditsPage';
 import {
   GoodsReceiptsPage, InventoryPage, ProcurementOverviewPage, PurchaseOrdersPage, RequisitionsPage,
 } from '@/features/procurement/pages';
@@ -80,6 +81,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: guard('dashboard', <DashboardPage />) },
       { path: 'profile', element: <ProfilePage /> },
+      { path: 'credits', element: <CreditsPage /> },
       { path: 'documents', element: guard('documents', <DocumentsPage />) },
       { path: 'approvals', element: guard('approvals', <ApprovalsPage />) },
       { path: 'approvals/workflows', element: guard('approvals', <WorkflowSettingsPage />) },

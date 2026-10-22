@@ -22,3 +22,6 @@ om-history-differences.csv
 
 # cPanel upload package
 release/
+
+# The team photo on the hidden credits page: deployed, not published in the repository.
+public/crew/
