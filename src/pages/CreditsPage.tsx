@@ -8,13 +8,13 @@ import { ArrowLeft, Code2, Compass, Heart, ShieldCheck } from 'lucide-react';
 
 const TEAM = [
   {
-    name: 'Keshav Thathera',
+    name: 'Keshav',
     role: 'Lead Developer & Architect',
     note: 'Database, security and the engine under every section',
     icon: Code2,
   },
   {
-    name: 'Aditya Gaur',
+    name: 'Aditya',
     role: 'Product & Design Lead',
     note: 'How every screen looks, feels and flows — and the story around it',
     icon: Compass,
