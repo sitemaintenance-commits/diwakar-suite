@@ -2862,6 +2862,14 @@ console.log('\nDocuments page covers every section');
   } else ok(`skipped: sales docs=${canDocs} projects=${canProj}`);
 }
 
+console.log('\nDocuments by plant');
+{
+  await asSystem(`insert into public.documents (module_key, entity_type, file_name, storage_path, site_id, created_by)
+                  values ('documents', 'section', 'bassi-only.pdf', 'documents/section/bassi-only.pdf', $1, $2)`, [site.Bassi, OWNER]);
+  await expectValue('the plant filter lists only that plant\'s documents', OWNER,
+    `select bool_and(r->>'site_id' = $1::text) and count(*) > 0 from jsonb_array_elements(public.list_documents(p_site => $1::uuid)->'rows') r`, true, [site.Bassi]);
+}
+
 console.log('\nStorage (avatars)');
 await expectOk('user uploads own avatar', RAHUL, `insert into storage.objects (bucket_id, name) values ('avatars', $1 || '/photo.png')`, [RAHUL]);
 await expectError('user cannot upload into another user folder', RAHUL, `insert into storage.objects (bucket_id, name) values ('avatars', $1 || '/photo.png')`, 'row-level security', [ADMIN]);

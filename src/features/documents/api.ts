@@ -57,6 +57,8 @@ export interface DocFilters {
   mine?: boolean;
   expiring?: boolean;
   folder?: string | null;
+  /** One plant (site) only. */
+  site?: string | null;
   limit?: number;
   offset?: number;
 }
@@ -85,6 +87,7 @@ export async function fetchDocuments(f: DocFilters): Promise<DocList> {
     p_offset: f.offset ?? 0,
     p_group: f.group ?? null,
     p_folder: f.folder ?? null,
+    p_site: f.site ?? null,
   });
   if (error) throw error;
   return data as DocList;

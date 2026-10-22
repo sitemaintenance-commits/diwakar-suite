@@ -94,8 +94,6 @@ function FolderPicker({ value, onChange, folders, first }: {
   );
 }
 const PAGE = 50;
-// Sections whose work is tied to a plant: offer the plant on upload.
-const PLANT_GROUPS = new Set(['operations', 'portfolio', 'projects']);
 
 function fileIcon(d: Pick<LibraryDoc, 'mime_type' | 'file_name'>) {
   const t = `${d.mime_type ?? ''} ${d.file_name}`.toLowerCase();
@@ -133,6 +131,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
   const [mine, setMine] = useState(false);
   const [expiring, setExpiring] = useState(false);
   const [folder, setFolder] = useState<string | null>(null);
+  const [plant, setPlant] = useState(ALL);
   const [limit, setLimit] = useState(PAGE);
   const filters = {
     module: moduleKey ?? null,
@@ -143,6 +142,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
     mine,
     expiring,
     folder,
+    site: plant === ALL ? null : plant,
     limit,
   };
   const list = useDocumentList(filters);
@@ -168,7 +168,8 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
   const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
   const targetModule = modules.find((m) => m.key === target);
   const sites = useSites();
-  const showPlant = targetModule ? PLANT_GROUPS.has(targetModule.group) : false;
+  // Any document can belong to one plant, so the Plant filter finds it.
+  const showPlant = Boolean(targetModule);
 
   function addFiles(files: FileList | File[] | null) {
     const picked = Array.from(files ?? []);
@@ -339,11 +340,13 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
       {/* ------------------------------------------------------ filters */}
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
         <SearchInput value={search} onChange={(v) => { setSearch(v); setLimit(PAGE); }} placeholder="Search file name, type or notes…" />
-        <div className={`grid flex-1 gap-2 ${moduleKey ? 'grid-cols-1 sm:max-w-xs' : 'grid-cols-1 sm:grid-cols-3'}`}>
+        <div className={`grid flex-1 gap-2 ${moduleKey ? 'grid-cols-1 sm:max-w-md sm:grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'}`}>
           {!moduleKey && (
             <FilterSelect value={section} onChange={(v) => { setSection(v); setLimit(PAGE); }}
               options={[[ALL, 'All categories'], ...groups.map((g) => [g.key, g.label] as [string, string])]} />
           )}
+          <FilterSelect value={plant} onChange={(v) => { setPlant(v); setLimit(PAGE); }}
+            options={[[ALL, 'All plants'], ...(sites.data ?? []).map((s) => [s.id, s.name] as [string, string])]} />
           <FilterSelect value={category} onChange={(v) => { setCategory(v); setLimit(PAGE); }}
             options={[[ALL, 'All types'], ...(list.data?.categories ?? []).map((c) => [c, c] as [string, string])]} />
           {!moduleKey && (
@@ -368,7 +371,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
       ) : list.error ? (
         <ErrorState message={errorMessage(list.error)} onRetry={() => list.refetch()} />
       ) : !rows.length ? (
-        <EmptyState icon={Paperclip} title={search || mine || expiring || category !== ALL ? 'No documents match' : 'No documents yet'}
+        <EmptyState icon={Paperclip} title={search || mine || expiring || category !== ALL || plant !== ALL ? 'No documents match' : 'No documents yet'}
           description={canUpload ? 'Reports, photos, bills, certificates, drawings: add them above so the team can find them.' : undefined} />
       ) : (category !== ALL && isInsurance(category)) || insuranceFolder(list.data?.folders ?? [], folder) ? (
         <>
