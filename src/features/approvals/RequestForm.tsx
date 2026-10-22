@@ -181,6 +181,12 @@ export function RequestForm({ open, request, onClose, onSaved, prefill, source, 
           </DialogDescription>
         </DialogHeader>
 
+        {request && ['submitted', 'pending', 'in_review', 'approved'].includes(request.status) && (request.completed_levels ?? 0) > 0 && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <span className="font-semibold">Saving a change restarts approval from Level 1.</span> Approvals already given stay in the history,
+            and every approver decides again on the updated request.
+          </div>
+        )}
         {context && (
           <div className="rounded-lg border bg-muted/40 px-3 py-2 text-xs">
             <span className="font-semibold">Linked to</span> <span className="text-muted-foreground">{context}</span>

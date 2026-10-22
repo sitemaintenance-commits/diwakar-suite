@@ -2913,6 +2913,23 @@ console.log('\nAdding a forgotten approver after submission');
     st === 'in_review' && /2:.*:pending$/.test(lv) ? ok('and it is in review again, waiting for them') : bad('reopened', st + ' ' + lv);
   }
   await expectError('the same person cannot be added twice while waiting', ASKER, 'select public.approval_add_level($1, $2)', 'already waiting', [B, extraEmp]);
+  {
+    // The requester edits after Level 1 approved: approval starts again from Level 1.
+    const req = { category: 'purchase', title: 'Earthing strips', amount: '7000' };
+    const C = await raise(req);
+    await approveFirst(C);
+    await expectValue('the requester can still edit it', ASKER, `select public.approval_detail($1)->'permissions'->>'can_edit'`, 'true', [C]);
+    await expectOk('and saves a change', ASKER, 'select public.approval_save($1::jsonb, $2)', [JSON.stringify({ ...req, amount: '7500' }), C]);
+    const round = Number((await asSystem('select round from public.approval_requests where id = $1', [C])).rows[0].round);
+    const lc = await levels(C);
+    round === 2 && /^1:.*:pending/.test(lc) && !/approved/.test(lc)
+      ? ok('which starts approval again from Level 1, with the same levels') : bad('restart', round + ' ' + lc);
+    // An edit before anyone approved just updates it.
+    const D = await raise({ ...req, title: 'Earthing strips 2' });
+    await as(ASKER, 'select public.approval_save($1::jsonb, $2)', [JSON.stringify({ ...req, title: 'Earthing strips 2', amount: '100' }), D]);
+    Number((await asSystem('select round from public.approval_requests where id = $1', [D])).rows[0].round) === 1
+      ? ok('an edit before any approval does not restart it') : bad('no restart', 'round changed');
+  }
   await expectError('someone else cannot add approvers', SALES, 'select public.approval_add_level($1, $2)', 'not found', [B, banwariEmp]);
 }
 
