@@ -2870,6 +2870,52 @@ console.log('\nDocuments by plant');
     `select bool_and(r->>'site_id' = $1::text) and count(*) > 0 from jsonb_array_elements(public.list_documents(p_site => $1::uuid)->'rows') r`, true, [site.Bassi]);
 }
 
+console.log('\nAdding a forgotten approver after submission');
+{
+  const val = async (uid, sql, params) => (await as(uid, sql, params)).rows[0]?.v;
+  const ASKER = (await asSystem("select id from auth.users where email = 'ketan.login@diwakarsolar.test'")).rows[0].id;
+  const banwariEmp = (await asSystem("select id from public.employees where employee_code = 'DRIPL_1101'")).rows[0].id;
+  const extraEmp = (await asSystem("select id from public.employees where employee_code = 'DRIPL_1090'")).rows[0].id;
+  const acctEmp = (await asSystem("select id from public.employees where employee_code = 'DRIPL_1099'")).rows[0].id;
+  await asSystem("insert into public.app_settings (key, value) values ('approval_final_approver', to_jsonb($1::text)) on conflict (key) do update set value = excluded.value", [acctEmp]);
+  const levels = (id) => asSystem(`select string_agg(level_no || ':' || name || ':' || status, ' | ' order by level_no) v from public.approval_steps
+    where request_id = $1 and round = (select round from public.approval_requests where id = $1)`, [id]).then((r) => r.rows[0].v);
+  const approveFirst = async (id) => {
+    await asSystem(`update public.approval_steps set status = 'approved', acted_at = now() where id = (select id from public.approval_steps
+      where request_id = $1 and status = 'pending' order by level_no limit 1)`, [id]);
+    await asSystem(`update public.approval_steps set status = 'pending', activated_at = now() where id = (select id from public.approval_steps
+      where request_id = $1 and status = 'locked' order by level_no limit 1)`, [id]);
+    await asSystem('select app.approval_refresh($1)', [id]);
+  };
+  const raise = async (req) => {
+    const id = await val(ASKER, 'select public.approval_save($1::jsonb) v', [JSON.stringify(req)]);
+    await as(ASKER, 'select public.approval_set_approvers($1, $2::uuid[])', [id, [banwariEmp]]);
+    await as(ASKER, 'select public.approval_save($1::jsonb, $2, true)', [JSON.stringify(req), id]);
+    return id;
+  };
+
+  // Level 1 approved, Accounts waiting: the new approver goes before Accounts.
+  const A = await raise({ category: 'purchase', title: 'Cable trays', amount: '5000' });
+  await approveFirst(A);
+  await expectOk('the requester adds a forgotten approver after Level 1 approved', ASKER, 'select public.approval_add_level($1, $2)', [A, extraEmp]);
+  const la = await levels(A);
+  /^1:.*:approved \| 2:.*:pending \| 3:Accounts \(final\):locked$/.test(la)
+    ? ok('it comes before the Accounts head and is the one waiting now') : bad('add before final', la);
+
+  // Only one approver, already approved: the request goes back into review.
+  const B = await raise({ category: 'travel', title: 'Site visit', include_final: false });
+  await approveFirst(B);
+  await expectValue('the request was approved', ASKER, `select public.approval_detail($1)->'request'->>'status'`, 'approved', [B]);
+  await expectOk('an approver can still be added', ASKER, 'select public.approval_add_level($1, $2)', [B, extraEmp]);
+  {
+    const st = await val(ASKER, `select public.approval_detail($1)->'request'->>'status' v`, [B]);
+    const lv = await levels(B);
+    st === 'in_review' && /2:.*:pending$/.test(lv) ? ok('and it is in review again, waiting for them') : bad('reopened', st + ' ' + lv);
+  }
+  await expectError('the same person cannot be added twice while waiting', ASKER, 'select public.approval_add_level($1, $2)', 'already waiting', [B, extraEmp]);
+  await expectError('someone else cannot add approvers', SALES, 'select public.approval_add_level($1, $2)', 'not found', [B, banwariEmp]);
+}
+
 console.log('\nStorage (avatars)');
 await expectOk('user uploads own avatar', RAHUL, `insert into storage.objects (bucket_id, name) values ('avatars', $1 || '/photo.png')`, [RAHUL]);
 await expectError('user cannot upload into another user folder', RAHUL, `insert into storage.objects (bucket_id, name) values ('avatars', $1 || '/photo.png')`, 'row-level security', [ADMIN]);

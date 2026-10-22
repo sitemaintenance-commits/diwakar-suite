@@ -80,6 +80,7 @@ export const ACTION_LABEL: Record<string, string> = {
   document_deleted: 'Document deleted',
   commented: 'Comment',
   comment_edited: 'Comment edited',
+  level_added: 'Approver added',
 };
 
 export const ALLOWED_FILES = /\.(pdf|docx?|xlsx?|jpe?g|png)$/i;
@@ -417,6 +418,8 @@ export const cancelRequest = (id: string, reason: string) => rpc('approval_cance
 export const reopenRequest = (id: string, reason: string) => rpc('approval_reopen', { p_id: id, p_reason: reason });
 export const completeRequest = (id: string, note: string) => rpc('approval_complete', { p_id: id, p_note: note.trim() || null });
 export const addComment = (id: string, body: string) => rpc('approval_add_comment', { p_request: id, p_body: body });
+/** Adds a forgotten approver to a request already in approval (before the final approver). */
+export const addApprovalLevel = (id: string, employeeId: string) => rpc('approval_add_level', { p_request: id, p_employee: employeeId });
 /** Changes the comment on a level the caller approved, rejected or returned. */
 export const editStepComment = (stepId: string, comment: string) => rpc('approval_edit_step_comment', { p_step: stepId, p_comment: comment });
 export const deleteDocument = (docId: string, reason: string) => rpc('approval_delete_document', { p_document: docId, p_reason: reason.trim() || null });

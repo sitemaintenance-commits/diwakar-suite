@@ -8,7 +8,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Ban, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock, Download, Eye, FileText, History, Loader2,
-  Lock, MessageSquare, Paperclip, Pencil, RotateCcw, Send, SkipForward, Trash2, Undo2, Upload, UserCog, XCircle,
+  Lock, MessageSquare, Paperclip, Pencil, RotateCcw, Send, UserPlus, SkipForward, Trash2, Undo2, Upload, UserCog, XCircle,
 } from 'lucide-react';
 import { errorMessage } from '@/lib/errors';
 import { fmtDate, fmtDateTime, fmtINR } from '@/lib/format';
@@ -23,7 +23,7 @@ import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { RequestForm } from '@/features/approvals/RequestForm';
 import {
   ACTION_LABEL, CONVEYANCE_MODES, FILE_ACCEPT, LEVEL_STATUS, PRIORITIES, STATUS, actOnStep, addComment, approvalKeys, cancelRequest, categoryLabel,
-  completeRequest, deleteDocument, editStepComment, fileUrl, fmtSize, isImage, isPdf, reassignStep, reopenRequest, saveRequest, uploadApprovalFile,
+  addApprovalLevel, completeRequest, deleteDocument, editStepComment, useFormOptions, fileUrl, fmtSize, isImage, isPdf, reassignStep, reopenRequest, saveRequest, uploadApprovalFile,
   useApprovalDetail, useApprovalSettings,
   type ApprovalDetail, type ApprovalDocument, type ApprovalStep, type DocVersion, type RequestInput, type TimelineEntry,
 } from '@/features/approvals/api';
@@ -60,6 +60,7 @@ type Dialogs =
   | { kind: 'delete-doc'; doc: ApprovalDocument }
   | { kind: 'reassign'; step: ApprovalStep }
   | { kind: 'edit-comment'; step: ApprovalStep }
+  | { kind: 'add-level' }
   | null;
 
 function Detail({ d, refresh }: { d: ApprovalDetail; refresh: () => Promise<void> }) {
@@ -149,10 +150,15 @@ function Detail({ d, refresh }: { d: ApprovalDetail; refresh: () => Promise<void
         <div className="grid content-start gap-4 lg:col-span-2">
           {/* ---------------------------------------------------- progress */}
           <Card className="p-5">
-            <div className="flex items-baseline justify-between gap-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-3">
               <h2 className="font-semibold">Approval progress</h2>
-              <span className="text-sm text-muted-foreground">
+              <span className="flex items-center gap-3 text-sm text-muted-foreground">
                 {total ? `${done} of ${total} level${total > 1 ? 's' : ''} completed · ${pct}%` : 'Not submitted yet'}
+                {(p.is_requester || p.is_admin) && ['submitted', 'pending', 'in_review', 'approved'].includes(r.status) && (
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setDialog({ kind: 'add-level' })}>
+                    <UserPlus /> Add approver
+                  </Button>
+                )}
               </span>
             </div>
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
@@ -258,6 +264,10 @@ function Detail({ d, refresh }: { d: ApprovalDetail; refresh: () => Promise<void
           description={`Your decision (${LEVEL_STATUS[dialog.step.status]?.label ?? dialog.step.status}) stays as it is; only the comment changes. The edit shows in the timeline and the requester is told.`}
           label={dialog.step.status === 'approved' ? 'Comment' : 'Reason'} onClose={() => setDialog(null)}
           onConfirm={(c) => run(() => editStepComment(dialog.step.id, c), 'Comment saved')} />
+      )}
+      {dialog?.kind === 'add-level' && (
+        <AddLevelDialog approved={r.status === 'approved'} onClose={() => setDialog(null)}
+          onConfirm={(emp) => run(() => addApprovalLevel(r.id, emp), 'Approver added')} />
       )}
       {dialog?.kind === 'reassign' && (
         <ReassignDialog step={dialog.step} onClose={() => setDialog(null)}
@@ -467,6 +477,7 @@ const TIMELINE_LOOK: Record<string, { icon: typeof Circle; className: string }> 
   reassigned: { icon: UserCog, className: 'bg-violet-100 text-violet-700' },
   commented: { icon: MessageSquare, className: 'bg-slate-100 text-slate-600' },
   comment_edited: { icon: Pencil, className: 'bg-slate-100 text-slate-600' },
+  level_added: { icon: UserPlus, className: 'bg-violet-100 text-violet-700' },
   document_added: { icon: Paperclip, className: 'bg-slate-100 text-slate-600' },
   document_version: { icon: Upload, className: 'bg-slate-100 text-slate-600' },
   document_deleted: { icon: Trash2, className: 'bg-slate-100 text-slate-600' },
@@ -482,6 +493,7 @@ function timelineTitle(t: TimelineEntry) {
 function timelineExtra(t: TimelineEntry): string | null {
   const m = t.meta ?? {};
   if (t.action === 'reassigned') return `${String(m.from ?? '—')} → ${String(m.to ?? '—')}`;
+  if (t.action === 'level_added') return `${String(m.approver ?? '')} added as Level ${String(m.level ?? '')}`;
   if (t.action.startsWith('document_')) return `${String(m.file_name ?? '')}${t.version_no ? ` (v${t.version_no})` : ''}`;
   if (t.action === 'edited' && m.changes && typeof m.changes === 'object') {
     return Object.entries(m.changes as Record<string, { from: unknown; to: unknown }>)
@@ -635,6 +647,46 @@ function ReasonDialog({ title, description, label = 'Comment', required, noInput
             onClick={() => void confirm()}>
             {busy && <Loader2 className="animate-spin" />} {confirmLabel}
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AddLevelDialog({ approved, onClose, onConfirm }: {
+  approved: boolean;
+  onClose: () => void;
+  onConfirm: (employeeId: string) => Promise<void>;
+}) {
+  const options = useFormOptions(true);
+  const [who, setWho] = useState('');
+  const [busy, setBusy] = useState(false);
+  const people = [...(options.data?.approvers ?? []), ...(options.data?.final_approver ? [options.data.final_approver] : [])]
+    .filter((a, i, all) => all.findIndex((b) => b.employee_id === a.employee_id) === i);
+  async function confirm() {
+    if (!who) return toast.error('Choose the approver.');
+    setBusy(true);
+    try { await onConfirm(who); } finally { setBusy(false); }
+  }
+  return (
+    <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add an approver</DialogTitle>
+          <DialogDescription>
+            For someone you forgot. They approve before the final approver (or last, if there is none);
+            levels already approved stay as they are.{approved ? ' The request goes back into review until they decide.' : ''}
+          </DialogDescription>
+        </DialogHeader>
+        <Field label="Approver" required>
+          {options.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : (
+            <FilterSelect value={who} onChange={setWho} placeholder="Choose the approver"
+              options={people.map((a) => [a.employee_id, `${a.name}${a.title ? ` · ${a.title}` : ''}`] as [string, string])} />
+          )}
+        </Field>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
+          <Button disabled={busy || !who} onClick={() => void confirm()}>{busy && <Loader2 className="animate-spin" />} Add approver</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
