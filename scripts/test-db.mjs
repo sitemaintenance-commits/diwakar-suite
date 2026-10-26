@@ -2933,6 +2933,28 @@ console.log('\nAdding a forgotten approver after submission');
   await expectError('someone else cannot add approvers', SALES, 'select public.approval_add_level($1, $2)', 'not found', [B, banwariEmp]);
 }
 
+console.log('\nApprovals trash');
+{
+  const val = async (uid, sql, params) => (await as(uid, sql, params)).rows[0]?.v;
+  const ASKER = (await asSystem("select id from auth.users where email = 'ketan.login@diwakarsolar.test'")).rows[0].id;
+  const banwariEmp = (await asSystem("select id from public.employees where employee_code = 'DRIPL_1101'")).rows[0].id;
+  const list = (tab) => val(ASKER, 'select public.list_approvals($1::jsonb) v', [JSON.stringify({ tab, page_size: 200 })]);
+  const draft = await val(ASKER, 'select public.approval_save($1::jsonb) v', [JSON.stringify({ category: 'other', title: 'Draft to throw away' })]);
+  await expectOk('the requester moves a draft to Trash', ASKER, 'select public.approval_trash($1, $2)', [draft, 'Made by mistake']);
+  const all = await list('all');
+  const trash = await list('trash');
+  !all.rows.some((r) => r.id === draft) && trash.rows.some((r) => r.id === draft && r.delete_reason === 'Made by mistake') && Number(all.counts.trash) >= 1
+    ? ok('it leaves the lists and shows in Trash, with the reason') : bad('trash lists', JSON.stringify({ inAll: all.rows.some((r) => r.id === draft), trash: trash.rows.length }));
+  await expectOk('and can be restored', ASKER, 'select public.approval_restore($1)', [draft]);
+  (await list('all')).rows.some((r) => r.id === draft) ? ok('restored, it is back in the list') : bad('restore', 'missing');
+
+  const live = await val(ASKER, 'select public.approval_save($1::jsonb) v', [JSON.stringify({ category: 'travel', title: 'In approval', include_final: false })]);
+  await as(ASKER, 'select public.approval_set_approvers($1, $2::uuid[])', [live, [banwariEmp]]);
+  await as(ASKER, 'select public.approval_save($1::jsonb, $2, true)', [JSON.stringify({ category: 'travel', title: 'In approval', include_final: false }), live]);
+  await expectError('a request still in approval must be cancelled first', ASKER, 'select public.approval_trash($1)', 'Cancel it first', [live]);
+  await expectError('someone else cannot trash it', SALES, 'select public.approval_trash($1)', 'not found', [draft]);
+}
+
 console.log('\nStorage (avatars)');
 await expectOk('user uploads own avatar', RAHUL, `insert into storage.objects (bucket_id, name) values ('avatars', $1 || '/photo.png')`, [RAHUL]);
 await expectError('user cannot upload into another user folder', RAHUL, `insert into storage.objects (bucket_id, name) values ('avatars', $1 || '/photo.png')`, 'row-level security', [ADMIN]);

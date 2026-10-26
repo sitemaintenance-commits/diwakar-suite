@@ -13,7 +13,14 @@ import { toast } from 'sonner';
 import { Activity, Download, Gauge, Sun, TriangleAlert, Zap } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
+
+/** The last full day: readings are filed the day after, so that is the day worth looking at. */
+function lastDay() {
+  const d = new Date(`${todayIST()}T00:00:00`);
+  d.setDate(d.getDate() - 1);
+  return d.toLocaleDateString('en-CA');
+}
 import { fmtDate, fmtNumber, safeNum, todayIST } from '@/lib/format';
 import { useCan } from '@/auth/AccessProvider';
 import { cn } from '@/lib/utils';
@@ -82,7 +89,7 @@ function capacity(kwp: unknown) {
 
 export function SolarSitesPage() {
   const can = useCan('sites.overview');
-  const [date, setDate] = useState(todayIST());
+  const [date, setDate] = useState(lastDay());
 
   const q = useQuery({
     queryKey: ['site-portfolio', date],
@@ -100,22 +107,22 @@ export function SolarSitesPage() {
   async function onExport() {
     if (!rows.length) return;
     try {
-      await exportCsv('sites.overview', `solar-sites-${date}`, rows, [
-        { header: 'Plant', value: (r) => r.name },
+      await exportXlsx('sites.overview', `solar-sites-${date}`, rows, [
+        { header: 'Plant', value: (r) => r.name, width: 18 },
         { header: 'Location', value: (r) => r.location ?? '' },
         { header: 'DC (kWp)', value: (r) => safeNum(r.capacity_dc_kwp) },
         { header: 'AC (kW)', value: (r) => safeNum(r.capacity_ac_kw) },
         { header: 'Inverters', value: (r) => r.inverter_count ?? '' },
         { header: 'Commissioned', value: (r) => r.commissioning_date ?? '' },
-        { header: 'Today (kWh)', value: (r) => safeNum(r.today_kwh) },
-        { header: 'Month (kWh)', value: (r) => safeNum(r.month_kwh) },
+        { header: `${fmtDate(date)} (kWh)`, value: (r) => (r.reported_today ? safeNum(r.today_kwh) : 'Not reported'), numFmt: '#,##0', width: 14 },
+        { header: 'Month (kWh)', value: (r) => safeNum(r.month_kwh), numFmt: '#,##0', width: 14 },
         { header: 'Days reported', value: (r) => safeNum(r.days_reported) },
         { header: 'S.Y. (per day)', value: (r) => r.specific_yield ?? '' },
         { header: 'Month CUF %', value: (r) => r.month_cuf ?? '' },
         { header: 'Month PR %', value: (r) => r.month_pr ?? '' },
         { header: 'PR days (with insolation)', value: (r) => safeNum(r.pr_days) },
         { header: 'Open tickets', value: (r) => safeNum(r.open_tickets) },
-      ]);
+      ], { sheet: 'Solar Sites', title: ['SOLAR SITES', `Readings for ${fmtDate(date)} · month from ${fmtDate(d?.month_from)}`] });
       toast.success('Exported.');
     } catch (e) {
       toast.error(errorMessage(e));
@@ -136,7 +143,7 @@ export function SolarSitesPage() {
             </label>
             {can.export && (
               <Button variant="outline" onClick={onExport} disabled={!rows.length}>
-                <Download /> Export CSV
+                <Download /> Export Excel
               </Button>
             )}
           </>
@@ -153,7 +160,7 @@ export function SolarSitesPage() {
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
             <StatCard label="Connected capacity" value={capacity(d?.total_dc_kwp)} hint={`${fmtNumber(d?.sites)} plant(s)`} icon={Sun} />
-            <StatCard label="Generated today" value={energy(d?.today_kwh)} hint={`${fmtNumber(d?.reported_today)} of ${fmtNumber(d?.sites)} reported`} icon={Zap} tone="green" />
+            <StatCard label={date === todayIST() ? 'Generated today' : `Generated on ${fmtDate(date)}`} value={energy(d?.today_kwh)} hint={`${fmtNumber(d?.reported_today)} of ${fmtNumber(d?.sites)} reported`} icon={Zap} tone="green" />
             <StatCard label="This month" value={energy(d?.month_kwh)} hint={`since ${fmtDate(d?.month_from)}`} icon={Gauge} tone="violet" />
             <StatCard label="Fleet PR (month)" value={d?.month_pr == null ? '—' : `${fmtNumber(d.month_pr, 1)}%`}
               hint="Days with insolation, weighted by DC" icon={Activity} tone="blue" />
@@ -198,7 +205,7 @@ export function SolarSitesPage() {
                       <TableRow>
                         <TableHead>Plant</TableHead>
                         <TableHead className="text-right">DC</TableHead>
-                        <TableHead className="text-right">Today</TableHead>
+                        <TableHead className="text-right">{date === todayIST() ? 'Today' : fmtDate(date)}</TableHead>
                         <TableHead className="text-right">Month</TableHead>
                         <TableHead className="text-right">Days</TableHead>
                         <TableHead className="text-right">S.Y.</TableHead>

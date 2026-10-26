@@ -6,7 +6,7 @@ import { Link, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import {
   AlertTriangle, ArrowDown, ArrowUp, BadgeCheck, CheckCircle2, ClipboardList, Download, FilterX, Hourglass,
-  Plus, RotateCcw, Settings2, UserCheck, XCircle,
+  Plus, RotateCcw, Settings2, Trash2, UserCheck, XCircle,
 } from 'lucide-react';
 import { errorMessage } from '@/lib/errors';
 import { fmtDate, fmtINR, todayIST } from '@/lib/format';
@@ -120,6 +120,7 @@ export function ApprovalsPage() {
                 <TabsTrigger value="all">All requests</TabsTrigger>
                 <TabsTrigger value="my_approvals">My approvals{counts?.my_approvals ? ` (${counts.my_approvals})` : ''}</TabsTrigger>
                 <TabsTrigger value="my_requests">My requests</TabsTrigger>
+                <TabsTrigger value="trash"><Trash2 className="mr-1 h-3.5 w-3.5" />Trash{counts?.trash ? ` (${counts.trash})` : ''}</TabsTrigger>
               </TabsList>
             </Tabs>
             <SearchInput value={search} onChange={(v) => { setSearch(v); setPage(0); }} placeholder="Search ID, title, requester…" />

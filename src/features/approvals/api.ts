@@ -9,7 +9,7 @@ export type RequestStatus =
   | 'draft' | 'submitted' | 'pending' | 'in_review' | 'approved' | 'rejected' | 'returned' | 'cancelled' | 'completed';
 export type LevelStatus = 'locked' | 'pending' | 'approved' | 'rejected' | 'returned' | 'skipped' | 'cancelled';
 export type Priority = 'low' | 'normal' | 'high' | 'urgent';
-export type ApprovalTab = 'all' | 'my_approvals' | 'my_requests';
+export type ApprovalTab = 'all' | 'my_approvals' | 'my_requests' | 'trash';
 
 export const CATEGORIES: Record<string, string> = {
   purchase: 'Purchase',
@@ -81,6 +81,8 @@ export const ACTION_LABEL: Record<string, string> = {
   commented: 'Comment',
   comment_edited: 'Comment edited',
   level_added: 'Approver added',
+  trashed: 'Moved to Trash',
+  restored: 'Restored from Trash',
 };
 
 export const ALLOWED_FILES = /\.(pdf|docx?|xlsx?|jpe?g|png)$/i;
@@ -107,13 +109,17 @@ export interface ApprovalRow {
   my_turn: boolean;
   mine: boolean;
   attachments: number;
+  /** Set when the request is in Trash. */
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  delete_reason?: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export interface ApprovalCounts {
   total: number; pending: number; my_approvals: number; my_requests: number;
-  approved: number; rejected: number; returned: number; urgent: number;
+  approved: number; rejected: number; returned: number; urgent: number; trash?: number;
 }
 
 export interface ApprovalList {
@@ -210,6 +216,8 @@ export interface ApprovalRequest {
   decided_at: string | null;
   completed_at: string | null;
   cancelled_at: string | null;
+  deleted_at?: string | null;
+  delete_reason?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -414,6 +422,8 @@ const rpc = async (fn: string, args: Record<string, unknown>) => {
   const { error } = await supabase.rpc(fn, args);
   if (error) throw error;
 };
+export const trashRequest = (id: string, reason: string) => rpc('approval_trash', { p_request: id, p_reason: reason.trim() || null });
+export const restoreRequest = (id: string) => rpc('approval_restore', { p_request: id });
 export const cancelRequest = (id: string, reason: string) => rpc('approval_cancel', { p_id: id, p_reason: reason.trim() || null });
 export const reopenRequest = (id: string, reason: string) => rpc('approval_reopen', { p_id: id, p_reason: reason });
 export const completeRequest = (id: string, note: string) => rpc('approval_complete', { p_id: id, p_note: note.trim() || null });

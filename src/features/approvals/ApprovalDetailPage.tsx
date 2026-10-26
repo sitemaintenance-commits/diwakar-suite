@@ -23,7 +23,7 @@ import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { RequestForm } from '@/features/approvals/RequestForm';
 import {
   ACTION_LABEL, CONVEYANCE_MODES, FILE_ACCEPT, LEVEL_STATUS, PRIORITIES, STATUS, actOnStep, addComment, approvalKeys, cancelRequest, categoryLabel,
-  addApprovalLevel, completeRequest, deleteDocument, editStepComment, useFormOptions, fileUrl, fmtSize, isImage, isPdf, reassignStep, reopenRequest, saveRequest, uploadApprovalFile,
+  addApprovalLevel, restoreRequest, trashRequest, completeRequest, deleteDocument, editStepComment, useFormOptions, fileUrl, fmtSize, isImage, isPdf, reassignStep, reopenRequest, saveRequest, uploadApprovalFile,
   useApprovalDetail, useApprovalSettings,
   type ApprovalDetail, type ApprovalDocument, type ApprovalStep, type DocVersion, type RequestInput, type TimelineEntry,
 } from '@/features/approvals/api';
@@ -61,6 +61,7 @@ type Dialogs =
   | { kind: 'reassign'; step: ApprovalStep }
   | { kind: 'edit-comment'; step: ApprovalStep }
   | { kind: 'add-level' }
+  | { kind: 'trash' }
   | null;
 
 function Detail({ d, refresh }: { d: ApprovalDetail; refresh: () => Promise<void> }) {
@@ -117,11 +118,23 @@ function Detail({ d, refresh }: { d: ApprovalDetail; refresh: () => Promise<void
             )}
             {p.can_complete && <Button variant="outline" onClick={() => setDialog({ kind: 'complete' })}><CheckCircle2 /> Mark completed</Button>}
             {p.can_reopen && <Button variant="outline" onClick={() => setDialog({ kind: 'reopen' })}><RotateCcw /> Reopen</Button>}
-            {p.can_cancel && (
+            {p.can_cancel && !r.deleted_at && (
               <Button variant="outline" className="text-destructive" onClick={() => setDialog({ kind: 'cancel' })}><Ban /> Cancel request</Button>
+            )}
+            {!r.deleted_at && (p.is_requester || p.is_admin) && !['submitted', 'pending', 'in_review'].includes(r.status) && (
+              <Button variant="outline" className="text-muted-foreground" onClick={() => setDialog({ kind: 'trash' })}><Trash2 /> Move to Trash</Button>
+            )}
+            {r.deleted_at && (p.is_requester || p.is_admin) && (
+              <Button onClick={() => void run(() => restoreRequest(r.id), 'Restored from Trash')}><RotateCcw /> Restore</Button>
             )}
           </div>
         </div>
+        {r.deleted_at && (
+          <div className="mt-3 flex items-center gap-2 rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-700">
+            <Trash2 className="h-4 w-4 shrink-0" />
+            In Trash since {fmtDateTime(r.deleted_at)}{r.delete_reason ? ` — ${r.delete_reason}` : ''}. Restore it to bring it back.
+          </div>
+        )}
         {(r.status === 'returned' || r.status === 'rejected') && r.decision_note && (
           <div className={cn('mt-4 rounded-lg px-3 py-2 text-sm', r.status === 'rejected' ? 'bg-red-50 text-red-900' : 'bg-sky-50 text-sky-900')}>
             <span className="font-semibold">{r.status === 'rejected' ? 'Reason for rejection: ' : 'Changes asked for: '}</span>{r.decision_note}
@@ -264,6 +277,12 @@ function Detail({ d, refresh }: { d: ApprovalDetail; refresh: () => Promise<void
           description={`Your decision (${LEVEL_STATUS[dialog.step.status]?.label ?? dialog.step.status}) stays as it is; only the comment changes. The edit shows in the timeline and the requester is told.`}
           label={dialog.step.status === 'approved' ? 'Comment' : 'Reason'} onClose={() => setDialog(null)}
           onConfirm={(c) => run(() => editStepComment(dialog.step.id, c), 'Comment saved')} />
+      )}
+      {dialog?.kind === 'trash' && (
+        <ReasonDialog title={`Move ${r.request_no} to Trash?`} confirmLabel="Move to Trash" tone="destructive"
+          description="It leaves every list and goes to the Trash tab, where it can be restored. Its history is kept."
+          label="Reason (optional)" onClose={() => setDialog(null)}
+          onConfirm={(c) => run(() => trashRequest(r.id, c), 'Moved to Trash')} />
       )}
       {dialog?.kind === 'add-level' && (
         <AddLevelDialog approved={r.status === 'approved'} onClose={() => setDialog(null)}
@@ -478,6 +497,8 @@ const TIMELINE_LOOK: Record<string, { icon: typeof Circle; className: string }> 
   commented: { icon: MessageSquare, className: 'bg-slate-100 text-slate-600' },
   comment_edited: { icon: Pencil, className: 'bg-slate-100 text-slate-600' },
   level_added: { icon: UserPlus, className: 'bg-violet-100 text-violet-700' },
+  trashed: { icon: Trash2, className: 'bg-slate-100 text-slate-600' },
+  restored: { icon: RotateCcw, className: 'bg-green-100 text-green-700' },
   document_added: { icon: Paperclip, className: 'bg-slate-100 text-slate-600' },
   document_version: { icon: Upload, className: 'bg-slate-100 text-slate-600' },
   document_deleted: { icon: Trash2, className: 'bg-slate-100 text-slate-600' },
