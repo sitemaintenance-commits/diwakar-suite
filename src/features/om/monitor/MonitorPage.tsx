@@ -9,7 +9,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
 import { Activity, CalendarDays, Download, Gauge, MessageSquareText, Sun, TriangleAlert, Zap } from 'lucide-react';
-import { fmtCapacity, fmtDate, fmtNumber, safeNum, todayIST } from '@/lib/format';
+import { fmtCapacity, fmtDate, fmtNumber, safeNum, todayIST, yesterdayIST } from '@/lib/format';
 import { errorMessage } from '@/lib/errors';
 import { exportXlsx } from '@/lib/export';
 import { useCan } from '@/auth/AccessProvider';
@@ -59,7 +59,7 @@ export function MonitorPage() {
 /** The whole portfolio on one date — the "All Sites Performance" table. */
 function DayView() {
   const can = useCan('om.monitor');
-  const [date, setDate] = useState(todayIST());
+  const [date, setDate] = useState(yesterdayIST());
   const day = useDailyPerformance(date);
   const d = day.data;
   const maxGen = Math.max(...(d?.ranking ?? []).map((r) => safeNum(r.generation_kwh)), 1);

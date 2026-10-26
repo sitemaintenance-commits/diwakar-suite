@@ -70,6 +70,13 @@ export function todayIST(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(new Date());
 }
 
+/** YYYY-MM-DD for the day before today in India (the last full day of readings and reports). */
+export function yesterdayIST(): string {
+  const d = new Date(`${todayIST()}T00:00:00`);
+  d.setDate(d.getDate() - 1);
+  return d.toLocaleDateString('en-CA');
+}
+
 export function initials(name: string | null | undefined): string {
   const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';
