@@ -2656,7 +2656,7 @@ console.log('\nTeam Performance from the technicians\' Google Form');
 console.log('\nToday in the company (dashboard)');
 await expectValue('the Super Admin sees one card per section', OWNER,
   `select string_agg(x->>'key', ',' order by x->>'key') from jsonb_array_elements(public.get_company_today()->'sections') x`,
-  'approvals,departments,hr,insurance,om,procurement,projects,tenders');
+  'approvals,departments,hr,om,procurement,projects,tenders');
 await expectValue('each card has a traffic light and a headline', OWNER,
   `select bool_and(x->>'status' in ('good','ok','bad') and length(x->>'headline') > 0)
    from jsonb_array_elements(public.get_company_today()->'sections') x`, true);
@@ -2826,8 +2826,18 @@ console.log('\nDashboard insurance / procurement, daily reminders');
   const secs = (await as(OWNER, 'select public.get_company_today() v')).rows[0].v.sections;
   const ins = secs.find((x) => x.key === 'insurance');
   const proc = secs.find((x) => x.key === 'procurement');
-  ins && ins.route === '/documents' && /policies need renewal/.test(ins.headline)
-    ? ok('the dashboard shows insurance renewals') : bad('insurance card', JSON.stringify(ins));
+  !ins ? ok('the dashboard no longer shows an insurance card') : bad('insurance card', JSON.stringify(ins));
+  const hr = secs.find((x) => x.key === 'hr');
+  const om = secs.find((x) => x.key === 'om');
+  hr && hr.title === 'HR' ? ok('the HR card is called "HR"') : bad('hr title', JSON.stringify(hr && hr.title));
+  om && om.route === '/operations/monitor' ? ok('the O&M card opens the Solar Monitor') : bad('om route', JSON.stringify(om && om.route));
+  const fid = (await asSystem("select id from public.document_folders where code = 'PPA'")).rows[0].id;
+  const r = (await as(OWNER, "select public.rename_document_folder($1, 'Power Purchase Agreement (signed)', 'ppa1') v", [fid])).rows[0].v;
+  r.code === 'PPA1' && r.name === 'Power Purchase Agreement (signed)' ? ok('a folder can be renamed, short name too') : bad('rename', JSON.stringify(r));
+  await expectError('not to a name another folder has', OWNER, "select public.rename_document_folder($1, 'x', 'LOA')", 'name of 2 to 80', [fid]);
+  await expectError('nor a short name another folder has', OWNER, "select public.rename_document_folder($1, 'Power Purchase', 'LOA')", 'already has the short name', [fid]);
+  await expectError('someone without Documents edit cannot rename it', TECH, "select public.rename_document_folder($1, 'Mine now')", 'Access denied', [fid]);
+  await as(OWNER, "select public.rename_document_folder($1, 'Power Purchase Agreement - PPA', 'PPA')", [fid]);
   proc && proc.route === '/procurement' && proc.facts.length === 3
     ? ok('and procurement: late deliveries, waiting requisitions, low stock') : bad('procurement card', JSON.stringify(proc));
   const salesKeys = (await as(SALES, 'select public.get_company_today() v')).rows[0].v.sections.map((x) => x.key);

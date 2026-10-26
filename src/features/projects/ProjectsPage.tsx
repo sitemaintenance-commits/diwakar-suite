@@ -5,7 +5,7 @@ import { Link } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  Blocks, Download, FolderKanban, Gauge, Handshake, ListChecks, Plus, ShieldCheck, Sun, TriangleAlert,
+  Blocks, Download, FolderKanban, Gauge, Handshake, ListChecks, Pencil, Plus, ShieldCheck, Sun, TriangleAlert,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
@@ -53,6 +53,8 @@ export function ProjectsPage() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ ...BLANK });
   const [busy, setBusy] = useState(false);
+  /** The project being edited; null when the dialog adds a new one. */
+  const [editId, setEditId] = useState<string | null>(null);
 
   const d = dash.data;
   const rows = useMemo(() => {
@@ -65,10 +67,31 @@ export function ProjectsPage() {
   }, [d, search, stage]);
 
 
+  function openNew() {
+    setEditId(null);
+    setForm({ ...BLANK });
+    setOpen(true);
+  }
+
+  async function openEdit(id: string) {
+    const { data, error } = await supabase.from('projects').select('*').eq('id', id).single();
+    if (error) return toast.error(errorMessage(error));
+    const s = (v: unknown) => (v == null ? '' : String(v));
+    setEditId(id);
+    setForm({
+      name: s(data.name), client_name: s(data.client_name), segment: s(data.segment) || BLANK.segment,
+      project_type: s(data.project_type) || BLANK.project_type, capacity_kwp: s(data.capacity_kwp),
+      capacity_ac_kw: s(data.capacity_ac_kw), contract_value: s(data.contract_value), stage: s(data.stage) || BLANK.stage,
+      site_id: s(data.site_id), start_date: s(data.start_date), target_commissioning: s(data.target_commissioning),
+      district: s(data.district), state: s(data.state), notes: s(data.notes),
+    });
+    setOpen(true);
+  }
+
   async function create() {
     if (!form.name.trim()) return toast.error('A project name is required.');
     setBusy(true);
-    const { error } = await supabase.from('projects').insert({
+    const values = {
       name: form.name.trim(),
       client_name: form.client_name.trim() || null,
       segment: form.segment,
@@ -83,13 +106,18 @@ export function ProjectsPage() {
       district: form.district.trim() || null,
       state: form.state.trim() || null,
       notes: form.notes.trim() || null,
-    });
+    };
+    const { error } = editId
+      ? await supabase.from('projects').update(values).eq('id', editId)
+      : await supabase.from('projects').insert(values);
     setBusy(false);
     if (error) return toast.error(errorMessage(error));
     setOpen(false);
     setForm({ ...BLANK });
     await qc.invalidateQueries({ queryKey: ['project-dashboard'] });
-    toast.success('Project created.');
+    await qc.invalidateQueries({ queryKey: ['project'] });
+    toast.success(editId ? 'Project updated.' : 'Project created.');
+    setEditId(null);
   }
 
   async function onExport() {
@@ -130,7 +158,7 @@ export function ProjectsPage() {
               </Button>
             )}
             {can.create && (
-              <Button size="sm" onClick={() => setOpen(true)}>
+              <Button size="sm" onClick={openNew}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add project
               </Button>
@@ -203,6 +231,7 @@ export function ProjectsPage() {
                         <TableHead className="text-right">Project value</TableHead>
                         <TableHead>Target</TableHead>
                         <TableHead>Manager</TableHead>
+                        {can.edit && <TableHead className="w-12" />}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -228,6 +257,14 @@ export function ProjectsPage() {
                           <TableCell className="tabular text-right">{fmtINR(p.contract_value, true)}</TableCell>
                           <TableCell className="text-sm">{p.target_commissioning ? fmtDate(p.target_commissioning) : '—'}</TableCell>
                           <TableCell className="text-sm text-muted-foreground">{p.manager ?? '—'}</TableCell>
+                          {can.edit && (
+                            <TableCell className="text-right">
+                              <Button variant="ghost" size="icon" className="h-8 w-8" title="Edit project" aria-label={`Edit ${p.name}`}
+                                onClick={() => void openEdit(p.id)}>
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          )}
                         </TableRow>
                       ))}
                     </TableBody>
@@ -242,7 +279,7 @@ export function ProjectsPage() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>New project</DialogTitle>
+            <DialogTitle>{editId ? 'Edit project' : 'New project'}</DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Project name" required className="sm:col-span-2">
@@ -301,7 +338,7 @@ export function ProjectsPage() {
               Cancel
             </Button>
             <Button onClick={create} disabled={busy}>
-              Create project
+              {editId ? 'Save changes' : 'Create project'}
             </Button>
           </DialogFooter>
         </DialogContent>

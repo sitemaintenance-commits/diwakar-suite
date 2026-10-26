@@ -70,6 +70,13 @@ export async function createDocumentFolder(name: string): Promise<{ id: string; 
   return data as { id: string; code: string; name: string; existing: boolean };
 }
 
+/** Renames a folder: its full name and, optionally, the short name on the tile. */
+export async function renameDocumentFolder(id: string, name: string, code?: string) {
+  const { data, error } = await supabase.rpc('rename_document_folder', { p_id: id, p_name: name, p_code: code?.trim() || null });
+  if (error) throw error;
+  return data as { id: string; code: string; name: string };
+}
+
 export const docKeys = {
   all: ['library-documents'] as const,
   list: (f: DocFilters) => ['library-documents', f] as const,

@@ -2,7 +2,7 @@
 // search, filter, preview, download, correct the details, delete. Used for
 // one section (the Documents button in every page header) and for all of
 // them (the Documents page).
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -22,7 +22,7 @@ import { ConfirmDialog, EmptyState, ErrorState, Field, SearchInput, TableSkeleto
 import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { useSites } from '@/features/admin/api';
 import {
-  BLOCKED_FILE, DOC_CATEGORIES, MAX_FILE_BYTES, canPreview, createDocumentFolder, docKeys, fetchDocuments, openDocument, removeDocument,
+  BLOCKED_FILE, DOC_CATEGORIES, MAX_FILE_BYTES, canPreview, createDocumentFolder, docKeys, fetchDocuments, openDocument, removeDocument, renameDocumentFolder,
   updateDocument, uploadSectionDocument, useDocumentList, type DocFolder, type LibraryDoc,
 } from '@/features/documents/api';
 import { SendDocumentDialog } from '@/features/documents/SendDocumentDialog';
@@ -131,6 +131,18 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
   const [mine, setMine] = useState(false);
   const [expiring, setExpiring] = useState(false);
   const [folder, setFolder] = useState<string | null>(null);
+  /** Right-click menu on a folder tile, and the folder being renamed. */
+  const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; folder: DocFolder } | null>(null);
+  const [renaming, setRenaming] = useState<DocFolder | null>(null);
+  useEffect(() => {
+    if (!folderMenu) return;
+    const close = () => setFolderMenu(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+    window.addEventListener('click', close);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('click', close); window.removeEventListener('scroll', close, true); window.removeEventListener('keydown', onKey); };
+  }, [folderMenu]);
   const [plant, setPlant] = useState(ALL);
   const [limit, setLimit] = useState(PAGE);
   const filters = {
@@ -332,10 +344,22 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
           <FolderTile label="All documents" count={null} active={folder === null} onClick={() => { setFolder(null); setLimit(PAGE); }} />
           {(list.data?.folders ?? []).filter((f) => f.count > 0 || !moduleKey).map((f) => (
             <FolderTile key={f.id} code={f.code} label={f.name} count={f.count} active={folder === f.id}
-              onClick={() => { setFolder(folder === f.id ? null : f.id); setLimit(PAGE); }} />
+              onClick={() => { setFolder(folder === f.id ? null : f.id); setLimit(PAGE); }}
+              onContextMenu={(e) => { e.preventDefault(); setFolderMenu({ x: e.clientX, y: e.clientY, folder: f }); }} />
           ))}
         </div>
       )}
+      {folderMenu && (
+        <div role="menu" className="fixed z-50 min-w-44 rounded-lg border bg-popover p-1 text-sm shadow-lg"
+          style={{ left: Math.min(folderMenu.x, window.innerWidth - 190), top: Math.min(folderMenu.y, window.innerHeight - 60) }}
+          onClick={(e) => e.stopPropagation()}>
+          <button type="button" role="menuitem" className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
+            onClick={() => { setRenaming(folderMenu.folder); setFolderMenu(null); }}>
+            <Pencil className="h-4 w-4" /> Edit folder name
+          </button>
+        </div>
+      )}
+      <RenameFolderDialog folder={renaming} onClose={() => setRenaming(null)} />
 
       {/* ------------------------------------------------------ filters */}
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
@@ -480,10 +504,64 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
 }
 
 /** One folder in the strip above the list. */
-function FolderTile({ code, label, count, active, onClick }: { code?: string; label: string; count: number | null; active: boolean; onClick: () => void }) {
+function RenameFolderDialog({ folder, onClose }: { folder: DocFolder | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  if (folder && loadedFor !== folder.id) {
+    setLoadedFor(folder.id);
+    setName(folder.name);
+    setCode(folder.code);
+  }
+
+  async function save() {
+    if (!folder) return;
+    if (name.trim().length < 2) return toast.error('Give the folder a name.');
+    setBusy(true);
+    try {
+      await renameDocumentFolder(folder.id, name, code);
+      await qc.invalidateQueries({ queryKey: docKeys.all });
+      toast.success('Folder renamed');
+      setLoadedFor(null);
+      onClose();
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={!!folder} onOpenChange={(o) => { if (!o && !busy) { setLoadedFor(null); onClose(); } }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Edit folder name</DialogTitle>
+          <DialogDescription>The files inside stay where they are.</DialogDescription>
+        </DialogHeader>
+        <Field label="Short name" hint="The bold name on the tile, e.g. PPA">
+          <Input value={code} maxLength={16} onChange={(e) => setCode(e.target.value.toUpperCase())} />
+        </Field>
+        <Field label="Full name">
+          <Input autoFocus value={name} maxLength={80} onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void save(); }} />
+        </Field>
+        <DialogFooter>
+          <Button variant="outline" disabled={busy} onClick={() => { setLoadedFor(null); onClose(); }}>Cancel</Button>
+          <Button disabled={busy} onClick={() => void save()}>{busy && <Loader2 className="animate-spin" />} Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function FolderTile({ code, label, count, active, onClick, onContextMenu }: {
+  code?: string; label: string; count: number | null; active: boolean; onClick: () => void; onContextMenu?: (e: React.MouseEvent) => void;
+}) {
   const Icon = active ? FolderOpen : Folder;
   return (
-    <button type="button" onClick={onClick} title={label}
+    <button type="button" onClick={onClick} onContextMenu={onContextMenu} title={onContextMenu ? `${label} (right-click to rename)` : label}
       className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition-colors ${active ? 'border-primary bg-primary-soft' : 'bg-card hover:bg-muted/60'}`}>
       <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${active ? 'bg-primary text-primary-foreground' : 'bg-orange-50 text-orange-600'}`}>
         <Icon className="h-4 w-4" />
