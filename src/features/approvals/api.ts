@@ -21,6 +21,7 @@ export const CATEGORIES: Record<string, string> = {
   procurement: 'Procurement',
   project: 'Project',
   maintenance: 'Maintenance',
+  repair: 'Repair',
   marketing: 'Marketing & social media',
   other: 'Other',
 };

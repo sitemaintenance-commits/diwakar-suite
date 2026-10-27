@@ -2962,6 +2962,8 @@ console.log('\nApprovals trash');
   await as(ASKER, 'select public.approval_set_approvers($1, $2::uuid[])', [live, [banwariEmp]]);
   await as(ASKER, 'select public.approval_save($1::jsonb, $2, true)', [JSON.stringify({ category: 'travel', title: 'In approval', include_final: false }), live]);
   await expectError('a request still in approval must be cancelled first', ASKER, 'select public.approval_trash($1)', 'Cancel it first', [live]);
+  const rep = await val(ASKER, 'select public.approval_save($1::jsonb) v', [JSON.stringify({ category: 'repair', title: 'Inverter fan repair' })]);
+  rep ? ok('a Repair request can be raised') : bad('repair', 'no id');
   await expectError('someone else cannot trash it', SALES, 'select public.approval_trash($1)', 'not found', [draft]);
 }
 
