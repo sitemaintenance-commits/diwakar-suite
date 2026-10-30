@@ -68,6 +68,24 @@ export async function createDocumentFolder(name: string): Promise<{ id: string; 
   return data as { id: string; code: string; name: string; existing: boolean };
 }
 
+/** Renames a folder: its short name (the code on the tile) and its full name. */
+export async function updateDocumentFolder(id: string, code: string, name: string) {
+  const { error } = await supabase.rpc('update_document_folder', { p_id: id, p_code: code, p_name: name });
+  if (error) throw error;
+}
+
+/** Which folders were made by someone (custom), and by whom -- the maker may rename theirs. */
+export function useFolderOwners() {
+  return useQuery({
+    queryKey: [...docKeys.all, 'folder-owners'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('document_folders').select('id, is_custom, created_by');
+      if (error) throw error;
+      return (data ?? []) as { id: string; is_custom: boolean; created_by: string | null }[];
+    },
+  });
+}
+
 export const docKeys = {
   all: ['library-documents'] as const,
   list: (f: DocFilters) => ['library-documents', f] as const,
