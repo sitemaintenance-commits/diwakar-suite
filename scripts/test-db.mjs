@@ -3015,6 +3015,24 @@ console.log('\nApprovals: transfer and suggestions');
     ? ok('and the new approver can approve it') : bad('approve', 'not approved');
 }
 
+console.log('\nDocuments by site');
+{
+  const add = async (name, notes = null) => (await asSystem(
+    `insert into public.documents (module_key, entity_type, entity_id, file_name, storage_path, notes)
+     values ('documents', 'section', null, $1, 'documents/section/test/' || gen_random_uuid(), $2) returning id, site_id, filed_site_id`, [name, notes])).rows[0];
+  const a = await add('PPA - Bassi.pdf');
+  a.filed_site_id === site.Bassi && a.site_id === null ? ok('a file name says which site it is about') : bad('filed site', JSON.stringify(a));
+  const b = await add('MMS With Vikram.pdf', 'DDDP - Sadas › MMS');
+  b.filed_site_id === site.Sadas ? ok('so does the sub-folder in the notes') : bad('notes site', JSON.stringify(b));
+  (await add('Comparison Bassi and Sadas.pdf')).filed_site_id === null ? ok('a file naming two sites is left alone') : bad('two sites', 'tagged');
+  (await add('Bassiana road map.pdf')).filed_site_id === null ? ok('whole words only') : bad('whole words', 'tagged');
+  const rows = async (u, s) => (await as(u, 'select public.list_documents(p_scope => $1, p_limit => 500, p_site => $2) v', ['section', s])).rows[0].v.rows;
+  const forBassi = await rows(OWNER, site.Bassi);
+  forBassi.some((r) => r.id === a.id && r.site === 'Bassi') && !forBassi.some((r) => r.id === b.id) ? ok('the site dropdown finds it, and only that site') : bad('site filter', String(forBassi.length));
+  (await rows(RAHUL, null)).some((r) => r.id === a.id)
+    ? ok('and nobody loses sight of it') : bad('hidden', 'rahul cannot see it');
+}
+
 console.log('\nStorage (avatars)');
 await expectOk('user uploads own avatar', RAHUL, `insert into storage.objects (bucket_id, name) values ('avatars', $1 || '/photo.png')`, [RAHUL]);
 await expectError('user cannot upload into another user folder', RAHUL, `insert into storage.objects (bucket_id, name) values ('avatars', $1 || '/photo.png')`, 'row-level security', [ADMIN]);

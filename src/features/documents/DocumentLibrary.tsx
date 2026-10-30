@@ -239,7 +239,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
         { header: 'Category', value: (r) => r.group_label, width: 18 },
         { header: 'Section', value: (r) => r.module_label, width: 22 },
         { header: 'Type', value: (r) => r.category ?? '', width: 18 },
-        { header: 'Plant', value: (r) => r.site ?? '', width: 16 },
+        { header: 'Site', value: (r) => r.site ?? '', width: 16 },
         { header: 'Notes', value: (r) => r.notes ?? '', width: 40 },
         { header: 'Valid until', value: (r) => r.valid_until ?? '', width: 12 },
         { header: 'Uploaded by', value: (r) => r.uploaded_by ?? '', width: 22 },
@@ -342,7 +342,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
       {(list.data?.folders ?? []).some((f) => f.count > 0) && (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
           <FolderTile label="All documents" count={null} active={folder === null} onClick={() => { setFolder(null); setLimit(PAGE); }} />
-          {(list.data?.folders ?? []).filter((f) => f.count > 0 || !moduleKey).map((f) => (
+          {(list.data?.folders ?? []).filter((f) => f.count > 0 || (!moduleKey && plant === ALL)).map((f) => (
             <FolderTile key={f.id} code={f.code} label={f.name} count={f.count} active={folder === f.id}
               onClick={() => { setFolder(folder === f.id ? null : f.id); setLimit(PAGE); }}
               onContextMenu={(e) => { e.preventDefault(); setFolderMenu({ x: e.clientX, y: e.clientY, folder: f }); }} />
@@ -370,7 +370,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
               options={[[ALL, 'All categories'], ...groups.map((g) => [g.key, g.label] as [string, string])]} />
           )}
           <FilterSelect value={plant} onChange={(v) => { setPlant(v); setLimit(PAGE); }}
-            options={[[ALL, 'All plants'], ...(sites.data ?? []).map((s) => [s.id, s.name] as [string, string])]} />
+            options={[[ALL, 'All sites'], ...(sites.data ?? []).map((s) => [s.id, s.name] as [string, string])]} />
           <FilterSelect value={category} onChange={(v) => { setCategory(v); setLimit(PAGE); }}
             options={[[ALL, 'All types'], ...(list.data?.categories ?? []).map((c) => [c, c] as [string, string])]} />
           {!moduleKey && (
