@@ -14,7 +14,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
 import { fmtDate, fmtNumber, safeNum, todayIST } from '@/lib/format';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
 import { useCan } from '@/auth/AccessProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -435,7 +435,7 @@ function RegisterHistory({ canExport }: { canExport: boolean }) {
   async function onExport() {
     if (!s?.logs.length) return;
     try {
-      await exportCsv('om.operations', `site-register-${from}-to-${to}`, s.logs, [
+      await exportXlsx('om.operations', `site-register-${from}-to-${to}`, s.logs, [
         { header: 'Date', value: (r) => r.log_date },
         { header: 'Site', value: (r) => r.site },
         { header: 'Shift', value: (r) => r.shift },
@@ -481,7 +481,7 @@ function RegisterHistory({ canExport }: { canExport: boolean }) {
             {canExport && (
               <Button variant="outline" size="sm" onClick={onExport} disabled={!s?.logs.length}>
                 <Download className="mr-2 h-4 w-4" />
-                Export CSV
+                Export Excel
               </Button>
             )}
           </div>

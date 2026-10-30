@@ -10,7 +10,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
 import { fmtCapacity, fmtDate, fmtINR, fmtNumber, safeNum } from '@/lib/format';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
 import { useCan } from '@/auth/AccessProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -123,7 +123,7 @@ export function ProjectsPage() {
   async function onExport() {
     if (!rows.length) return;
     try {
-      await exportCsv('projects.projects', 'projects', rows, [
+      await exportXlsx('projects.projects', 'projects', rows, [
         { header: 'Code', value: (r) => r.code },
         { header: 'Project', value: (r) => r.name },
         { header: 'Client', value: (r) => r.client ?? '' },
@@ -154,7 +154,7 @@ export function ProjectsPage() {
             {can.export && (
               <Button variant="outline" size="sm" onClick={onExport} disabled={!rows.length}>
                 <Download className="mr-2 h-4 w-4" />
-                Export CSV
+                Export Excel
               </Button>
             )}
             {can.create && (

@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { Download, FileText, IndianRupee, Plus } from 'lucide-react';
 import { errorMessage } from '@/lib/errors';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
 import { fmtDate, fmtINR, safeNum } from '@/lib/format';
 import { useCan } from '@/auth/AccessProvider';
 import { Card } from '@/components/ui/card';
@@ -28,7 +28,7 @@ export function QuotationsPage() {
   async function onExport() {
     try {
       const { rows } = await fetchQuotations(filters, true);
-      await exportCsv('crm.quotations', `quotations-${new Date().toISOString().slice(0, 10)}`, rows, [
+      await exportXlsx('crm.quotations', `quotations-${new Date().toISOString().slice(0, 10)}`, rows, [
         { header: 'Quotation No', value: (r) => r.quotation_no },
         { header: 'Date', value: (r) => r.quote_date },
         { header: 'Client', value: (r) => r.client_name },
@@ -55,7 +55,7 @@ export function QuotationsPage() {
           <>
             {can.export && (
               <Button variant="outline" onClick={onExport}>
-                <Download /> Export
+                <Download /> Export Excel
               </Button>
             )}
             {can.create && (

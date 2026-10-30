@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AlertTriangle, CalendarCheck, CalendarClock, CheckCircle2, Download, PhoneCall } from 'lucide-react';
 import { errorMessage } from '@/lib/errors';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
 import { fmtDateTime, safeNum, titleCase } from '@/lib/format';
 import type { FollowUp } from '@/lib/types';
 import { useCan } from '@/auth/AccessProvider';
@@ -43,7 +43,7 @@ export function FollowUpsPage() {
   async function onExport() {
     try {
       const { rows } = await fetchFollowUps(filters, true);
-      await exportCsv('crm.followups', `follow-ups-${new Date().toISOString().slice(0, 10)}`, rows, [
+      await exportXlsx('crm.followups', `follow-ups-${new Date().toISOString().slice(0, 10)}`, rows, [
         { header: 'When', value: (r) => r.follow_up_at },
         { header: 'Type', value: (r) => r.type },
         { header: 'Subject', value: (r) => r.subject },
@@ -66,7 +66,7 @@ export function FollowUpsPage() {
         actions={
           can.export && (
             <Button variant="outline" onClick={onExport}>
-              <Download /> Export
+              <Download /> Export Excel
             </Button>
           )
         }

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Download, FileSearch, RotateCcw, ScrollText } from 'lucide-react';
 import { errorMessage } from '@/lib/errors';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
 import { fmtDateTime, titleCase } from '@/lib/format';
 import type { AuditLog } from '@/lib/types';
 import { useAccess, useCan } from '@/auth/AccessProvider';
@@ -67,7 +67,7 @@ export function AuditLogPage() {
   async function onExport() {
     try {
       const { rows } = await fetchAudit(filters, true);
-      await exportCsv('admin.audit', `audit-log-${new Date().toISOString().slice(0, 10)}`, rows, [
+      await exportXlsx('admin.audit', `audit-log-${new Date().toISOString().slice(0, 10)}`, rows, [
         { header: 'Time (IST)', value: (r) => fmtDateTime(r.occurred_at) },
         { header: 'User', value: (r) => r.actor_name ?? 'System' },
         { header: 'Email', value: (r) => r.actor_email },
@@ -93,7 +93,7 @@ export function AuditLogPage() {
         actions={
           can.export && (
             <Button variant="outline" onClick={onExport}>
-              <Download /> Export
+              <Download /> Export Excel
             </Button>
           )
         }

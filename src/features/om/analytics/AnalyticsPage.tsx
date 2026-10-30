@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { BarChart3, CalendarDays, Download, Gauge, Sun, TrendingUp, TriangleAlert, Zap } from 'lucide-react';
 import { errorMessage } from '@/lib/errors';
 import { fmtCapacity, fmtDate, fmtNumber, safeNum, todayIST } from '@/lib/format';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
 import { useCan } from '@/auth/AccessProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -203,7 +203,7 @@ function SiteTrend() {
   async function onExport() {
     if (!a?.rows.length) return;
     try {
-      await exportCsv('om.analytics', `${a.site}-${from}-to-${to}`, a.rows, [
+      await exportXlsx('om.analytics', `${a.site}-${from}-to-${to}`, a.rows, [
         { header: 'Date', value: (r) => r.date },
         { header: 'Generation (kWh)', value: (r) => safeNum(r.generation_kwh) },
         { header: 'Insolation (kWh/m2)', value: (r) => (r.insolation === null ? '' : safeNum(r.insolation)) },
@@ -300,7 +300,7 @@ function SiteTrend() {
               {can.export && (
                 <Button variant="outline" size="sm" onClick={onExport} disabled={!a.rows.length}>
                   <Download className="mr-2 h-4 w-4" />
-                  Export CSV
+                  Export Excel
                 </Button>
               )}
             </CardHeader>
@@ -372,7 +372,7 @@ function ShutdownTab() {
   async function onExport() {
     if (!s?.sites.length) return;
     try {
-      await exportCsv('om.analytics', `shutdown-${month}`, s.sites, [
+      await exportXlsx('om.analytics', `shutdown-${month}`, s.sites, [
         { header: 'Site', value: (r) => r.site },
         { header: 'Shutdown hours', value: (r) => hhmm(r.hours) },
         { header: 'Grid outage (h)', value: (r) => safeNum(r.grid_hours) },
@@ -400,7 +400,7 @@ function ShutdownTab() {
           {can.export && (
             <Button variant="outline" size="sm" onClick={onExport} disabled={!s?.sites.length}>
               <Download className="mr-2 h-4 w-4" />
-              Export CSV
+              Export Excel
             </Button>
           )}
         </CardContent>
@@ -536,7 +536,7 @@ function PortfolioTab() {
   async function onExport() {
     if (!p?.matrix.length) return;
     try {
-      await exportCsv('om.analytics', `portfolio-${year}`, p.matrix, [
+      await exportXlsx('om.analytics', `portfolio-${year}`, p.matrix, [
         { header: 'Site', value: (r) => r.site },
         ...MONTHS.map((label, i) => ({
           header: `${label} (kWh)`,
@@ -568,7 +568,7 @@ function PortfolioTab() {
           {can.export && (
             <Button variant="outline" size="sm" onClick={onExport} disabled={!p?.matrix.length}>
               <Download className="mr-2 h-4 w-4" />
-              Export CSV
+              Export Excel
             </Button>
           )}
         </CardContent>
@@ -725,7 +725,7 @@ function MonthReviewTab() {
   async function onExport() {
     if (!r?.rows.length) return;
     try {
-      await exportCsv('om.analytics', `month-review-${year}-${String(month).padStart(2, '0')}`, r.rows, [
+      await exportXlsx('om.analytics', `month-review-${year}-${String(month).padStart(2, '0')}`, r.rows, [
         { header: 'Plant name', value: (x) => x.site },
         { header: 'DC capacity (kWp)', value: (x) => safeNum(x.capacity_dc_kwp) },
         { header: 'Forecast (kWh)', value: (x) => (x.forecast === null ? '' : safeNum(x.forecast)) },
@@ -781,7 +781,7 @@ function MonthReviewTab() {
           {can.export && (
             <Button variant="outline" size="sm" onClick={onExport} disabled={!r?.rows.length}>
               <Download className="mr-2 h-4 w-4" />
-              Export CSV
+              Export Excel
             </Button>
           )}
         </CardContent>

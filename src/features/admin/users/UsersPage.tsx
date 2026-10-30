@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Download, Eye, KeyRound, MailPlus, MoreHorizontal, Pencil, Power, UserCog, UserPlus, Users } from 'lucide-react';
 import { callAdminUsers } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
 import { fmtDateTime, fmtRelative } from '@/lib/format';
 import type { UserRow, UserStatus } from '@/lib/types';
 import { useAccess, useCan } from '@/auth/AccessProvider';
@@ -101,7 +101,7 @@ export function UsersPage() {
   async function onExport() {
     try {
       const { rows } = await fetchUsers(filters, true);
-      await exportCsv('admin.users', `users-${new Date().toISOString().slice(0, 10)}`, rows, [
+      await exportXlsx('admin.users', `users-${new Date().toISOString().slice(0, 10)}`, rows, [
         { header: 'Full Name', value: (r) => r.full_name },
         { header: 'Email', value: (r) => r.email },
         { header: 'Phone', value: (r) => r.phone },
@@ -132,7 +132,7 @@ export function UsersPage() {
           <>
             {can.export && (
               <Button variant="outline" onClick={onExport}>
-                <Download /> Export
+                <Download /> Export Excel
               </Button>
             )}
             {can.create && (

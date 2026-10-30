@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Download, Loader2, Mail, MoreHorizontal, Pencil, Phone, Plus, Target, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
 import { fmtCapacity, fmtDate, fmtINR, safeNum } from '@/lib/format';
 import type { Lead } from '@/lib/types';
 import { useAccess, useCan } from '@/auth/AccessProvider';
@@ -51,7 +51,7 @@ export function LeadsPage() {
   async function onExport() {
     try {
       const { rows } = await fetchLeads(filters, true);
-      await exportCsv('crm.leads', `leads-${new Date().toISOString().slice(0, 10)}`, rows, [
+      await exportXlsx('crm.leads', `leads-${new Date().toISOString().slice(0, 10)}`, rows, [
         { header: 'Code', value: (r) => r.lead_code },
         { header: 'Company', value: (r) => r.company },
         { header: 'Contact', value: (r) => r.contact_person },
@@ -80,7 +80,7 @@ export function LeadsPage() {
           <>
             {can.export && (
               <Button variant="outline" onClick={onExport}>
-                <Download /> Export
+                <Download /> Export Excel
               </Button>
             )}
             {can.create && (

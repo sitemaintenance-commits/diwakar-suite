@@ -1,37 +1,5 @@
 import { supabase } from '@/lib/supabase';
 
-export interface CsvColumn<T> {
-  header: string;
-  value: (row: T) => unknown;
-}
-
-function cell(v: unknown): string {
-  if (v === null || v === undefined) return '';
-  const s = Array.isArray(v) ? v.join('; ') : typeof v === 'object' ? JSON.stringify(v) : String(v);
-  // Neutralise spreadsheet formula injection and quote as needed.
-  const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
-  return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
-}
-
-/**
- * Export rows to CSV (opens in Excel). The export is recorded in the audit
- * log; the database refuses the audit call unless the user holds EXPORT on
- * the module, in which case nothing is downloaded.
- */
-export async function exportCsv<T>(moduleKey: string, filename: string, rows: T[], columns: CsvColumn<T>[]) {
-  const { error } = await supabase.rpc('log_event', {
-    p_action: 'export',
-    p_module: moduleKey,
-    p_summary: `Exported ${rows.length} row(s) to ${filename}`,
-    p_details: null,
-  });
-  if (error) throw new Error(error.message);
-
-  const lines = [columns.map((c) => cell(c.header)).join(','), ...rows.map((r) => columns.map((c) => cell(c.value(r))).join(','))];
-  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
-  download(blob, filename.endsWith('.csv') ? filename : `${filename}.csv`);
-}
-
 export function download(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -53,8 +21,8 @@ export interface XlsxColumn<T> {
 
 /**
  * Export rows to a real .xlsx workbook: title rows, a bold header, number
- * formats, an optional totals row and a frozen header. Audited exactly like
- * exportCsv -- refused, and nothing downloaded, without EXPORT on the module.
+ * formats, an optional totals row and a frozen header. The export is recorded
+ * in the audit log -- refused, and nothing downloaded, without EXPORT on the module.
  * The spreadsheet library is loaded only when someone exports.
  */
 export async function exportXlsx<T>(
@@ -138,7 +106,12 @@ export async function exportXlsxBook(moduleKey: string, filename: string, sheets
     columns.forEach((c, i) => {
       const col = ws.getColumn(i + 1);
       if (c.numFmt) col.numFmt = c.numFmt;
-      col.width = c.width ?? Math.min(40, Math.max(10, c.header.length + 2));
+      // Without a set width, wide enough for the header and what is in the column.
+      const longest = sheet.rows.slice(0, 500).reduce<number>((w, row) => {
+        const v = c.value(row);
+        return Math.max(w, v === null || v === undefined ? 0 : String(v).length);
+      }, c.header.length);
+      col.width = c.width ?? Math.min(40, Math.max(10, longest + 2));
     });
   }
 

@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { Download, Loader2, Save, Zap } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
 import { fmtCapacity, fmtDate, fmtNumber, safeNum, todayIST } from '@/lib/format';
 import { useCan } from '@/auth/AccessProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -221,7 +221,7 @@ function GenerationHistory() {
   async function onExport() {
     try {
       const { rows } = await fetchGeneration(filters, true);
-      await exportCsv('om.generation', `generation-${filters.from}-to-${filters.to}`, rows, [
+      await exportXlsx('om.generation', `generation-${filters.from}-to-${filters.to}`, rows, [
         { header: 'Date', value: (r) => r.gen_date },
         { header: 'Site', value: (r) => r.sites?.name },
         { header: 'Generation (kWh)', value: (r) => safeNum(r.generation_kwh) },
@@ -253,7 +253,7 @@ function GenerationHistory() {
         </div>
         {can.export && (
           <Button variant="outline" onClick={onExport}>
-            <Download /> Export
+            <Download /> Export Excel
           </Button>
         )}
       </div>

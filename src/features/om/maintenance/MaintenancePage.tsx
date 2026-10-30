@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { CalendarClock, CheckCircle2, Download, Loader2, Plus, TriangleAlert, Wrench } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
 import { fmtDate, safeNum, titleCase, todayIST } from '@/lib/format';
 import type { MaintenanceRecord } from '@/lib/types';
 import { useCan } from '@/auth/AccessProvider';
@@ -46,7 +46,7 @@ export function MaintenancePage() {
   async function onExport() {
     try {
       const { rows } = await fetchMaintenance(filters, true);
-      await exportCsv('om.maintenance', `maintenance-${new Date().toISOString().slice(0, 10)}`, rows, [
+      await exportXlsx('om.maintenance', `maintenance-${new Date().toISOString().slice(0, 10)}`, rows, [
         { header: 'Site', value: (r) => r.sites?.name },
         { header: 'Equipment', value: (r) => r.equipment?.name },
         { header: 'Type', value: (r) => r.type },
@@ -71,7 +71,7 @@ export function MaintenancePage() {
           <>
             {can.export && (
               <Button variant="outline" onClick={onExport}>
-                <Download /> Export
+                <Download /> Export Excel
               </Button>
             )}
             {can.create && (

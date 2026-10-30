@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Download, Loader2, MapPin, MoreHorizontal, Pencil, Plus, Power, Sun, Trash2, UserPlus, Users, Zap } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
 import { fmtCapacity, fmtDateTime, fmtNumber, safeNum } from '@/lib/format';
 import type { Site } from '@/lib/types';
 import { useCan } from '@/auth/AccessProvider';
@@ -97,7 +97,7 @@ export function SitesPage() {
 
   async function onExport() {
     try {
-      await exportCsv('admin.sites', `sites-${new Date().toISOString().slice(0, 10)}`, rows, [
+      await exportXlsx('admin.sites', `sites-${new Date().toISOString().slice(0, 10)}`, rows, [
         { header: 'Site', value: (s) => s.name },
         { header: 'Code', value: (s) => s.code },
         { header: 'Location', value: (s) => s.location },
@@ -123,7 +123,7 @@ export function SitesPage() {
           <>
             {can.export && (
               <Button variant="outline" onClick={onExport}>
-                <Download /> Export
+                <Download /> Export Excel
               </Button>
             )}
             {can.create && (

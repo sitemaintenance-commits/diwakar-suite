@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { Download, Phone, Users } from 'lucide-react';
 import { errorMessage } from '@/lib/errors';
 import { fmtNumber, safeNum } from '@/lib/format';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
 import { useCan } from '@/auth/AccessProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -35,7 +35,7 @@ export function SiteTeamsPage() {
 
   async function onExport() {
     try {
-      await exportCsv('om.team', 'om-site-teams', rows, [
+      await exportXlsx('om.team', 'om-site-teams', rows, [
         { header: 'Site', value: (r) => r.site },
         { header: 'Location', value: (r) => r.location ?? '' },
         { header: 'Team member', value: (r) => r.name },
@@ -59,7 +59,7 @@ export function SiteTeamsPage() {
           can.export ? (
             <Button variant="outline" size="sm" onClick={onExport} disabled={!rows.length}>
               <Download className="mr-2 h-4 w-4" />
-              Export CSV
+              Export Excel
             </Button>
           ) : undefined
         }

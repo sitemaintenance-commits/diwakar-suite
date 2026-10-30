@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { BarChart3, Download, FileWarning } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
 import { fmtCapacity, fmtDate, fmtINR, fmtNumber, safeNum, titleCase, todayIST } from '@/lib/format';
 import { useAccess, useCan } from '@/auth/AccessProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -174,7 +174,7 @@ function ReportBody({
     if (!table.rows.length) return toast.error('Nothing to export for this period.');
     const columns = table.columns.map((k) => ({ header: colLabel(k), value: (r: Row) => r[k] }));
     try {
-      await exportCsv(module, `${reportKey}-report-${from}-to-${to}`, table.rows, columns);
+      await exportXlsx(module, `${reportKey}-report-${from}-to-${to}`, table.rows, columns);
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -276,7 +276,7 @@ function ReportBody({
           </div>
           {can.export && (
             <Button variant="outline" onClick={onExport}>
-              <Download /> Export
+              <Download /> Export Excel
             </Button>
           )}
         </CardHeader>

@@ -6,7 +6,7 @@ import { Download, Handshake, Plus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
 import { fmtNumber } from '@/lib/format';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
 import { useCan } from '@/auth/AccessProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -88,7 +88,7 @@ export function VendorsPage() {
   async function onExport() {
     if (!rows.length) return;
     try {
-      await exportCsv('projects.vendors', 'vendors', rows, [
+      await exportXlsx('projects.vendors', 'vendors', rows, [
         { header: 'Vendor', value: (r) => r.name },
         { header: 'Category', value: (r) => r.category ?? '' },
         { header: 'GST', value: (r) => r.gst_no ?? '' },
@@ -117,7 +117,7 @@ export function VendorsPage() {
             {can.export && (
               <Button variant="outline" size="sm" onClick={onExport} disabled={!rows.length}>
                 <Download className="mr-2 h-4 w-4" />
-                Export CSV
+                Export Excel
               </Button>
             )}
             {can.create && (

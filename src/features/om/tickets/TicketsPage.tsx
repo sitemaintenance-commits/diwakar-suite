@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { CheckCircle2, Download, Loader2, Play, Plus, Ticket as TicketIcon, TriangleAlert, Wrench } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
 import { fmtDateTime, fmtNumber, safeNum } from '@/lib/format';
 import type { Ticket, TicketStatus } from '@/lib/types';
 import { useAccess, useCan } from '@/auth/AccessProvider';
@@ -70,7 +70,7 @@ export function TicketsPage() {
   async function onExport() {
     try {
       const { rows } = await fetchTickets(filters, true);
-      await exportCsv('om.tickets', `tickets-${new Date().toISOString().slice(0, 10)}`, rows, [
+      await exportXlsx('om.tickets', `tickets-${new Date().toISOString().slice(0, 10)}`, rows, [
         { header: 'Ticket', value: (r) => r.ticket_no },
         { header: 'Site', value: (r) => r.sites?.name },
         { header: 'Equipment', value: (r) => r.equipment?.name },
@@ -101,7 +101,7 @@ export function TicketsPage() {
           <>
             {can.export && (
               <Button variant="outline" onClick={onExport}>
-                <Download /> Export
+                <Download /> Export Excel
               </Button>
             )}
             {can.create && (

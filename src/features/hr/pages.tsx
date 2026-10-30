@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
 import { fmtDate, fmtNumber, safeNum, titleCase, todayIST } from '@/lib/format';
 import type { AttendanceStatus, BadgeTone, LeaveRequest, PerformanceReview, Task } from '@/lib/types';
 import { useAccess, useCan } from '@/auth/AccessProvider';
@@ -74,7 +74,7 @@ export function EmployeesPage() {
 
   async function onExport() {
     try {
-      await exportCsv('hr.employees', `employees-${todayIST()}`, employees.data ?? [], [
+      await exportXlsx('hr.employees', `employees-${todayIST()}`, employees.data ?? [], [
         { header: 'Employee ID', value: (r) => r.employee_code },
         { header: 'Name', value: (r) => r.full_name },
         { header: 'Email', value: (r) => r.email },
@@ -110,7 +110,7 @@ export function EmployeesPage() {
             )}
             {can.export && (
               <Button variant="outline" onClick={onExport}>
-                <Download /> Export
+                <Download /> Export Excel
               </Button>
             )}
           </>
@@ -874,7 +874,7 @@ export function TasksPage() {
   async function onExport() {
     try {
       const { rows } = await fetchTasks(filters, true);
-      await exportCsv('tasks', `tasks-${todayIST()}`, rows, [
+      await exportXlsx('tasks', `tasks-${todayIST()}`, rows, [
         { header: 'Code', value: (r) => r.task_code },
         { header: 'Task', value: (r) => r.title },
         { header: 'Module', value: (r) => r.module },
@@ -899,7 +899,7 @@ export function TasksPage() {
           <>
             {can.export && (
               <Button variant="outline" onClick={onExport}>
-                <Download /> Export
+                <Download /> Export Excel
               </Button>
             )}
             {can.create && (

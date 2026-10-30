@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { AlertTriangle, Download, Gavel, IndianRupee, Plus, Sparkles, Trophy, Wallet } from 'lucide-react';
 import { errorMessage } from '@/lib/errors';
-import { exportCsv } from '@/lib/export';
+import { exportXlsx } from '@/lib/export';
 import { fmtCapacity, fmtDate, fmtINR, safeNum } from '@/lib/format';
 import type { Tender } from '@/lib/types';
 import { useCan } from '@/auth/AccessProvider';
@@ -52,7 +52,7 @@ export function TendersPage() {
   async function onExport() {
     try {
       const { rows } = await fetchTenders(filters, true);
-      await exportCsv('crm.tenders', `tenders-${new Date().toISOString().slice(0, 10)}`, rows, [
+      await exportXlsx('crm.tenders', `tenders-${new Date().toISOString().slice(0, 10)}`, rows, [
         { header: 'Code', value: (r) => r.tender_code },
         { header: 'Tender No', value: (r) => r.reference_no },
         { header: 'Title', value: (r) => r.title },
@@ -86,7 +86,7 @@ export function TendersPage() {
           <>
             {can.export && (
               <Button variant="outline" onClick={onExport}>
-                <Download /> Export
+                <Download /> Export Excel
               </Button>
             )}
             {can.create && (
