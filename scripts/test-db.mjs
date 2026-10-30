@@ -2799,6 +2799,17 @@ console.log('\nLocal conveyance, Jaipur site, custom folders');
   const f2 = (await as(OWNER, `select public.create_document_folder('site photos') v`)).rows[0].v;
   f2.id === f1.id && f2.existing ? ok('the same name gives the same folder') : bad('folder dup', JSON.stringify(f2));
   await expectError('a folder needs a real name', RAHUL, `select public.create_document_folder('x')`, '2 to 80');
+
+  const ppa = await id(`select id from public.document_folders where code = 'PPA'`);
+  await expectOk('the maker renames their own folder', RAHUL, `select public.update_document_folder($1, ' site  pics ', 'Site pictures')`, [f1.id]);
+  await expectValue('saved with a capital short name', RAHUL, `select code || ' / ' || name from public.document_folders where id = $1`, 'SITE PICS / Site pictures', [f1.id]);
+  await expectError('someone else cannot rename it', SALES, `select public.update_document_folder($1, 'MINE', 'Mine')`, 'cannot edit', [f1.id]);
+  await expectError('nor a built-in folder', RAHUL, `select public.update_document_folder($1, 'PPA', 'Power Purchase Agreements')`, 'cannot edit', [ppa]);
+  await expectOk('Admin renames any folder', ADMIN, `select public.update_document_folder($1, 'PPA', 'Power Purchase Agreements')`, [ppa]);
+  await expectError('two folders cannot share a short name', ADMIN, `select public.update_document_folder($1, 'PPA', 'Other')`, 'already has the short name', [f1.id]);
+  await expectError('nor a full name', ADMIN, `select public.update_document_folder($1, 'OTHER', 'power purchase agreements')`, 'already called', [f1.id]);
+  await expectError('a folder needs a real short name', ADMIN, `select public.update_document_folder($1, 'x', 'Site pictures')`, '2 to 30', [f1.id]);
+  await expectError('the folder table cannot be edited directly', ADMIN, `update public.document_folders set name = 'x' where id = $1`, 'permission denied', [ppa]);
 }
 
 console.log('\nInsurance renewal alerts');

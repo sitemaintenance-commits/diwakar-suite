@@ -12,6 +12,7 @@ import { errorMessage } from '@/lib/errors';
 import { exportXlsx } from '@/lib/export';
 import { fmtDate, fmtNumber, todayIST } from '@/lib/format';
 import { useAccess, useCan } from '@/auth/AccessProvider';
+import { useAuth } from '@/auth/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -23,7 +24,7 @@ import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { useSites } from '@/features/admin/api';
 import {
   BLOCKED_FILE, DOC_CATEGORIES, MAX_FILE_BYTES, canPreview, createDocumentFolder, docKeys, fetchDocuments, openDocument, removeDocument,
-  updateDocument, uploadSectionDocument, useDocumentList, type DocFolder, type LibraryDoc,
+  updateDocument, updateDocumentFolder, uploadSectionDocument, useDocumentList, useFolderOwners, type DocFolder, type LibraryDoc,
 } from '@/features/documents/api';
 import { SendDocumentDialog } from '@/features/documents/SendDocumentDialog';
 import { InsuranceFields, InsuranceTable, insuranceStatus, isInsurance, type InsuranceDetails } from '@/features/documents/insurance';
@@ -112,6 +113,8 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
   const { access, can } = useAccess();
   const qc = useQueryClient();
   const docsPerm = useCan('documents');
+  const me = useAuth().session?.user.id;
+  const folderOwners = useFolderOwners();
   const modules = useMemo(
     () => (access?.modules ?? []).filter((m) => m.route && m.key !== 'dashboard' && m.key !== 'documents' && can(m.key, 'view')),
     [access, can],
@@ -237,6 +240,12 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
     }
   }
 
+  // The open folder, and whether this user may rename it: admins any folder, the maker their own.
+  const [editingFolder, setEditingFolder] = useState<DocFolder | null>(null);
+  const openFolder = (list.data?.folders ?? []).find((f) => f.id === folder) ?? null;
+  const owner = folderOwners.data?.find((f) => f.id === folder);
+  const canEditFolder = Boolean(openFolder && (docsPerm.edit || (owner?.is_custom && owner.created_by === me)));
+
   const categories = Array.from(new Set([...(list.data?.categories ?? []), ...DOC_CATEGORIES]));
   const rows = list.data?.rows ?? [];
   const canUpload = moduleKey ? can(moduleKey, 'view') : modules.length > 0;
@@ -332,6 +341,23 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
             <FolderTile key={f.id} code={f.code} label={f.name} count={f.count} active={folder === f.id}
               onClick={() => { setFolder(folder === f.id ? null : f.id); setLimit(PAGE); }} />
           ))}
+        </div>
+      )}
+
+      {/* ---------------------------------------------- the open folder */}
+      {openFolder && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/40 bg-primary-soft px-3 py-2">
+          <FolderOpen className="h-5 w-5 shrink-0 text-primary" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold">{openFolder.code}</p>
+            <p className="truncate text-xs text-muted-foreground">{openFolder.name} · {openFolder.count} file{openFolder.count === 1 ? '' : 's'}</p>
+          </div>
+          {canEditFolder && (
+            <Button size="sm" variant="outline" onClick={() => setEditingFolder(openFolder)}><Pencil /> Edit folder</Button>
+          )}
+          <Button size="icon-sm" variant="ghost" aria-label="Close the folder" title="Show every folder" onClick={() => { setFolder(null); setLimit(PAGE); }}>
+            <X />
+          </Button>
         </div>
       )}
 
@@ -453,6 +479,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
 
       <EditDocumentDialog doc={editing} categories={categories} folders={list.data?.folders ?? []} onClose={() => setEditing(null)} />
       <SendDocumentDialog doc={sending} onClose={() => setSending(null)} />
+      <EditFolderDialog folder={editingFolder} onClose={() => setEditingFolder(null)} />
       <ConfirmDialog
         open={Boolean(removing)}
         onOpenChange={(o) => !o && setRemoving(null)}
@@ -489,6 +516,74 @@ function FolderTile({ code, label, count, active, onClick }: { code?: string; la
         <span className="block truncate text-xs text-muted-foreground">{code ? label.replace(new RegExp(`\\s*-\\s*${code}$`, 'i'), '') : ''}{count !== null ? `${code ? ' · ' : ''}${count} file${count === 1 ? '' : 's'}` : 'Every folder'}</span>
       </span>
     </button>
+  );
+}
+
+/** Renames a folder: the short name on its tile and the full name under it. */
+function EditFolderDialog({ folder, onClose }: { folder: DocFolder | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [code, setCode] = useState('');
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  if (folder && loadedFor !== folder.id) {
+    setLoadedFor(folder.id);
+    setCode(folder.code);
+    setName(folder.name);
+  }
+  const wasInsurance = Boolean(folder && /insur/i.test(`${folder.name} ${folder.code}`));
+  const losesInsurance = wasInsurance && !/insur/i.test(`${name} ${code}`);
+
+  function close() {
+    setLoadedFor(null);
+    onClose();
+  }
+
+  async function save() {
+    if (!folder) return;
+    if (code.trim().length < 2) return toast.error('Give the folder a short name.');
+    if (name.trim().length < 2) return toast.error('Give the folder a full name.');
+    setBusy(true);
+    try {
+      await updateDocumentFolder(folder.id, code, name);
+      toast.success('Folder saved');
+      await qc.invalidateQueries({ queryKey: docKeys.all });
+      close();
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={Boolean(folder)} onOpenChange={(o) => { if (!o && !busy) close(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit folder</DialogTitle>
+          <DialogDescription>The {folder?.count ?? 0} file{folder?.count === 1 ? '' : 's'} in it stay where they are.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3">
+          <Field label="Short name" required hint="Shown in capitals on the folder tile, e.g. LOA, PPA, INSURANCE DOC">
+            <Input autoFocus value={code} maxLength={30} onChange={(e) => setCode(e.target.value)} />
+          </Field>
+          <Field label="Full name" required hint="Shown under the short name and in the folder lists">
+            <Input value={name} maxLength={80} onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void save(); }} />
+          </Field>
+          {losesInsurance && (
+            <p className="flex items-start gap-1.5 text-xs text-amber-700">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              Without the word “insurance” in a name, this folder no longer opens the policy table.
+            </p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" disabled={busy} onClick={close}>Cancel</Button>
+          <Button disabled={busy} onClick={() => void save()}>{busy && <Loader2 className="animate-spin" />} Save folder</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
