@@ -8,7 +8,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Ban, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock, Download, Eye, FileText, History, Loader2,
-  Lock, MessageSquare, Paperclip, Pencil, RotateCcw, Send, UserPlus, SkipForward, Trash2, Undo2, Upload, UserCog, XCircle,
+  Forward, Lightbulb, Lock, MessageSquare, Paperclip, Pencil, RotateCcw, Send, UserPlus, SkipForward, Trash2, Undo2, Upload, UserCog, XCircle,
 } from 'lucide-react';
 import { errorMessage } from '@/lib/errors';
 import { fmtDate, fmtDateTime, fmtINR } from '@/lib/format';
@@ -23,9 +23,9 @@ import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { RequestForm } from '@/features/approvals/RequestForm';
 import {
   ACTION_LABEL, CONVEYANCE_MODES, FILE_ACCEPT, LEVEL_STATUS, PRIORITIES, STATUS, actOnStep, addComment, approvalKeys, cancelRequest, categoryLabel,
-  addApprovalLevel, restoreRequest, trashRequest, completeRequest, deleteDocument, editStepComment, useFormOptions, fileUrl, fmtSize, isImage, isPdf, reassignStep, reopenRequest, saveRequest, uploadApprovalFile,
+  addApprovalLevel, askSuggestion, replySuggestion, transferStep, restoreRequest, trashRequest, completeRequest, deleteDocument, editStepComment, useFormOptions, fileUrl, fmtSize, isImage, isPdf, reassignStep, reopenRequest, saveRequest, uploadApprovalFile,
   useApprovalDetail, useApprovalSettings,
-  type ApprovalDetail, type ApprovalDocument, type ApprovalStep, type DocVersion, type RequestInput, type TimelineEntry,
+  type ApprovalConsult, type ApprovalDetail, type ApprovalDocument, type ApprovalStep, type DocVersion, type RequestInput, type TimelineEntry,
 } from '@/features/approvals/api';
 
 export function ApprovalDetailPage() {
@@ -61,6 +61,7 @@ type Dialogs =
   | { kind: 'reassign'; step: ApprovalStep }
   | { kind: 'edit-comment'; step: ApprovalStep }
   | { kind: 'add-level' }
+  | { kind: 'transfer' | 'suggest' }
   | { kind: 'trash' }
   | null;
 
@@ -154,10 +155,14 @@ function Detail({ d, refresh }: { d: ApprovalDetail; refresh: () => Promise<void
               <Button className="bg-green-600 hover:bg-green-700" onClick={() => setDialog({ kind: 'approve' })}><CheckCircle2 /> Approve</Button>
               <Button variant="outline" onClick={() => setDialog({ kind: 'return' })}><Undo2 /> Return for changes</Button>
               <Button variant="outline" className="text-destructive" onClick={() => setDialog({ kind: 'reject' })}><XCircle /> Reject</Button>
+              <Button variant="outline" onClick={() => setDialog({ kind: 'transfer' })}><Forward /> Transfer</Button>
+              <Button variant="outline" onClick={() => setDialog({ kind: 'suggest' })}><Lightbulb /> Ask for suggestion</Button>
             </div>
           </div>
         </Card>
       )}
+
+      {(d.consults ?? []).length > 0 && <SuggestionsCard consults={d.consults} refresh={refresh} />}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="grid content-start gap-4 lg:col-span-2">
@@ -283,6 +288,12 @@ function Detail({ d, refresh }: { d: ApprovalDetail; refresh: () => Promise<void
           description="It leaves every list and goes to the Trash tab, where it can be restored. Its history is kept."
           label="Reason (optional)" onClose={() => setDialog(null)}
           onConfirm={(c) => run(() => trashRequest(r.id, c), 'Moved to Trash')} />
+      )}
+      {(dialog?.kind === 'transfer' || dialog?.kind === 'suggest') && actStep && (
+        <SeniorDialog mode={dialog.kind} exclude={actStep.approver_employee_id} onClose={() => setDialog(null)}
+          onConfirm={(emp, text) => run(
+            () => (dialog.kind === 'transfer' ? transferStep(actStep.id, emp, text) : askSuggestion(actStep.id, emp, text)),
+            dialog.kind === 'transfer' ? 'Request transferred' : 'Suggestion requested')} />
       )}
       {dialog?.kind === 'add-level' && (
         <AddLevelDialog approved={r.status === 'approved'} onClose={() => setDialog(null)}
@@ -497,6 +508,9 @@ const TIMELINE_LOOK: Record<string, { icon: typeof Circle; className: string }> 
   commented: { icon: MessageSquare, className: 'bg-slate-100 text-slate-600' },
   comment_edited: { icon: Pencil, className: 'bg-slate-100 text-slate-600' },
   level_added: { icon: UserPlus, className: 'bg-violet-100 text-violet-700' },
+  transferred: { icon: Forward, className: 'bg-violet-100 text-violet-700' },
+  suggestion_asked: { icon: Lightbulb, className: 'bg-amber-100 text-amber-700' },
+  suggestion_given: { icon: Lightbulb, className: 'bg-green-100 text-green-700' },
   trashed: { icon: Trash2, className: 'bg-slate-100 text-slate-600' },
   restored: { icon: RotateCcw, className: 'bg-green-100 text-green-700' },
   document_added: { icon: Paperclip, className: 'bg-slate-100 text-slate-600' },
@@ -507,13 +521,15 @@ const TIMELINE_LOOK: Record<string, { icon: typeof Circle; className: string }> 
 
 function timelineTitle(t: TimelineEntry) {
   const base = ACTION_LABEL[t.action] ?? t.action;
-  if (t.level_no && ['approved', 'rejected', 'returned', 'level_skipped', 'reassigned', 'comment_edited'].includes(t.action)) return `${base} · Level ${t.level_no}`;
+  if (t.level_no && ['approved', 'rejected', 'returned', 'level_skipped', 'reassigned', 'transferred', 'comment_edited'].includes(t.action)) return `${base} · Level ${t.level_no}`;
   return base;
 }
 
 function timelineExtra(t: TimelineEntry): string | null {
   const m = t.meta ?? {};
-  if (t.action === 'reassigned') return `${String(m.from ?? '—')} → ${String(m.to ?? '—')}`;
+  if (t.action === 'suggestion_asked') return `Asked ${String(m.to ?? '')}`;
+  if (t.action === 'suggestion_given') return `To ${String(m.to ?? '')}`;
+  if (t.action === 'reassigned' || t.action === 'transferred') return `${String(m.from ?? '—')} → ${String(m.to ?? '—')}`;
   if (t.action === 'level_added') return `${String(m.approver ?? '')} added as Level ${String(m.level ?? '')}`;
   if (t.action.startsWith('document_')) return `${String(m.file_name ?? '')}${t.version_no ? ` (v${t.version_no})` : ''}`;
   if (t.action === 'edited' && m.changes && typeof m.changes === 'object') {
@@ -667,6 +683,103 @@ function ReasonDialog({ title, description, label = 'Comment', required, noInput
             variant={tone === 'destructive' ? 'destructive' : 'default'}
             onClick={() => void confirm()}>
             {busy && <Loader2 className="animate-spin" />} {confirmLabel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** The questions put to senior officers on a request, with a reply box for the person asked. */
+function SuggestionsCard({ consults, refresh }: { consults: ApprovalConsult[]; refresh: () => Promise<void> }) {
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+  async function send(id: string) {
+    setBusy(id);
+    try {
+      await replySuggestion(id, drafts[id] ?? '');
+      toast.success('Suggestion sent');
+      await refresh();
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+  return (
+    <Card className="mb-4 p-5">
+      <h2 className="mb-3 flex items-center gap-2 font-semibold"><Lightbulb className="h-4 w-4 text-amber-600" /> Suggestions</h2>
+      <ul className="grid gap-3">
+        {consults.map((c) => (
+          <li key={c.id} className="rounded-lg border p-3 text-sm">
+            <p className="text-xs text-muted-foreground">{c.asked_by_name ?? 'Approver'} asked {c.asked_name} · {fmtDateTime(c.created_at)}</p>
+            <p className="mt-1 whitespace-pre-wrap">{c.question}</p>
+            {c.reply ? (
+              <div className="mt-2 rounded-md bg-muted/60 p-2">
+                <p className="text-xs text-muted-foreground">{c.asked_name} replied · {c.replied_at ? fmtDateTime(c.replied_at) : ''}</p>
+                <p className="mt-1 whitespace-pre-wrap">{c.reply}</p>
+              </div>
+            ) : c.can_reply ? (
+              <div className="mt-2 grid gap-2">
+                <Textarea rows={2} value={drafts[c.id] ?? ''} placeholder="Your suggestion"
+                  onChange={(e) => setDrafts((all) => ({ ...all, [c.id]: e.target.value }))} />
+                <Button size="sm" className="justify-self-start" disabled={busy === c.id || !(drafts[c.id] ?? '').trim()} onClick={() => void send(c.id)}>
+                  {busy === c.id ? <Loader2 className="animate-spin" /> : <Send />} Send suggestion
+                </Button>
+              </div>
+            ) : (
+              <p className="mt-2 text-xs font-medium text-amber-700">Waiting for suggestion from {c.asked_name}</p>
+            )}
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+function SeniorDialog({ mode, exclude, onClose, onConfirm }: {
+  mode: 'transfer' | 'suggest';
+  exclude: string | null;
+  onClose: () => void;
+  onConfirm: (employeeId: string, text: string) => Promise<void>;
+}) {
+  const options = useFormOptions(true);
+  const [who, setWho] = useState('');
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const transfer = mode === 'transfer';
+  const people = [...(options.data?.approvers ?? []), ...(options.data?.final_approver ? [options.data.final_approver] : [])]
+    .filter((a, i, all) => a.employee_id !== exclude && all.findIndex((b) => b.employee_id === a.employee_id) === i);
+  async function confirm() {
+    if (!who) return toast.error('Choose the senior officer.');
+    if (!text.trim()) return toast.error(transfer ? 'Give a reason for the transfer.' : 'Write what you want to ask.');
+    setBusy(true);
+    try { await onConfirm(who, text); } finally { setBusy(false); }
+  }
+  return (
+    <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{transfer ? 'Transfer this request' : 'Ask for a suggestion'}</DialogTitle>
+          <DialogDescription>
+            {transfer
+              ? 'They decide in your place. You can still read the request, but it leaves your approvals.'
+              : 'They can read the request and reply here. It stays with you, and you can decide without waiting.'}
+          </DialogDescription>
+        </DialogHeader>
+        <Field label="Senior officer" required>
+          {options.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : (
+            <FilterSelect value={who} onChange={setWho} placeholder="Choose the senior officer"
+              options={people.map((a) => [a.employee_id, `${a.name}${a.title ? ` · ${a.title}` : ''}`] as [string, string])} />
+          )}
+        </Field>
+        <Field label={transfer ? 'Reason' : 'Your question'} required>
+          <Textarea rows={3} value={text} onChange={(e) => setText(e.target.value)} />
+        </Field>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
+          <Button disabled={busy} onClick={() => void confirm()}>
+            {busy && <Loader2 className="animate-spin" />} {transfer ? 'Transfer' : 'Send question'}
           </Button>
         </DialogFooter>
       </DialogContent>

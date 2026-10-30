@@ -82,6 +82,9 @@ export const ACTION_LABEL: Record<string, string> = {
   commented: 'Comment',
   comment_edited: 'Comment edited',
   level_added: 'Approver added',
+  transferred: 'Transferred',
+  suggestion_asked: 'Suggestion asked',
+  suggestion_given: 'Suggestion given',
   trashed: 'Moved to Trash',
   restored: 'Restored from Trash',
 };
@@ -108,6 +111,8 @@ export interface ApprovalRow {
   total_levels: number;
   current_approver: string | null;
   my_turn: boolean;
+  /** Someone has asked you for a suggestion and you have not replied. */
+  asked_me?: boolean;
   mine: boolean;
   attachments: number;
   /** Set when the request is in Trash. */
@@ -299,12 +304,25 @@ export interface ApprovalPermissions {
   act_step_id: string | null;
 }
 
+/** A question an approver put to a senior officer. */
+export interface ApprovalConsult {
+  id: string;
+  asked_by_name: string | null;
+  asked_name: string;
+  question: string;
+  reply: string | null;
+  replied_at: string | null;
+  created_at: string;
+  can_reply: boolean;
+}
+
 export interface ApprovalDetail {
   request: ApprovalRequest;
   steps: ApprovalStep[];
   timeline: TimelineEntry[];
   documents: ApprovalDocument[];
   permissions: ApprovalPermissions;
+  consults: ApprovalConsult[];
 }
 
 export function useApprovalDetail(id: string | undefined) {
@@ -430,6 +448,12 @@ export const reopenRequest = (id: string, reason: string) => rpc('approval_reope
 export const completeRequest = (id: string, note: string) => rpc('approval_complete', { p_id: id, p_note: note.trim() || null });
 export const addComment = (id: string, body: string) => rpc('approval_add_comment', { p_request: id, p_body: body });
 /** Adds a forgotten approver to a request already in approval (before the final approver). */
+export const transferStep = (stepId: string, employeeId: string, reason: string) =>
+  rpc('approval_transfer', { p_step: stepId, p_employee: employeeId, p_reason: reason });
+export const askSuggestion = (stepId: string, employeeId: string, question: string) =>
+  rpc('approval_ask_suggestion', { p_step: stepId, p_employee: employeeId, p_question: question });
+export const replySuggestion = (consultId: string, reply: string) =>
+  rpc('approval_reply_suggestion', { p_consult: consultId, p_reply: reply });
 export const addApprovalLevel = (id: string, employeeId: string) => rpc('approval_add_level', { p_request: id, p_employee: employeeId });
 /** Changes the comment on a level the caller approved, rejected or returned. */
 export const editStepComment = (stepId: string, comment: string) => rpc('approval_edit_step_comment', { p_step: stepId, p_comment: comment });

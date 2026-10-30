@@ -2967,6 +2967,54 @@ console.log('\nApprovals trash');
   await expectError('someone else cannot trash it', SALES, 'select public.approval_trash($1)', 'not found', [draft]);
 }
 
+console.log('\nApprovals: transfer and suggestions');
+{
+  const val = async (uid, sql, params) => (await as(uid, sql, params)).rows[0]?.v;
+  const ASKER = (await asSystem("select id from auth.users where email = 'ketan.login@diwakarsolar.test'")).rows[0].id;
+  const banwariEmp = (await asSystem("select id from public.employees where employee_code = 'DRIPL_1101'")).rows[0].id;
+  const BANWARI = (await asSystem('select id from public.profiles where employee_id = $1', [banwariEmp])).rows[0].id;
+  for (const e of [banwariEmp, RAHUL_EMP]) {
+    await asSystem("insert into public.approval_approvers (employee_id, title, sort_order) values ($1, 'Senior', 90) on conflict do nothing", [e]);
+  }
+  const R = await val(ASKER, 'select public.approval_save($1::jsonb) v', [JSON.stringify({ category: 'travel', title: 'Visit Jaipur', include_final: false })]);
+  await as(ASKER, 'select public.approval_set_approvers($1, $2::uuid[])', [R, [banwariEmp]]);
+  await as(ASKER, 'select public.approval_save($1::jsonb, $2, true)', [JSON.stringify({ category: 'travel', title: 'Visit Jaipur', include_final: false }), R]);
+  const step = (await asSystem("select id from public.approval_steps where request_id = $1 and status = 'pending'", [R])).rows[0].id;
+  const sees = async (u) => (await val(u, 'select app.can_see_approval($1) v', [R]));
+
+  await expectError('only the approver whose turn it is can transfer', RAHUL, 'select public.approval_transfer($1, $2, $3)', 'not the approver', [step, RAHUL_EMP, 'x']);
+  await expectError('a transfer needs a reason', BANWARI, "select public.approval_transfer($1, $2, ' ')", 'Give a reason', [step, RAHUL_EMP]);
+  const notListed = (await asSystem(`select e.id from public.employees e where e.deleted_at is null and e.status = 'active' and e.id is distinct from app.approval_final_employee() and e.id is distinct from app.approval_marketing_employee() and not exists (select 1 from public.approval_approvers ap where ap.employee_id = e.id) limit 1`)).rows[0].id;
+  await expectError('only to someone on the approver list', BANWARI, "select public.approval_transfer($1, $2, 'x')", 'approver list', [step, notListed]);
+  await expectError('nor to themselves', BANWARI, "select public.approval_transfer($1, $2, 'x')", 'other than yourself', [step, banwariEmp]);
+
+  (await sees(RAHUL)) === false ? ok('before anything, Rahul cannot read the request') : bad('sees', 'already');
+  const cid = await val(BANWARI, "select public.approval_ask_suggestion($1, $2, 'Is this trip needed?') v", [step, RAHUL_EMP]);
+  (await sees(RAHUL)) === true ? ok('asked for a suggestion, Rahul can read it') : bad('consult sees', 'no');
+  const rahulList = await val(RAHUL, 'select public.list_approvals($1::jsonb) v', [JSON.stringify({ tab: 'my_approvals', page_size: 200 })]);
+  rahulList.rows.some((r) => r.id === R && r.asked_me && !r.my_turn) ? ok('and it is in his My Approvals, to reply not to decide') : bad('asked_me', JSON.stringify(rahulList.rows.length));
+  await expectError('someone asked cannot be asked twice before replying', BANWARI, "select public.approval_ask_suggestion($1, $2, 'again')", 'not replied', [step, RAHUL_EMP]);
+  await expectError('the person asked cannot decide', RAHUL, "select public.approval_act($1, 'approve')", 'not the approver', [step]);
+  await expectError('only the person asked can reply', BANWARI, "select public.approval_reply_suggestion($1, 'mine')", 'not found', [cid]);
+  await as(RAHUL, "select public.approval_reply_suggestion($1, 'Yes, go ahead')", [cid]);
+  const d1 = await val(BANWARI, 'select public.approval_detail($1) v', [R]);
+  d1.consults[0].reply === 'Yes, go ahead' && d1.permissions.act_step_id === step ? ok('the reply comes back and the decision stays with the approver') : bad('reply', JSON.stringify(d1.consults));
+  const heard = (await asSystem("select count(*)::int n from public.notifications where kind = 'approval.suggestion_reply' and user_id = $1 and entity_id = $2", [BANWARI, R])).rows[0].n;
+  heard === 1 ? ok('and the approver is told') : bad('reply notice', String(heard));
+
+  await as(BANWARI, "select public.approval_transfer($1, $2, 'Above my limit')", [step, RAHUL_EMP]);
+  const d2 = await val(RAHUL, 'select public.approval_detail($1) v', [R]);
+  d2.permissions.act_step_id === step && d2.timeline.some((t) => t.action === 'transferred' && t.comment === 'Above my limit' && t.meta.to)
+    ? ok('transferred: the new person decides, and the timeline records it') : bad('transfer', JSON.stringify(d2.permissions));
+  (await sees(BANWARI)) === true ? ok('the one who transferred it can still read it') : bad('old approver', 'cannot see');
+  await expectError('but can no longer decide', BANWARI, "select public.approval_act($1, 'approve')", 'not the approver', [step]);
+  const told = (await asSystem("select count(*)::int n from public.notifications where kind = 'approval.transferred' and user_id = $1 and entity_id = $2", [ASKER, R])).rows[0].n;
+  told === 1 ? ok('the requester is told') : bad('requester notice', String(told));
+  await as(RAHUL, "select public.approval_act($1, 'approve')", [step]);
+  (await asSystem('select status from public.approval_requests where id = $1', [R])).rows[0].status === 'approved'
+    ? ok('and the new approver can approve it') : bad('approve', 'not approved');
+}
+
 console.log('\nStorage (avatars)');
 await expectOk('user uploads own avatar', RAHUL, `insert into storage.objects (bucket_id, name) values ('avatars', $1 || '/photo.png')`, [RAHUL]);
 await expectError('user cannot upload into another user folder', RAHUL, `insert into storage.objects (bucket_id, name) values ('avatars', $1 || '/photo.png')`, 'row-level security', [ADMIN]);

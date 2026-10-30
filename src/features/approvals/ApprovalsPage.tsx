@@ -196,8 +196,8 @@ export function ApprovalsPage() {
                     <TableCell className="whitespace-nowrap text-xs">{fmtDate(r.created_at)}</TableCell>
                     <TableCell className="whitespace-nowrap text-xs">{fmtDate(r.updated_at)}</TableCell>
                     <TableCell className="text-right">
-                      <Button size="sm" variant={r.my_turn ? 'default' : 'outline'} asChild onClick={(e) => e.stopPropagation()}>
-                        <Link to={`/approvals/${r.id}`}>{r.my_turn ? 'Review' : 'View'}</Link>
+                      <Button size="sm" variant={r.my_turn || r.asked_me ? 'default' : 'outline'} asChild onClick={(e) => e.stopPropagation()}>
+                        <Link to={`/approvals/${r.id}`}>{r.my_turn ? 'Review' : r.asked_me ? 'Reply' : 'View'}</Link>
                       </Button>
                     </TableCell>
                   </TableRow>
