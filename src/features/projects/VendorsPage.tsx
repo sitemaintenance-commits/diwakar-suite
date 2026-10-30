@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Download, Handshake, Pencil, Plus } from 'lucide-react';
+import { Download, Handshake, Pencil, Plus, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
 import { fmtNumber } from '@/lib/format';
@@ -15,7 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { EmptyState, ErrorState, Field, PageHeader, SearchInput, StatCard } from '@/components/common';
+import { ConfirmDialog, EmptyState, ErrorState, Field, PageHeader, SearchInput, StatCard } from '@/components/common';
 import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { useVendors, type Vendor } from '@/features/projects/api';
 
@@ -48,6 +48,7 @@ export function VendorsPage() {
   const [status, setStatus] = useState('all');
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<Vendor | null>(null);
   const [form, setForm] = useState({ ...BLANK });
 
   const rows = useMemo(() => {
@@ -96,6 +97,22 @@ export function VendorsPage() {
     await qc.invalidateQueries({ queryKey: ['vendors'] });
     await qc.invalidateQueries({ queryKey: ['project-dashboard'] });
     toast.success(editingId ? 'Vendor saved.' : 'Vendor added.');
+  }
+
+  /** Soft-deletes a vendor nothing points at; one with orders, bills or materials is kept so their vendor names stay. */
+  async function remove(v: Vendor) {
+    const used = await Promise.all(['proc_purchase_orders', 'vendor_bills', 'project_materials'].map((t) =>
+      supabase.from(t).select('id', { count: 'exact', head: true }).eq('vendor_id', v.id).is('deleted_at', null)));
+    const failed = used.find((u) => u.error);
+    if (failed) return toast.error(errorMessage(failed.error));
+    if (used.some((u) => u.count)) {
+      return toast.error(`${v.name} is used on purchase orders, bills or project materials, so it can't be deleted. Set it to Inactive instead.`);
+    }
+    const { error } = await supabase.rpc('soft_delete_record', { p_table: 'vendors', p_id: v.id });
+    if (error) return toast.error(errorMessage(error));
+    await qc.invalidateQueries({ queryKey: ['vendors'] });
+    await qc.invalidateQueries({ queryKey: ['project-dashboard'] });
+    toast.success('Vendor deleted.');
   }
 
   async function setVendorStatus(id: string, next: string) {
@@ -183,7 +200,7 @@ export function VendorsPage() {
                   <TableHead>Contact</TableHead>
                   <TableHead>Payment terms</TableHead>
                   <TableHead className="w-40">Status</TableHead>
-                  {can.edit && <TableHead className="w-12" />}
+                  {(can.edit || can.delete) && <TableHead className="w-24" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -204,9 +221,12 @@ export function VendorsPage() {
                         <Badge variant={TONE[v.status]}>{STATUS.find(([k]) => k === v.status)?.[1]}</Badge>
                       )}
                     </TableCell>
-                    {can.edit && (
-                      <TableCell className="text-right">
-                        <Button size="icon-sm" variant="ghost" aria-label="Edit" title="Edit the vendor" onClick={() => openEdit(v)}><Pencil /></Button>
+                    {(can.edit || can.delete) && (
+                      <TableCell className="whitespace-nowrap text-right">
+                        {can.edit && <Button size="icon-sm" variant="ghost" aria-label="Edit" title="Edit the vendor" onClick={() => openEdit(v)}><Pencil /></Button>}
+                        {can.delete && (
+                          <Button size="icon-sm" variant="ghost" className="text-destructive" aria-label="Delete" title="Delete the vendor" onClick={() => setDeleting(v)}><Trash2 /></Button>
+                        )}
                       </TableCell>
                     )}
                   </TableRow>
@@ -254,6 +274,16 @@ export function VendorsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        onOpenChange={(o) => !o && setDeleting(null)}
+        title={`Delete ${deleting?.name}?`}
+        description="The vendor is removed from the register. A vendor already used on orders, bills or materials can't be deleted; set it to Inactive instead."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => deleting && void remove(deleting)}
+      />
     </>
   );
 }
