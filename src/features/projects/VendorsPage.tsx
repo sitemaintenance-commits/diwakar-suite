@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Download, Handshake, Plus } from 'lucide-react';
+import { Download, Handshake, Pencil, Plus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
 import { fmtNumber } from '@/lib/format';
@@ -17,7 +17,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EmptyState, ErrorState, Field, PageHeader, SearchInput, StatCard } from '@/components/common';
 import { FilterSelect } from '@/features/admin/users/UsersPage';
-import { useVendors } from '@/features/projects/api';
+import { useVendors, type Vendor } from '@/features/projects/api';
 
 const STATUS: [string, string][] = [
   ['active', 'Active'],
@@ -47,6 +47,7 @@ export function VendorsPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
   const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...BLANK });
 
   const rows = useMemo(() => {
@@ -58,9 +59,24 @@ export function VendorsPage() {
     );
   }, [vendors.data, search, status]);
 
-  async function add() {
+  function openAdd() {
+    setEditingId(null);
+    setForm({ ...BLANK });
+    setOpen(true);
+  }
+
+  function openEdit(v: Vendor) {
+    setEditingId(v.id);
+    setForm({
+      name: v.name, category: v.category ?? CATEGORIES[0], gst_no: v.gst_no ?? '', contact_person: v.contact_person ?? '',
+      phone: v.phone ?? '', email: v.email ?? '', payment_terms: v.payment_terms ?? '', status: v.status, notes: v.notes ?? '',
+    });
+    setOpen(true);
+  }
+
+  async function save() {
     if (!form.name.trim()) return toast.error('The vendor name is required.');
-    const { error } = await supabase.from('vendors').insert({
+    const row = {
       name: form.name.trim(),
       category: form.category,
       gst_no: form.gst_no.trim() || null,
@@ -70,13 +86,16 @@ export function VendorsPage() {
       payment_terms: form.payment_terms.trim() || null,
       status: form.status,
       notes: form.notes.trim() || null,
-    });
+    };
+    const { error } = editingId
+      ? await supabase.from('vendors').update(row).eq('id', editingId)
+      : await supabase.from('vendors').insert(row);
     if (error) return toast.error(errorMessage(error));
     setOpen(false);
     setForm({ ...BLANK });
     await qc.invalidateQueries({ queryKey: ['vendors'] });
     await qc.invalidateQueries({ queryKey: ['project-dashboard'] });
-    toast.success('Vendor added.');
+    toast.success(editingId ? 'Vendor saved.' : 'Vendor added.');
   }
 
   async function setVendorStatus(id: string, next: string) {
@@ -121,7 +140,7 @@ export function VendorsPage() {
               </Button>
             )}
             {can.create && (
-              <Button size="sm" onClick={() => setOpen(true)}>
+              <Button size="sm" onClick={openAdd}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add vendor
               </Button>
@@ -143,7 +162,7 @@ export function VendorsPage() {
             <CardDescription>{fmtNumber(rows.length)} vendor(s)</CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <SearchInput value={search} onChange={setSearch} placeholder="Search name, category or GST" />
+            <SearchInput value={search} onChange={setSearch} placeholder="Search name, phone or GST" />
             <div className="w-40">
               <FilterSelect value={status} onChange={setStatus} options={[['all', 'All'], ...STATUS]} />
             </div>
@@ -164,6 +183,7 @@ export function VendorsPage() {
                   <TableHead>Contact</TableHead>
                   <TableHead>Payment terms</TableHead>
                   <TableHead className="w-40">Status</TableHead>
+                  {can.edit && <TableHead className="w-12" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -184,6 +204,11 @@ export function VendorsPage() {
                         <Badge variant={TONE[v.status]}>{STATUS.find(([k]) => k === v.status)?.[1]}</Badge>
                       )}
                     </TableCell>
+                    {can.edit && (
+                      <TableCell className="text-right">
+                        <Button size="icon-sm" variant="ghost" aria-label="Edit" title="Edit the vendor" onClick={() => openEdit(v)}><Pencil /></Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -195,7 +220,7 @@ export function VendorsPage() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Add vendor</DialogTitle>
+            <DialogTitle>{editingId ? 'Edit vendor' : 'Add vendor'}</DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Vendor name" required className="sm:col-span-2">
@@ -211,7 +236,7 @@ export function VendorsPage() {
               <Input value={form.contact_person} onChange={(e) => setForm({ ...form, contact_person: e.target.value })} />
             </Field>
             <Field label="Phone">
-              <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+              <Input type="tel" inputMode="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
             </Field>
             <Field label="Email">
               <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
@@ -225,7 +250,7 @@ export function VendorsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={add}>Add vendor</Button>
+            <Button onClick={save}>{editingId ? 'Save vendor' : 'Add vendor'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

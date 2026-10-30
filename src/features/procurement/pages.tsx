@@ -339,11 +339,15 @@ export function PurchaseOrdersPage() {
                 const link = links.forSource('purchase_order', o.id);
                 const ordered = o.lines.reduce((s, l) => s + n(l.qty), 0);
                 const got = o.lines.reduce((s, l) => s + n(l.received_qty), 0);
+                const vendorPhone = lk.vendors.find((v) => v.id === o.vendor_id)?.phone;
                 const late = o.delivery_date && o.delivery_date < todayIST() && ['approved', 'issued', 'partially_received'].includes(o.status);
                 return (
                   <TableRow key={o.id}>
                     <TableCell><div className="font-medium">{o.po_no}</div><div className="text-xs text-muted-foreground">{fmtDate(o.po_date)}</div></TableCell>
-                    <TableCell className="font-medium">{lk.vendorName(o.vendor_id) ?? '—'}</TableCell>
+                    <TableCell>
+                      <div className="font-medium">{lk.vendorName(o.vendor_id) ?? '—'}</div>
+                      {vendorPhone && <div className="tabular text-xs text-muted-foreground">{vendorPhone}</div>}
+                    </TableCell>
                     <TableCell className="text-xs">{lk.projectName(o.project_id) ?? lk.siteName(o.site_id) ?? 'Main store'}</TableCell>
                     <TableCell className="tabular text-right font-medium">{fmtINR(t.total, true)}</TableCell>
                     <TableCell className={cn('whitespace-nowrap', late && 'font-medium text-red-700')}>{o.delivery_date ? fmtDate(o.delivery_date) : '—'}{late && <AlertTriangle className="ml-1 inline h-3.5 w-3.5" />}</TableCell>
@@ -423,7 +427,8 @@ function OrderForm({ order, fromRequisition, onClose, onSaved }: {
           <DialogDescription>Saved as a draft; send it for approval, then mark it issued to the vendor.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Vendor" required className="sm:col-span-2">
+          <Field label="Vendor" required className="sm:col-span-2"
+            hint={vendor && (vendor.phone ? `Phone: ${vendor.phone}${vendor.contact_person ? ` · ${vendor.contact_person}` : ''}` : 'No phone saved — add it under Procurement → Vendors')}>
             <FilterSelect value={f.vendor_id || NONE} onChange={(v) => setF({ ...f, vendor_id: unNone(v), payment_terms: f.payment_terms || lk.vendors.find((x) => x.id === v)?.payment_terms || '' })}
               options={opt(lk.vendors.filter((v) => v.status === 'active'), 'Choose the vendor')} />
           </Field>
