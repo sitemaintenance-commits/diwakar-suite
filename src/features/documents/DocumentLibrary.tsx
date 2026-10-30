@@ -541,7 +541,7 @@ function RenameFolderDialog({ folder, onClose }: { folder: DocFolder | null; onC
           <DialogDescription>The files inside stay where they are.</DialogDescription>
         </DialogHeader>
         <Field label="Short name" hint="The bold name on the tile, e.g. PPA">
-          <Input value={code} maxLength={16} onChange={(e) => setCode(e.target.value.toUpperCase())} />
+          <Input value={code} maxLength={24} onChange={(e) => setCode(e.target.value.toUpperCase())} />
         </Field>
         <Field label="Full name">
           <Input autoFocus value={name} maxLength={80} onChange={(e) => setName(e.target.value)}

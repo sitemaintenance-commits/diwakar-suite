@@ -2834,6 +2834,8 @@ console.log('\nDashboard insurance / procurement, daily reminders');
   const fid = (await asSystem("select id from public.document_folders where code = 'PPA'")).rows[0].id;
   const r = (await as(OWNER, "select public.rename_document_folder($1, 'Power Purchase Agreement (signed)', 'ppa1') v", [fid])).rows[0].v;
   r.code === 'PPA1' && r.name === 'Power Purchase Agreement (signed)' ? ok('a folder can be renamed, short name too') : bad('rename', JSON.stringify(r));
+  const spaced = (await as(OWNER, "select public.rename_document_folder($1, 'Power Purchase Agreement (signed)', '  ppa  one ') v", [fid])).rows[0].v;
+  spaced.code === 'PPA ONE' ? ok('a short name can have a space') : bad('spaced code', JSON.stringify(spaced));
   await expectError('not to a name another folder has', OWNER, "select public.rename_document_folder($1, 'x', 'LOA')", 'name of 2 to 80', [fid]);
   await expectError('nor a short name another folder has', OWNER, "select public.rename_document_folder($1, 'Power Purchase', 'LOA')", 'already has the short name', [fid]);
   await expectError('someone without Documents edit cannot rename it', TECH, "select public.rename_document_folder($1, 'Mine now')", 'Access denied', [fid]);
