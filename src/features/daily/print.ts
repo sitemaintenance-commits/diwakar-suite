@@ -111,7 +111,7 @@ export function printDayReview(review: PrintableReview, company: string) {
   .report-fields { grid-template-columns: 1fr 1fr; margin-top: 1px; }
   .field { min-width: 0; background: #fff; padding: 7px 9px; }
   .field-value { color: #0f172a; overflow-wrap: anywhere; }
-  .number { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 2px 0; }
+  .number { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 10px; padding: 2px 0; }
   .number + .number { border-top: 1px solid #f1f5f9; }
   .number span { color: #475569; }
   .number small { grid-column: 1 / -1; color: #64748b; font-size: 11px; white-space: pre-line; }
