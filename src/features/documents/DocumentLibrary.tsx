@@ -254,6 +254,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
   const categories = Array.from(new Set([...(list.data?.categories ?? []), ...DOC_CATEGORIES]));
   const rows = list.data?.rows ?? [];
   const canUpload = moduleKey ? can(moduleKey, 'view') : modules.length > 0;
+  const openFolder = (list.data?.folders ?? []).find((f) => f.id === folder);
 
   return (
     <div className="space-y-4">
@@ -349,6 +350,19 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
           ))}
         </div>
       )}
+      {openFolder && (
+        <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary-soft px-4 py-2.5">
+          <FolderOpen className="h-5 w-5 shrink-0 text-primary" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold">{openFolder.code}</p>
+            <p className="truncate text-xs text-muted-foreground">{openFolder.name} · {openFolder.count} file{openFolder.count === 1 ? '' : 's'}</p>
+          </div>
+          {docsPerm.edit && (
+            <Button variant="outline" size="sm" onClick={() => setRenaming(openFolder)}><Pencil /> Edit folder name</Button>
+          )}
+          <Button variant="ghost" size="icon" aria-label="Close folder" onClick={() => { setFolder(null); setLimit(PAGE); }}><X /></Button>
+        </div>
+      )}
       {folderMenu && (
         <div role="menu" className="fixed z-50 min-w-44 rounded-lg border bg-popover p-1 text-sm shadow-lg"
           style={{ left: Math.min(folderMenu.x, window.innerWidth - 190), top: Math.min(folderMenu.y, window.innerHeight - 60) }}
@@ -385,7 +399,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
           <Checkbox checked={expiring} onCheckedChange={(v) => { setExpiring(v === true); setLimit(PAGE); }} /> Expiring / expired
         </label>
         {!moduleKey && docsPerm.export && (
-          <Button variant="outline" onClick={() => void onExport()}><Download /> Export</Button>
+          <Button variant="outline" onClick={() => void onExport()}><Download /> Export Excel</Button>
         )}
       </div>
 
