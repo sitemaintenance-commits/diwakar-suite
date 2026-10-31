@@ -199,3 +199,12 @@ export async function openDocument(doc: Pick<LibraryDoc, 'storage_path' | 'file_
 
 export const canPreview = (doc: Pick<LibraryDoc, 'mime_type' | 'file_name'>) =>
   /^(image\/|application\/pdf|text\/plain)/.test(doc.mime_type ?? '') || /\.(pdf|png|jpe?g|webp|gif|txt)$/i.test(doc.file_name);
+
+/** An Excel workbook: read in the page, as a tab cannot show one. */
+export const isWorkbook = (doc: Pick<LibraryDoc, 'file_name'>) => /\.xls[xm]$/i.test(doc.file_name);
+
+export async function fetchDocumentBlob(doc: Pick<LibraryDoc, 'storage_path'>) {
+  const { data, error } = await supabase.storage.from('documents').download(doc.storage_path);
+  if (error) throw error;
+  return data;
+}

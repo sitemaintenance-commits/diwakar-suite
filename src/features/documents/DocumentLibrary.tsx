@@ -22,10 +22,11 @@ import { ConfirmDialog, EmptyState, ErrorState, Field, SearchInput, TableSkeleto
 import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { useSites } from '@/features/admin/api';
 import {
-  BLOCKED_FILE, DOC_CATEGORIES, MAX_FILE_BYTES, canPreview, createDocumentFolder, docKeys, fetchDocuments, openDocument, removeDocument, renameDocumentFolder,
+  BLOCKED_FILE, DOC_CATEGORIES, MAX_FILE_BYTES, canPreview, createDocumentFolder, docKeys, fetchDocuments, isWorkbook, openDocument, removeDocument, renameDocumentFolder,
   updateDocument, uploadSectionDocument, useDocumentList, type DocFolder, type LibraryDoc,
 } from '@/features/documents/api';
 import { SendDocumentDialog } from '@/features/documents/SendDocumentDialog';
+import { SpreadsheetPreview } from '@/features/documents/SpreadsheetPreview';
 import { InsuranceFields, InsuranceTable, insuranceStatus, isInsurance, type InsuranceDetails } from '@/features/documents/insurance';
 
 const ALL = '__all__';
@@ -230,6 +231,12 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
   const [editing, setEditing] = useState<LibraryDoc | null>(null);
   const [sending, setSending] = useState<LibraryDoc | null>(null);
   const [removing, setRemoving] = useState<LibraryDoc | null>(null);
+  const [viewingBook, setViewingBook] = useState<LibraryDoc | null>(null);
+
+  function view(d: LibraryDoc) {
+    if (isWorkbook(d)) setViewingBook(d);
+    else void openDocument(d, !canPreview(d)).catch((e) => toast.error(errorMessage(e)));
+  }
 
   async function onExport() {
     try {
@@ -406,7 +413,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
       ) : (category !== ALL && isInsurance(category)) || insuranceFolder(list.data?.folders ?? [], folder) ? (
         <>
           <InsuranceTable rows={rows}
-            onOpen={(d) => void openDocument(d, !canPreview(d)).catch((e) => toast.error(errorMessage(e)))}
+            onOpen={view}
             onDownload={(d) => void openDocument(d, true).catch((e) => toast.error(errorMessage(e)))}
             onSend={setSending} onEdit={setEditing} onDelete={setRemoving} />
           <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -446,9 +453,8 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
                     {d.notes && <p className="mt-0.5 text-xs text-slate-600">{d.notes}</p>}
                   </div>
                   <div className="flex shrink-0 items-center">
-                    {canPreview(d) && (
-                      <Button variant="ghost" size="icon-sm" aria-label="Open" title="Open"
-                        onClick={() => void openDocument(d, false).catch((e) => toast.error(errorMessage(e)))}>
+                    {(canPreview(d) || isWorkbook(d)) && (
+                      <Button variant="ghost" size="icon-sm" aria-label="Open" title="Open" onClick={() => view(d)}>
                         <Eye />
                       </Button>
                     )}
@@ -487,6 +493,8 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
 
       <EditDocumentDialog doc={editing} categories={categories} folders={list.data?.folders ?? []} onClose={() => setEditing(null)} />
       <SendDocumentDialog doc={sending} onClose={() => setSending(null)} />
+      <SpreadsheetPreview doc={viewingBook} onClose={() => setViewingBook(null)}
+        onDownload={(d) => void openDocument(d, true).catch((e) => toast.error(errorMessage(e)))} />
       <ConfirmDialog
         open={Boolean(removing)}
         onOpenChange={(o) => !o && setRemoving(null)}
