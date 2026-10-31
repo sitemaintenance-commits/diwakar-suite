@@ -220,7 +220,8 @@ function useDailyMonth(month: string) {
 export function DailyReportsPage() {
   const can = useCan('daily.reports');
   const qc = useQueryClient();
-  const [date, setDate] = useState(yesterdayIST());
+  // Reports are filed here, so this opens on today; the review pages open on yesterday.
+  const [date, setDate] = useState(todayIST());
   const review = useDailyReview(date);
   const [editing, setEditing] = useState<{ departmentId: string; name: string; report: DeptReport | null } | null>(null);
 
