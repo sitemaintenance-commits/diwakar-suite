@@ -90,7 +90,7 @@ export function printDayReview(review: PrintableReview, company: string) {
   w.document.write(`<!doctype html><html><head><meta charset="utf-8">
 <title>Department Review · ${esc(fmtDate(review.date))}</title>
 <style>
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { font: 12px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: #0f172a; margin: 24px; }
   header { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #ea580c; padding-bottom: 8px; margin-bottom: 14px; }
   header h1 { margin: 0; font-size: 20px; }
@@ -117,8 +117,11 @@ export function printDayReview(review: PrintableReview, company: string) {
   .number small { grid-column: 1 / -1; color: #64748b; font-size: 11px; white-space: pre-line; }
   .number b { font-weight: 500; }
   footer { margin-top: 16px; color: #94a3b8; font-size: 10px; }
-  @media print { body { margin: 0; } @page { margin: 12mm; } }
+  .save-bar { display: flex; align-items: center; gap: 12px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 8px 12px; margin-bottom: 14px; color: #475569; }
+  .save-bar button { font: inherit; font-weight: 600; color: #fff; background: #ea580c; border: 0; border-radius: 6px; padding: 6px 14px; cursor: pointer; }
+  @media print { body { margin: 0; } .save-bar { display: none; } @page { size: A4 landscape; margin: 10mm; } }
 </style></head><body>
+<div class="save-bar"><button type="button" id="save-pdf">Save as PDF</button><span>In the window that opens, set Destination to “Save as PDF”, then click Save.</span></div>
 <header>
   <div><h1>Department Review</h1><p>${esc(company)}</p></div>
   <div style="text-align:right"><b>${esc(fmtDate(review.date))}</b><p>${reported} of ${review.departments.length} departments reported</p></div>
@@ -128,6 +131,7 @@ ${departments}
 <footer>Printed ${esc(new Date().toLocaleString('en-IN'))}</footer>
 </body></html>`);
   w.document.close();
+  w.document.getElementById('save-pdf')?.addEventListener('click', () => w.print());
   w.focus();
   // Let the page lay out before the print dialog opens.
   setTimeout(() => w.print(), 300);
