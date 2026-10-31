@@ -2839,7 +2839,9 @@ console.log('\nDashboard insurance / procurement, daily reminders');
   spaced.code === 'PPA ONE' ? ok('a short name can have a space') : bad('spaced code', JSON.stringify(spaced));
   await expectError('not to a name another folder has', OWNER, "select public.rename_document_folder($1, 'x', 'LOA')", 'name of 2 to 80', [fid]);
   await expectError('nor a short name another folder has', OWNER, "select public.rename_document_folder($1, 'Power Purchase', 'LOA')", 'already has the short name', [fid]);
-  await expectError('someone without Documents edit cannot rename it', TECH, "select public.rename_document_folder($1, 'Mine now')", 'Access denied', [fid]);
+  const byAnyone = (await as(RAHUL, "select public.rename_document_folder($1, 'Power Purchase Agreement (team)') v", [fid])).rows[0].v;
+  byAnyone.name === 'Power Purchase Agreement (team)' ? ok('anyone signed in can rename a folder') : bad('rename by anyone', JSON.stringify(byAnyone));
+  await expectError('but not an inactive account', TECH, "select public.rename_document_folder($1, 'Mine now')", 'Access denied', [fid]);
   await as(OWNER, "select public.rename_document_folder($1, 'Power Purchase Agreement - PPA', 'PPA')", [fid]);
   proc && proc.route === '/procurement' && proc.facts.length === 3
     ? ok('and procurement: late deliveries, waiting requisitions, low stock') : bad('procurement card', JSON.stringify(proc));

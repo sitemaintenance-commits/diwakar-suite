@@ -351,16 +351,8 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
         </div>
       )}
       {openFolder && (
-        <div className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary-soft px-4 py-2.5">
-          <FolderOpen className="h-5 w-5 shrink-0 text-primary" />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold">{openFolder.code}</p>
-            <p className="truncate text-xs text-muted-foreground">{openFolder.name} · {openFolder.count} file{openFolder.count === 1 ? '' : 's'}</p>
-          </div>
-          {docsPerm.edit && (
-            <Button variant="outline" size="sm" onClick={() => setRenaming(openFolder)}><Pencil /> Edit folder name</Button>
-          )}
-          <Button variant="ghost" size="icon" aria-label="Close folder" onClick={() => { setFolder(null); setLimit(PAGE); }}><X /></Button>
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={() => setRenaming(openFolder)}><Pencil /> Edit folder name</Button>
         </div>
       )}
       {folderMenu && (
