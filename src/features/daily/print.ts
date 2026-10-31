@@ -121,7 +121,7 @@ export function printDayReview(review: PrintableReview, company: string) {
   .save-bar button { font: inherit; font-weight: 600; color: #fff; background: #ea580c; border: 0; border-radius: 6px; padding: 6px 14px; cursor: pointer; }
   @media print { body { margin: 0; } .save-bar { display: none; } @page { size: A4 landscape; margin: 10mm; } }
 </style></head><body>
-<div class="save-bar"><button type="button" id="save-pdf">Save as PDF</button><span>In the window that opens, set Destination to “Save as PDF”, then click Save.</span></div>
+<div class="save-bar"><button type="button" id="save-pdf">Save as PDF</button><span>In the window that opens, change Printer (or Destination) to “Save as PDF”, then click Save.</span></div>
 <header>
   <div><h1>Department Review</h1><p>${esc(company)}</p></div>
   <div style="text-align:right"><b>${esc(fmtDate(review.date))}</b><p>${reported} of ${review.departments.length} departments reported</p></div>
