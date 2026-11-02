@@ -55,6 +55,9 @@ import { registerPageHeaderExtra } from '@/components/common';
 import {
   GoodsReceiptsPage, InventoryPage, ProcurementOverviewPage, PurchaseOrdersPage, RequisitionsPage,
 } from '@/features/procurement/pages';
+import {
+  AccountsOverviewPage, BanksPage, BillsPage, InvoicesPage, TransactionsPage,
+} from '@/features/accounts/pages';
 
 // Every section's page header carries its Documents button.
 registerPageHeaderExtra(SectionDocumentsButton);
@@ -131,6 +134,19 @@ export const router = createBrowserRouter([
           { path: 'receipts', element: guard('proc.receipts', <GoodsReceiptsPage />) },
           { path: 'inventory', element: guard('proc.inventory', <InventoryPage />) },
           { path: 'vendors', element: guard('projects.vendors', <VendorsSection />) },
+        ],
+      },
+
+      // Accounts: income & expenses, invoices, vendor bills and payments, bank & cash.
+      {
+        path: 'accounts',
+        element: <Outlet />,
+        children: [
+          { index: true, element: guard('acc.overview', <AccountsOverviewPage />) },
+          { path: 'transactions', element: guard('acc.transactions', <TransactionsPage />) },
+          { path: 'invoices', element: guard('acc.invoices', <InvoicesPage />) },
+          { path: 'bills', element: guard('acc.bills', <BillsPage />) },
+          { path: 'banks', element: guard('acc.banks', <BanksPage />) },
         ],
       },
 
