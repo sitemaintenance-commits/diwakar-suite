@@ -112,7 +112,7 @@ const fmtSize = (b: number | null) =>
 export function DocumentLibrary({ moduleKey, compact = false, header }: {
   moduleKey?: string;
   compact?: boolean;
-  /** The page header, given the library's header buttons (Edit folder name) to show at its right. */
+  /** The page header, given the library's header buttons (Edit Folder Name) to show at its right. */
   header?: (actions: ReactNode) => ReactNode;
 }) {
   const { access, can } = useAccess();
@@ -256,7 +256,7 @@ export function DocumentLibrary({ moduleKey, compact = false, header }: {
   const canUpload = moduleKey ? can(moduleKey, 'view') : modules.length > 0;
 
   const editFolderButton = canEditFolder && openFolder && (
-    <Button size="sm" variant="outline" onClick={() => setEditingFolder(openFolder)}><Pencil /> Edit folder name</Button>
+    <Button size="sm" variant="outline" onClick={() => setEditingFolder(openFolder)}><Pencil /> Edit Folder Name</Button>
   );
 
   return (
@@ -346,7 +346,7 @@ export function DocumentLibrary({ moduleKey, compact = false, header }: {
       {/* ------------------------------------------------------ folders */}
       {(list.data?.folders ?? []).some((f) => f.count > 0) && (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-          <FolderTile label="All documents" count={null} active={folder === null} onClick={() => { setFolder(null); setLimit(PAGE); }} />
+          <FolderTile label="All Documents" count={null} active={folder === null} onClick={() => { setFolder(null); setLimit(PAGE); }} />
           {(list.data?.folders ?? []).filter((f) => f.count > 0 || !moduleKey).map((f) => (
             <FolderTile key={f.id} code={f.code} label={f.name} count={f.count} active={folder === f.id}
               onClick={() => { setFolder(folder === f.id ? null : f.id); setLimit(PAGE); }} />
