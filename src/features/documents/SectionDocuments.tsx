@@ -58,13 +58,15 @@ export function SectionDocumentsButton() {
 
 export function DocumentsPage() {
   return (
-    <>
-      <PageHeader
-        icon={FolderOpen}
-        title="Documents"
-        description="Every work document from the sections you can open: section libraries and files attached to tenders and other records."
-      />
-      <DocumentLibrary />
-    </>
+    <DocumentLibrary
+      header={(actions) => (
+        <PageHeader
+          icon={FolderOpen}
+          title="Documents"
+          description="Every work document from the sections you can open: section libraries and files attached to tenders and other records."
+          actions={actions}
+        />
+      )}
+    />
   );
 }

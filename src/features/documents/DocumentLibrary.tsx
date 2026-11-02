@@ -2,7 +2,7 @@
 // search, filter, preview, download, correct the details, delete. Used for
 // one section (the Documents button in every page header) and for all of
 // them (the Documents page).
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -109,7 +109,12 @@ function fileIcon(d: Pick<LibraryDoc, 'mime_type' | 'file_name'>) {
 const fmtSize = (b: number | null) =>
   b == null ? '' : b >= 1024 * 1024 ? `${fmtNumber(b / 1024 / 1024, 1)} MB` : `${fmtNumber(Math.max(1, b / 1024))} KB`;
 
-export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: string; compact?: boolean }) {
+export function DocumentLibrary({ moduleKey, compact = false, header }: {
+  moduleKey?: string;
+  compact?: boolean;
+  /** The page header, given the library's header buttons (Edit folder name) to show at its right. */
+  header?: (actions: ReactNode) => ReactNode;
+}) {
   const { access, can } = useAccess();
   const qc = useQueryClient();
   const docsPerm = useCan('documents');
@@ -250,8 +255,13 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
   const rows = list.data?.rows ?? [];
   const canUpload = moduleKey ? can(moduleKey, 'view') : modules.length > 0;
 
+  const editFolderButton = canEditFolder && openFolder && (
+    <Button size="sm" variant="outline" onClick={() => setEditingFolder(openFolder)}><Pencil /> Edit folder name</Button>
+  );
+
   return (
     <div className="space-y-4">
+      {header?.(editFolderButton || null)}
       {canUpload && (
         <div
           className={`rounded-lg border-2 border-dashed p-4 transition-colors ${dragging ? 'border-primary bg-primary-soft' : 'border-border'}`}
@@ -352,9 +362,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
             <p className="truncate text-sm font-semibold">{openFolder.code}</p>
             <p className="truncate text-xs text-muted-foreground">{openFolder.name} · {openFolder.count} file{openFolder.count === 1 ? '' : 's'}</p>
           </div>
-          {canEditFolder && (
-            <Button size="sm" variant="outline" onClick={() => setEditingFolder(openFolder)}><Pencil /> Edit folder</Button>
-          )}
+          {!header && editFolderButton}
           <Button size="icon-sm" variant="ghost" aria-label="Close the folder" title="Show every folder" onClick={() => { setFolder(null); setLimit(PAGE); }}>
             <X />
           </Button>
