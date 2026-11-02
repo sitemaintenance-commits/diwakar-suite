@@ -12,7 +12,6 @@ import { errorMessage } from '@/lib/errors';
 import { exportXlsx } from '@/lib/export';
 import { fmtDate, fmtNumber, todayIST } from '@/lib/format';
 import { useAccess, useCan } from '@/auth/AccessProvider';
-import { useAuth } from '@/auth/AuthProvider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -24,7 +23,7 @@ import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { useSites } from '@/features/admin/api';
 import {
   BLOCKED_FILE, DOC_CATEGORIES, MAX_FILE_BYTES, canPreview, createDocumentFolder, docKeys, fetchDocuments, openDocument, removeDocument,
-  updateDocument, updateDocumentFolder, uploadSectionDocument, useDocumentList, useFolderOwners, type DocFolder, type LibraryDoc,
+  updateDocument, updateDocumentFolder, uploadSectionDocument, useDocumentList, type DocFolder, type LibraryDoc,
 } from '@/features/documents/api';
 import { SendDocumentDialog } from '@/features/documents/SendDocumentDialog';
 import { InsuranceFields, InsuranceTable, insuranceStatus, isInsurance, type InsuranceDetails } from '@/features/documents/insurance';
@@ -118,8 +117,6 @@ export function DocumentLibrary({ moduleKey, compact = false, header }: {
   const { access, can } = useAccess();
   const qc = useQueryClient();
   const docsPerm = useCan('documents');
-  const me = useAuth().session?.user.id;
-  const folderOwners = useFolderOwners();
   const modules = useMemo(
     () => (access?.modules ?? []).filter((m) => m.route && m.key !== 'dashboard' && m.key !== 'documents' && can(m.key, 'view')),
     [access, can],
@@ -245,11 +242,10 @@ export function DocumentLibrary({ moduleKey, compact = false, header }: {
     }
   }
 
-  // The open folder, and whether this user may rename it: admins any folder, the maker their own.
+  // The open folder: every user may rename it.
   const [editingFolder, setEditingFolder] = useState<DocFolder | null>(null);
   const openFolder = (list.data?.folders ?? []).find((f) => f.id === folder) ?? null;
-  const owner = folderOwners.data?.find((f) => f.id === folder);
-  const canEditFolder = Boolean(openFolder && (docsPerm.edit || (owner?.is_custom && owner.created_by === me)));
+  const canEditFolder = Boolean(openFolder);
 
   const categories = Array.from(new Set([...(list.data?.categories ?? []), ...DOC_CATEGORIES]));
   const rows = list.data?.rows ?? [];
