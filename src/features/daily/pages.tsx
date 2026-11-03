@@ -14,7 +14,7 @@ import { errorMessage } from '@/lib/errors';
 import { printDayReview } from '@/features/daily/print';
 import { downloadReviewDay, HEAD_REMARKS } from '@/features/daily/reviewExcel';
 import { DEPARTMENT_HEADS } from '@/features/daily/heads';
-import { fmtDate, fmtDateTime, fmtNumber, safeNum, todayIST, yesterdayIST } from '@/lib/format';
+import { fmtDate, fmtDateTime, fmtNumber, safeNum, todayIST } from '@/lib/format';
 import type { BadgeTone } from '@/lib/types';
 import { useAccess, useCan } from '@/auth/AccessProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -220,7 +220,6 @@ function useDailyMonth(month: string) {
 export function DailyReportsPage() {
   const can = useCan('daily.reports');
   const qc = useQueryClient();
-  // Reports are filed here, so this opens on today; the review pages open on yesterday.
   const [date, setDate] = useState(todayIST());
   const review = useDailyReview(date);
   const [editing, setEditing] = useState<{ departmentId: string; name: string; report: DeptReport | null } | null>(null);
@@ -579,7 +578,7 @@ function ReportEditor({
 export function ReviewSummaryPage() {
   const can = useCan('daily.summary');
   const { setting } = useAccess();
-  const [date, setDate] = useState(yesterdayIST());
+  const [date, setDate] = useState(todayIST());
   // The other day's column appears only once a "Compare with" date is chosen.
   const [compare, setCompare] = useState('');
   const comparing = Boolean(compare);
@@ -796,7 +795,7 @@ export function ManagementReviewPage() {
   const qc = useQueryClient();
   const { access } = useAccess();
   const departments = useDepartments();
-  const [date, setDate] = useState(yesterdayIST());
+  const [date, setDate] = useState(todayIST());
   const review = useDailyReview(date);
   const [remarkFor, setRemarkFor] = useState<{ report: DeptReport; department: string } | null>(null);
   const [headlineOpen, setHeadlineOpen] = useState(false);
