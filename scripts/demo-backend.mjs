@@ -468,6 +468,12 @@ const READ_SQL = {
                   from public.proc_receipts r where r.deleted_at is null order by r.receipt_date desc, r.created_at desc`,
   proc_receipt_lines: `select * from public.proc_receipt_lines`,
   proc_stock_moves: `select * from public.proc_stock_moves order by move_date desc, created_at desc`,
+  // Accounts
+  acc_accounts: `select * from public.acc_accounts where deleted_at is null order by is_active desc, name`,
+  acc_invoices: `select i.*, coalesce((select json_agg(l order by l.sort_order) from public.acc_invoice_lines l where l.invoice_id = i.id), '[]') as lines
+                 from public.acc_invoices i where i.deleted_at is null order by i.invoice_date desc, i.created_at desc`,
+  acc_invoice_lines: `select * from public.acc_invoice_lines order by sort_order`,
+  acc_transactions: `select * from public.acc_transactions where deleted_at is null order by txn_date desc, created_at desc`,
   // Phase 3 — projects
   projects: `select * from public.projects where deleted_at is null order by capacity_kwp desc`,
   project_tasks: `select * from public.project_tasks where deleted_at is null order by sort_order`,

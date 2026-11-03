@@ -2657,7 +2657,7 @@ console.log('\nTeam Performance from the technicians\' Google Form');
 console.log('\nToday in the company (dashboard)');
 await expectValue('the Super Admin sees one card per section', OWNER,
   `select string_agg(x->>'key', ',' order by x->>'key') from jsonb_array_elements(public.get_company_today()->'sections') x`,
-  'approvals,departments,hr,om,procurement,projects,tenders');
+  'accounts,approvals,departments,hr,om,procurement,projects,tenders');
 await expectValue('each card has a traffic light and a headline', OWNER,
   `select bool_and(x->>'status' in ('good','ok','bad') and length(x->>'headline') > 0)
    from jsonb_array_elements(public.get_company_today()->'sections') x`, true);
@@ -2800,6 +2800,18 @@ console.log('\nLocal conveyance, Jaipur site, custom folders');
   const f2 = (await as(OWNER, `select public.create_document_folder('site photos') v`)).rows[0].v;
   f2.id === f1.id && f2.existing ? ok('the same name gives the same folder') : bad('folder dup', JSON.stringify(f2));
   await expectError('a folder needs a real name', RAHUL, `select public.create_document_folder('x')`, '2 to 80');
+
+  const ppa = await id(`select id from public.document_folders where code = 'PPA'`);
+  await expectOk('the maker renames their own folder', RAHUL, `select public.update_document_folder($1, ' site  pics ', 'Site pictures')`, [f1.id]);
+  await expectValue('saved with a capital short name', RAHUL, `select code || ' / ' || name from public.document_folders where id = $1`, 'SITE PICS / Site pictures', [f1.id]);
+  await expectOk('anyone else renames it too', SALES, `select public.update_document_folder($1, 'SITE PICS', 'Site pictures')`, [f1.id]);
+  await expectOk('and a built-in folder', RAHUL, `select public.update_document_folder($1, 'PPA', 'Power Purchase Agreement')`, [ppa]);
+  await expectError('a deactivated user cannot rename a folder', TECH, `select public.update_document_folder($1, 'PPA', 'Power Purchase Agreements')`, 'cannot edit', [ppa]);
+  await expectOk('Admin renames any folder', ADMIN, `select public.update_document_folder($1, 'PPA', 'Power Purchase Agreements')`, [ppa]);
+  await expectError('two folders cannot share a short name', ADMIN, `select public.update_document_folder($1, 'PPA', 'Other')`, 'already has the short name', [f1.id]);
+  await expectError('nor a full name', ADMIN, `select public.update_document_folder($1, 'OTHER', 'power purchase agreements')`, 'already called', [f1.id]);
+  await expectError('a folder needs a real short name', ADMIN, `select public.update_document_folder($1, 'x', 'Site pictures')`, '2 to 30', [f1.id]);
+  await expectError('the folder table cannot be edited directly', ADMIN, `update public.document_folders set name = 'x' where id = $1`, 'permission denied', [ppa]);
 }
 
 console.log('\nInsurance renewal alerts');
@@ -3036,6 +3048,83 @@ console.log('\nDocuments by site');
   forBassi.some((r) => r.id === a.id && r.site === 'Bassi') && !forBassi.some((r) => r.id === b.id) ? ok('the site dropdown finds it, and only that site') : bad('site filter', String(forBassi.length));
   (await rows(RAHUL, null)).some((r) => r.id === a.id)
     ? ok('and nobody loses sight of it') : bad('hidden', 'rahul cannot see it');
+}
+
+console.log('\nAccounts');
+{
+  const one = async (uid, sql, params) => (await as(uid, sql, params)).rows[0]?.v;
+  const ACC = await createAuthUser('accounts@diwakarsolar.test', 'Accountant One');
+  await expectOk('create an Accountant', OWNER, `select public.admin_save_user($1, $2, true)`,
+    [ACC, JSON.stringify({ full_name: 'Accountant One', role_ids: [role.accountant] })]);
+  await signIn(ACC);
+  await expectValue('Accounts is its own section with five pages', OWNER,
+    `select count(*)::int from public.modules m join public.module_groups g on g.id = m.group_id where g.key = 'accounts' and m.show_in_nav`, 5);
+  await expectValue('the Accountant may work every Accounts page', ACC,
+    `select bool_and(public.has_permission(k, 'view')) and public.has_permission('acc.transactions', 'delete')
+       from unnest(array['acc.overview','acc.transactions','acc.invoices','acc.bills','acc.banks']) k`, true);
+  await expectError('a sales user cannot open Accounts', SALES, `select public.acc_overview()`, 'accounts overview');
+  await expectRows('nor read the books', SALES, `select 1 from public.acc_transactions`, 0);
+
+  // bank & cash
+  const cash = await one(ACC, `select id v from public.acc_accounts where name = 'Cash in hand'`);
+  cash ? ok('a Cash in hand account is there to start with') : bad('cash account', 'missing');
+  const bank = await one(ACC, `insert into public.acc_accounts (name, kind, bank_name, account_no, opening_balance) values ('HDFC Current', 'bank', 'HDFC Bank', '50200012345678', 100000) returning id v`);
+  await expectError('two accounts cannot share a name', ACC, `insert into public.acc_accounts (name) values ('hdfc current')`, 'duplicate');
+
+  // income, expense, transfer
+  await expectOk('income is recorded', ACC, `insert into public.acc_transactions (kind, account_id, amount, gst_amount, category, party, mode, reference)
+                                              values ('income', $1, 50000, 7627.12, 'O&M service', 'Jaipur Discom', 'bank_transfer', 'UTR123') returning id`, [bank]);
+  await expectOk('an expense is recorded', ACC, `insert into public.acc_transactions (kind, account_id, amount, category, party, mode)
+                                               values ('expense', $1, 2000, 'Fuel', 'HP Petrol Pump', 'cash')`, [cash]);
+  await expectOk('money moves between accounts', ACC, `insert into public.acc_transactions (kind, account_id, to_account_id, amount, mode)
+                                                     values ('transfer', $1, $2, 10000, 'cash')`, [bank, cash]);
+  await expectError('a transfer needs a second account', ACC, `insert into public.acc_transactions (kind, account_id, amount) values ('transfer', $1, 5)`, 'check constraint', [bank]);
+  await expectError('an amount must be above zero', ACC, `insert into public.acc_transactions (kind, account_id, amount) values ('income', $1, 0)`, 'check constraint', [bank]);
+  const bal = await one(ACC, 'select public.acc_balances() v');
+  const b1 = bal.find((x) => x.account_id === bank);
+  const c1 = bal.find((x) => x.account_id === cash);
+  Number(b1?.balance) === 140000 && Number(c1?.balance) === 8000
+    ? ok('balances: opening + money in - money out, transfers on both sides') : bad('balances', JSON.stringify(bal));
+  await expectError('an account money moved through is not deleted', ACC, `select public.soft_delete_record('acc_accounts', $1)`, 'inactive', [bank]);
+
+  // invoices and receipts
+  const inv = await one(ACC, `insert into public.acc_invoices (customer_name, customer_gstin, due_date, invoice_date)
+                              values ('Sunrise Textiles', '08ABCDE1234F1Z5', current_date - 5, current_date - 35) returning id v`);
+  await expectValue('invoices get a number', ACC, `select invoice_no like 'INV-%' from public.acc_invoices where id = $1`, true, [inv]);
+  await expectOk('an invoice has lines with GST', ACC, `insert into public.acc_invoice_lines (invoice_id, description, qty, rate, gst_rate)
+                                                      values ($1, 'Rooftop solar O&M, quarter 2', 1, 100000, 18)`, [inv]);
+  await expectOk('part of it is received', ACC, `insert into public.acc_transactions (kind, account_id, amount, invoice_id, party)
+                                                values ('income', $1, 50000, $2, 'Sunrise Textiles')`, [bank, inv]);
+  await expectError('more than is due cannot be received', ACC, `insert into public.acc_transactions (kind, account_id, amount, invoice_id)
+                                                                 values ('income', $1, 70000, $2)`, 'is due', [bank, inv]);
+  await expectError('an invoice with payments is not deleted', ACC, `select public.soft_delete_record('acc_invoices', $1)`, 'remove them first', [inv]);
+  const ov = await one(ACC, 'select public.acc_overview() v');
+  Number(ov.receivable) === 68000 && ov.overdue_count === 1 && ov.overdue_invoices[0]?.id === inv && Number(ov.month_income) === 100000
+    ? ok('the overview shows what is to receive, the overdue invoice and this month\'s income')
+    : bad('overview', JSON.stringify(ov).slice(0, 400));
+
+  // vendor bills and payments
+  const bill = await one(OWNER, `insert into public.vendor_bills (project_id, vendor_id, bill_no, amount, deductions)
+                                 values ($1, $2, 'ACC-1', 30000, 1000) returning id v`, [PRJ, VEND]);
+  await expectError('a bill is not paid before its accounts approval', ACC, `insert into public.acc_transactions (kind, account_id, amount, bill_id)
+                                                                            values ('expense', $1, 1000, $2)`, 'accounts approval', [bank, bill]);
+  await asSystem(`update public.vendor_bills set status = 'accounts_approved' where id = $1`, [bill]);
+  const p1 = await one(ACC, `insert into public.acc_transactions (kind, account_id, amount, bill_id, reference) values ('expense', $1, 20000, $2, 'UTR-A') returning id v`, [bank, bill]);
+  await expectValue('a part payment leaves the bill approved', ACC, `select status::text from public.vendor_bills where id = $1`, 'accounts_approved', [bill]);
+  await expectError('more than the bill cannot be paid', ACC, `insert into public.acc_transactions (kind, account_id, amount, bill_id) values ('expense', $1, 9001, $2)`, 'still to pay', [bank, bill]);
+  await expectOk('the rest is paid', ACC, `insert into public.acc_transactions (kind, account_id, amount, bill_id, reference) values ('expense', $1, 9000, $2, 'UTR-B')`, [bank, bill]);
+  await expectValue('paid in full, the bill is marked paid with the payment reference', ACC,
+    `select status::text || ' / ' || utr_no from public.vendor_bills where id = $1`, 'paid / UTR-B', [bill]);
+  await expectOk('a payment is removed', ACC, `select public.soft_delete_record('acc_transactions', $1)`, [p1]);
+  await expectValue('and the bill is back to approved', ACC, `select status::text from public.vendor_bills where id = $1`, 'accounts_approved', [bill]);
+
+  // dashboard
+  const card = (await as(ACC, 'select public.get_company_today() v')).rows[0].v.sections.find((x) => x.key === 'accounts');
+  card && card.route === '/accounts' && card.headline === '1 overdue invoice(s)' && card.status === 'bad' && card.facts.length === 4
+    && /To receive ₹68,000/.test(card.facts[1])
+    ? ok('the dashboard shows an Accounts card: overdue invoices, month, to receive, to pay, balance') : bad('accounts card', JSON.stringify(card));
+  const salesKeys = (await as(SALES, 'select public.get_company_today() v')).rows[0].v.sections.map((x) => x.key);
+  !salesKeys.includes('accounts') ? ok('the Accounts card is shown only to who can open Accounts') : bad('accounts visible', salesKeys.join(','));
 }
 
 console.log('\nStorage (avatars)');

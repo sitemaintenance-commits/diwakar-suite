@@ -51,6 +51,11 @@ import {
   Warehouse,
   Wrench,
   Zap,
+  ArrowLeftRight,
+  HandCoins,
+  Landmark,
+  ReceiptText,
+  Wallet,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -97,6 +102,11 @@ export const ICONS: Record<string, LucideIcon> = {
   Warehouse,
   Wrench,
   Zap,
+  ArrowLeftRight,
+  HandCoins,
+  Landmark,
+  ReceiptText,
+  Wallet,
 };
 
 export function iconFor(name: string | null | undefined): LucideIcon {
@@ -126,6 +136,11 @@ export const BUILT_MODULES = new Set<string>([
   'proc.orders',
   'proc.receipts',
   'proc.inventory',
+  'acc.overview',
+  'acc.transactions',
+  'acc.invoices',
+  'acc.bills',
+  'acc.banks',
   'om.daily_entry',
   'sites.overview',
   'om.sites',
