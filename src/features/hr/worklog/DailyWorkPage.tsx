@@ -99,6 +99,8 @@ export function DailyWorkPage() {
   const ratio = filled.length ? (counts.completed + 0.5 * counts.in_progress) / filled.length : 0;
   const submitted = data?.log?.status === 'submitted';
   const locked = submitted && !can.approve;
+  // Only once the database can complete a task later (it then reports how many days back).
+  const canComplete = data?.complete_days !== undefined;
 
   const [completing, setCompleting] = useState<string | null>(null);
   async function complete(taskId: string) {
@@ -249,7 +251,7 @@ export function DailyWorkPage() {
                   {r.status === 'completed' && r.completedOn && (
                     <span className="text-xs text-muted-foreground">on {fmtDate(r.completedOn)}</span>
                   )}
-                  {r.status !== 'completed' && r.id && (
+                  {canComplete && r.status !== 'completed' && r.id && (
                     <Button size="sm" variant="outline" disabled={completing !== null} onClick={() => void complete(r.id!)}>
                       {completing === r.id ? <Loader2 className="animate-spin" /> : <Check />} Mark completed
                     </Button>
@@ -296,7 +298,7 @@ export function DailyWorkPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">
               {submitted
-                ? `Submitted ${data.log?.submitted_at ? fmtDate(data.log.submitted_at) : ''}${locked ? ' · finish a task with Mark completed; ask HR to reopen the sheet for other changes' : ''}`
+                ? `Submitted ${data.log?.submitted_at ? fmtDate(data.log.submitted_at) : ''}${!locked ? '' : canComplete ? ' · finish a task with Mark completed; ask HR to reopen the sheet for other changes' : ' · ask HR to reopen it to make changes'}`
                 : 'Submit once, at the end of the day.'}
             </p>
             <div className="flex gap-2">
