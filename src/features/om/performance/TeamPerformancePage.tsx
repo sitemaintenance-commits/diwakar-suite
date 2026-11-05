@@ -7,11 +7,11 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Award, CalendarDays, ChevronLeft, ChevronRight, Download, Gauge, ListChecks, TrendingUp, UserCheck } from 'lucide-react';
+import { Award, CalendarDays, ChevronLeft, ChevronRight, Download, Gauge, ImageDown, ListChecks, Loader2, TrendingUp, UserCheck } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
 import { fmtDate, fmtNumber, safeNum, todayIST } from '@/lib/format';
-import { exportXlsx } from '@/lib/export';
+import { exportXlsx, recordExport } from '@/lib/export';
 import { useCan } from '@/auth/AccessProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,7 +22,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { EmptyState, ErrorState, PageHeader, StatCard } from '@/components/common';
 import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { useSites } from '@/features/admin/api';
-import { useTeamPerformance, type TechScore } from '@/features/om/opsApi';
+import { useTeamPerformance, type TeamPerformance, type TechScore } from '@/features/om/opsApi';
+import { teamPerformanceImage } from '@/features/om/performance/snapshot';
 
 const BAND: Record<string, 'success' | 'warning' | 'destructive'> = {
   Good: 'success',
@@ -114,6 +115,46 @@ export function TeamPerformancePage() {
     }
   }
 
+  /** Yesterday's records (for the chosen site) as a picture laid out like the Excel sheet. */
+  const [snapping, setSnapping] = useState(false);
+  async function onSnapshot() {
+    setSnapping(true);
+    try {
+      const day = daysAgo(1);
+      const site = siteId && siteId !== 'all' ? siteId : null;
+      const { data, error } = await supabase.rpc('get_team_performance', { p_from: day, p_to: day, p_site_id: site });
+      if (error) throw error;
+      const records = ((data ?? {}) as Partial<TeamPerformance>).records ?? [];
+      if (!records.length) {
+        toast.info(`No technician records for ${fmtDate(day)} yet.`);
+        return;
+      }
+      const blob = await teamPerformanceImage(records, day);
+      await recordExport('om.performance', `Downloaded the ${day} team performance snapshot (${records.length} row(s))`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `team-performance-${day}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      // Also on the clipboard, ready to paste into WhatsApp or an email.
+      let copied = false;
+      try {
+        if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+          copied = true;
+        }
+      } catch { /* the download is enough */ }
+      toast.success(`Snapshot for ${fmtDate(day)} downloaded${copied ? ' and copied' : ''}.`);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setSnapping(false);
+    }
+  }
+
   const best = p?.ranking?.[0];
   const worst = p?.ranking?.length ? p.ranking[p.ranking.length - 1] : undefined;
 
@@ -125,10 +166,17 @@ export function TeamPerformancePage() {
         description="Each technician's day, scored out of 100 from the technicians' daily form (synced every 30 minutes)."
         actions={
           can.export ? (
-            <Button variant="outline" size="sm" onClick={onExport} disabled={!p?.records.length}>
-              <Download className="mr-2 h-4 w-4" />
-              Download Excel
-            </Button>
+            <>
+              <Button variant="outline" size="sm" onClick={onExport} disabled={!p?.records.length}>
+                <Download className="mr-2 h-4 w-4" />
+                Download Excel
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => void onSnapshot()} disabled={snapping}
+                title={`Download ${fmtDate(daysAgo(1))} as a picture`}>
+                {snapping ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ImageDown className="mr-2 h-4 w-4" />}
+                Yesterday's Snapshot
+              </Button>
+            </>
           ) : undefined
         }
       />
