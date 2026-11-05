@@ -1988,6 +1988,33 @@ console.log('\nPMS replacement: employee logins and the work history calendar');
                                   where e.id = $1 group by e.joining_date)
             and jsonb_array_length(h->'days') = current_date - (h->>'from')::date + 1
      from (select public.get_work_history(null, '2000-01-01', current_date) h) x`, true, [ketanId]);
+
+  // A pending task on a submitted sheet can be finished later.
+  const taskOf = async (emp, back) => (await asSystem(
+    `select t.id from public.work_log_tasks t join public.work_logs l on l.id = t.log_id
+      where l.employee_id = $1 and l.log_date = current_date - $2::int and l.deleted_at is null and t.status <> 'completed' order by t.seq limit 1`,
+    [emp, back])).rows[0]?.id;
+  const pend = (await as(EMPL, 'select public.get_my_work_log(current_date) r')).rows[0].r;
+  const patrol = pend.tasks.find((t) => t.description === 'Patrol round');
+  patrol?.id && pend.pending.some((t) => t.id === patrol.id)
+    ? ok('his submitted sheet lists the unfinished task as pending') : bad('pending list', JSON.stringify(pend.pending));
+  const done = (await as(EMPL, 'select public.complete_work_task($1) r', [patrol.id])).rows[0].r;
+  Number(done.score) === 100 && done.completed === 2
+    ? ok('he marks it completed on the locked sheet: the day score goes from 75 to 100') : bad('complete task', JSON.stringify(done));
+  await expectValue('the day it was finished is kept', EMPL,
+    `select status::text || ' ' || (completed_on = (now() at time zone 'Asia/Kolkata')::date)::text from public.work_log_tasks where id = $1`,
+    'completed true', [patrol.id]);
+  await expectValue('and the Performance Score reads the new count', OWNER,
+    `select completed from public.work_logs where employee_id = $1 and log_date = current_date`, 2, [ketanId]);
+  await expectError('a completed task is not completed twice', EMPL, 'select public.complete_work_task($1)', 'already completed', [patrol.id]);
+  const theirs = (await asSystem(`select t.id from public.work_log_tasks t join public.work_logs l on l.id = t.log_id
+                                   where l.employee_id = $1 and l.deleted_at is null limit 1`, [banwariId])).rows[0]?.id;
+  await expectError('nor a colleague\'s task', EMPL, 'select public.complete_work_task($1)', 'may not change', [theirs]);
+  const old = await taskOf(ketanId, 6);
+  await asSystem(`update public.app_settings set value = to_jsonb(5) where key = 'worklog_complete_days'`);
+  await expectError('a sheet older than the allowed days stays as it is', EMPL, 'select public.complete_work_task($1)', 'last 5 days', [old]);
+  await expectOk('HR can still complete it for him', OWNER, 'select public.complete_work_task($1)', [old]);
+  await asSystem(`update public.app_settings set value = to_jsonb(30) where key = 'worklog_complete_days'`);
 }
 
 console.log('\nNo duplicate employees, and technicians on their own plant');

@@ -22,11 +22,20 @@ export interface MyWorkLog {
     task_count: number;
     completed: number;
   } | null;
-  tasks: { seq: number; description: string; status: WorkTaskStatus }[];
+  tasks: { id: string; seq: number; description: string; status: WorkTaskStatus; completed_on: string | null }[];
   recent: { date: string; completed: number; task_count: number; status: string }[];
+  /** Unfinished tasks on earlier sheets that can no longer be edited, but can still be completed. */
+  pending: { id: string; date: string; seq: number; description: string; status: WorkTaskStatus }[];
+  complete_days: number;
 }
 
-const EMPTY_LOG: MyWorkLog = { date: '', employee: null, log: null, tasks: [], recent: [] };
+const EMPTY_LOG: MyWorkLog = { date: '', employee: null, log: null, tasks: [], recent: [], pending: [], complete_days: 30 };
+
+/** Mark a task of a locked sheet completed; the day's counts and score are worked out again. */
+export async function completeWorkTask(taskId: string) {
+  return rpc<{ log_id: string; date: string; task_count: number; completed: number; score: number }>(
+    'complete_work_task', { p_task_id: taskId }, { log_id: '', date: '', task_count: 0, completed: 0, score: 0 });
+}
 
 export function useMyWorkLog(date: string, employeeId?: string) {
   return useQuery({

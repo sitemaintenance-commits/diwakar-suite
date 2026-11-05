@@ -1,11 +1,13 @@
 // Daily Work — the "Daily Employee Working Sheet" that the PMS Google
 // Form collected: up to ten tasks, each with a status, plus a priority
 // and remarks. Filing it is what feeds the performance score, so the
-// page shows the day's score as it is typed.
+// page shows the day's score as it is typed. A task left unfinished on a
+// submitted sheet can still be marked completed later, which lifts that
+// day's score.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CalendarDays, CheckCircle2, ClipboardCheck, Download, Loader2, Plus, Save, Send, Trash2 } from 'lucide-react';
+import { CalendarDays, Check, CheckCircle2, ClipboardCheck, Download, Loader2, Plus, Save, Send, Trash2 } from 'lucide-react';
 import { Link } from 'react-router';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
@@ -21,7 +23,7 @@ import { Skeleton } from '@/components/ui/misc';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EmptyState, ErrorState, PageHeader, StatCard } from '@/components/common';
 import { FilterSelect } from '@/features/admin/users/UsersPage';
-import { useMyWorkLog, useWorkLogDay, type WorkTaskStatus } from '@/features/hr/worklog/api';
+import { completeWorkTask, useMyWorkLog, useWorkLogDay, type MyWorkLog, type WorkTaskStatus } from '@/features/hr/worklog/api';
 import { useEmployees } from '@/features/hr/api';
 
 const ME = '__me__';
@@ -37,8 +39,11 @@ const STATUS: Record<WorkTaskStatus, { label: string; tone: 'secondary' | 'info'
 const STATUS_OPTIONS = (Object.keys(STATUS) as WorkTaskStatus[]).map((k) => [k, STATUS[k].label] as [string, string]);
 
 interface Row {
+  /** Saved tasks only. */
+  id?: string;
   description: string;
   status: WorkTaskStatus;
+  completedOn?: string | null;
 }
 
 /** The ISO date n days before an ISO date. */
@@ -79,7 +84,7 @@ export function DailyWorkPage() {
     const key = `${filingFor}|${date}`;
     if (loadedFor.current === key) return;
     loadedFor.current = key;
-    const existing = data.tasks.map((t) => ({ description: t.description, status: t.status }));
+    const existing = data.tasks.map((t) => ({ id: t.id, description: t.description, status: t.status, completedOn: t.completed_on }));
     setRows(existing.length ? existing : [{ description: '', status: 'not_started' }]);
     setPriority(data.log?.priority ?? 'medium');
     setRemarks(data.log?.remarks ?? '');
@@ -94,6 +99,21 @@ export function DailyWorkPage() {
   const ratio = filled.length ? (counts.completed + 0.5 * counts.in_progress) / filled.length : 0;
   const submitted = data?.log?.status === 'submitted';
   const locked = submitted && !can.approve;
+
+  const [completing, setCompleting] = useState<string | null>(null);
+  async function complete(taskId: string) {
+    setCompleting(taskId);
+    try {
+      const r = await completeWorkTask(taskId);
+      loadedFor.current = '';
+      await Promise.all(['my-work-log', 'work-log-day', 'pms-scores', 'work-history'].map((k) => qc.invalidateQueries({ queryKey: [k] })));
+      toast.success(`Marked completed. The score for ${fmtDate(r.date)} is now ${fmtNumber(r.score)}%.`);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setCompleting(null);
+    }
+  }
 
   function setRow(i: number, patch: Partial<Row>) {
     setRows((p) => p.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -223,13 +243,27 @@ export function DailyWorkPage() {
                 disabled={locked}
                 className="flex-1"
               />
-              <div className="w-full sm:w-40">
-                <FilterSelect
-                  value={r.status}
-                  onChange={(v) => setRow(i, { status: v as WorkTaskStatus })}
-                  options={STATUS_OPTIONS}
-                />
-              </div>
+              {locked ? (
+                <div className="flex shrink-0 items-center gap-2">
+                  <Badge variant={STATUS[r.status].tone}>{STATUS[r.status].label}</Badge>
+                  {r.status === 'completed' && r.completedOn && (
+                    <span className="text-xs text-muted-foreground">on {fmtDate(r.completedOn)}</span>
+                  )}
+                  {r.status !== 'completed' && r.id && (
+                    <Button size="sm" variant="outline" disabled={completing !== null} onClick={() => void complete(r.id!)}>
+                      {completing === r.id ? <Loader2 className="animate-spin" /> : <Check />} Mark completed
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="w-full sm:w-40">
+                  <FilterSelect
+                    value={r.status}
+                    onChange={(v) => setRow(i, { status: v as WorkTaskStatus })}
+                    options={STATUS_OPTIONS}
+                  />
+                </div>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
@@ -262,7 +296,7 @@ export function DailyWorkPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">
               {submitted
-                ? `Submitted ${data.log?.submitted_at ? fmtDate(data.log.submitted_at) : ''}${locked ? ' · ask HR to reopen it to make changes' : ''}`
+                ? `Submitted ${data.log?.submitted_at ? fmtDate(data.log.submitted_at) : ''}${locked ? ' · finish a task with Mark completed; ask HR to reopen the sheet for other changes' : ''}`
                 : 'Submit once, at the end of the day.'}
             </p>
             <div className="flex gap-2">
@@ -278,6 +312,9 @@ export function DailyWorkPage() {
           </div>
         </CardContent>
       </Card>
+
+      <PendingTasks pending={data.pending ?? []} days={data.complete_days ?? 30} completing={completing}
+        onComplete={(id) => void complete(id)} onOpen={setDate} />
 
       {data.recent.length > 0 && (
         <Card className="mt-6">
@@ -305,6 +342,40 @@ export function DailyWorkPage() {
 
       {can.view && <DaySheets canExport={can.export} />}
     </>
+  );
+}
+
+// ------------------------------------------------- unfinished, earlier days
+function PendingTasks({ pending, days, completing, onComplete, onOpen }: {
+  pending: MyWorkLog['pending']; days: number; completing: string | null;
+  onComplete: (taskId: string) => void; onOpen: (date: string) => void;
+}) {
+  if (!pending.length) return null;
+  return (
+    <Card className="mt-6">
+      <CardHeader>
+        <CardTitle>Pending tasks</CardTitle>
+        <CardDescription>
+          Unfinished tasks on your submitted sheets of the last {fmtNumber(days)} days. Mark one completed when it is done: that day's score goes up.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-2">
+        {pending.map((t) => (
+          <div key={t.id} className="flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-center">
+            <button type="button" className="tabular w-24 shrink-0 text-left text-sm text-muted-foreground hover:underline" onClick={() => onOpen(t.date)}>
+              {fmtDate(t.date)}
+            </button>
+            <span className="min-w-0 flex-1 text-sm">{t.description}</span>
+            <div className="flex shrink-0 items-center gap-2">
+              <Badge variant={STATUS[t.status].tone}>{STATUS[t.status].label}</Badge>
+              <Button size="sm" variant="outline" disabled={completing !== null} onClick={() => onComplete(t.id)}>
+                {completing === t.id ? <Loader2 className="animate-spin" /> : <Check />} Mark completed
+              </Button>
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 
