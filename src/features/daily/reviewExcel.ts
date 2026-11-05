@@ -32,18 +32,18 @@ const HEADER_FILL = 'FFFFEEDD';
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const keyNumbers = (r: Report | null) => (r?.metrics ?? []).filter((m) => m.label)
+export const keyNumbers = (r: Report | null) => (r?.metrics ?? []).filter((m) => m.label)
   .map((m) => `${m.label}: ${m.value}${m.note ? ` — ${m.note}` : ''}`).join('\n');
 // Issues and tomorrow's plan are no longer asked for; older reports that have
 // them keep them under the day's remarks so nothing is lost.
-const keyRemarks = (r: Report | null) => [
+export const keyRemarks = (r: Report | null) => [
   r?.work_completed,
   r?.issues ? `Issues: ${r.issues}` : null,
   r?.next_day_plan ? `Plan for tomorrow: ${r.next_day_plan}` : null,
 ].filter(Boolean).join('\n\n');
-const remarksOf = (r: Report | null, action: string) =>
+export const remarksOf = (r: Report | null, action: string) =>
   (r?.reviews ?? []).filter((x) => x.action === action && x.comment).map((x) => x.comment).join('\n');
-const reportedBy = (name: string, r: Report | null) => DEPARTMENT_HEADS[name] ?? r?.reporter ?? '';
+export const reportedBy = (name: string, r: Report | null) => DEPARTMENT_HEADS[name] ?? r?.reporter ?? '';
 const noFormula = (s: string) => (/^[=+\-@\t\r]/.test(s) ? `'${s}` : s);
 
 /** "Daily Review CRM - Mon, 28 Sept 2026", as the old site wrote it. */

@@ -7,12 +7,13 @@ import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  CalendarDays, CheckCircle2, ClipboardCheck, ClipboardList, Download, Loader2, MessageSquareText, Megaphone, Plus, Printer, Save, Send, TriangleAlert, Trash2,
+  CalendarDays, CheckCircle2, ClipboardCheck, ClipboardList, Download, ImageDown, Loader2, MessageSquareText, Megaphone, Plus, Printer, Save, Send, TriangleAlert, Trash2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
-import { printDayReview } from '@/features/daily/print';
+import { printDayReview, type PrintableReview } from '@/features/daily/print';
 import { downloadReviewDay, HEAD_REMARKS } from '@/features/daily/reviewExcel';
+import { snapshotReviewDay } from '@/features/daily/snapshot';
 import { DEPARTMENT_HEADS } from '@/features/daily/heads';
 import { fmtDate, fmtDateTime, fmtNumber, safeNum, todayIST } from '@/lib/format';
 import type { BadgeTone } from '@/lib/types';
@@ -214,6 +215,28 @@ function useDailyMonth(month: string) {
       return (data ?? []) as { date: string; reported: number; critical: number; needs_attention: number; issues: number }[];
     },
   });
+}
+
+/** The day shown, as a picture to share. */
+function SnapshotButton({ moduleKey, review, company }: { moduleKey: string; review: PrintableReview | undefined; company: string }) {
+  const [busy, setBusy] = useState(false);
+  async function onClick() {
+    if (!review) return;
+    setBusy(true);
+    try {
+      const copied = await snapshotReviewDay(moduleKey, review, company);
+      toast.success(`Snapshot for ${fmtDate(review.date)} downloaded${copied ? ' and copied' : ''}.`);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Button variant="outline" onClick={() => void onClick()} disabled={!review || busy} title={review ? `Download ${fmtDate(review.date)} as a picture` : undefined}>
+      {busy ? <Loader2 className="animate-spin" /> : <ImageDown />} Snapshot
+    </Button>
+  );
 }
 
 // ==================================================================== Daily reports
@@ -622,6 +645,9 @@ export function ReviewSummaryPage() {
                 <Download /> Download Excel
               </Button>
             )}
+            {can.export && (
+              <SnapshotButton moduleKey="daily.summary" review={review.data} company={setting('company_name', 'Diwakar Renewable & Infra Pvt. Ltd.')} />
+            )}
           </>
         }
       />
@@ -858,6 +884,10 @@ export function ManagementReviewPage() {
               <Button variant="outline" onClick={() => void onDownload()} disabled={!review.data}>
                 <Download /> Download Excel
               </Button>
+            )}
+            {(summary.export || reports.export) && (
+              <SnapshotButton moduleKey={summary.export ? 'daily.summary' : 'daily.reports'} review={review.data}
+                company={setting('company_name', 'Diwakar Renewable & Infra Pvt. Ltd.')} />
             )}
             <Button variant="outline" onClick={onPrint} disabled={!review.data}>
               <Printer /> Print / PDF

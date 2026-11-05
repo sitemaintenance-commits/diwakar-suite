@@ -24,6 +24,7 @@ import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { useSites } from '@/features/admin/api';
 import { useTeamPerformance, type TeamPerformance, type TechScore } from '@/features/om/opsApi';
 import { teamPerformanceImage } from '@/features/om/performance/snapshot';
+import { shareImage } from '@/lib/snapshot';
 
 const BAND: Record<string, 'success' | 'warning' | 'destructive'> = {
   Good: 'success',
@@ -131,22 +132,7 @@ export function TeamPerformancePage() {
       }
       const blob = await teamPerformanceImage(records, day);
       await recordExport('om.performance', `Downloaded the ${day} team performance snapshot (${records.length} row(s))`);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `team-performance-${day}.png`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      // Also on the clipboard, ready to paste into WhatsApp or an email.
-      let copied = false;
-      try {
-        if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
-          await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-          copied = true;
-        }
-      } catch { /* the download is enough */ }
+      const copied = await shareImage(blob, `team-performance-${day}.png`);
       toast.success(`Snapshot for ${fmtDate(day)} downloaded${copied ? ' and copied' : ''}.`);
     } catch (e) {
       toast.error(errorMessage(e));

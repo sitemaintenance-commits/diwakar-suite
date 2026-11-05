@@ -10,11 +10,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CheckCircle2, ClipboardList, FileSpreadsheet, Loader2, Plus, RefreshCw, Save, Sun, Trash2, TriangleAlert, Zap } from 'lucide-react';
+import { CheckCircle2, ClipboardList, FileSpreadsheet, ImageDown, Loader2, Plus, RefreshCw, Save, Sun, Trash2, TriangleAlert, Zap } from 'lucide-react';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { errorMessage } from '@/lib/errors';
-import { fmtCapacity, fmtDate, fmtNumber, fmtRelative, safeNum, todayIST } from '@/lib/format';
+import { fmtCapacity, fmtDate, fmtNumber, fmtRelative, safeNum, todayIST, yesterdayIST } from '@/lib/format';
+import { recordExport } from '@/lib/export';
+import { shareImage, tableImage, type SnapColumn } from '@/lib/snapshot';
 import { useAccess, useCan } from '@/auth/AccessProvider';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -58,6 +60,24 @@ interface FieldEntryData {
   failure_reasons?: { side: 'gss' | 'plant'; label: string }[];
   recent: { date: string; site: string; generation_kwh: number | string; source: string }[];
 }
+
+/** What was filled for each site on one day, as a picture laid out like the Excel sheets. */
+const SNAP_COLS: SnapColumn<EntrySite>[] = [
+  { header: 'Site', width: 150, value: (s) => s.name },
+  { header: 'Capacity', width: 90, align: 'right', value: (s) => fmtCapacity(s.capacity_dc_kwp) },
+  { header: 'Generation (kWh)', width: 110, align: 'right', value: (s) => (s.entry ? fmtNumber(safeNum(s.entry.generation_kwh)) : 'Not filled') },
+  { header: 'Insolation (kWh/m²)', width: 100, align: 'right', value: (s) => (s.entry?.irradiation != null ? String(safeNum(s.entry.irradiation)) : '') },
+  { header: 'Inverters filled', width: 84, align: 'right', value: (s) => (s.entry?.readings?.length ? `${s.entry.readings.filter((r) => safeNum(r.kwh) > 0).length}/${s.inverter_count}` : '') },
+  { header: 'Weather', width: 110, value: (s) => s.entry?.weather ?? '' },
+  { header: 'Grid / plant failure', width: 250, value: (s) => {
+    const e = s.entry;
+    if (!e) return '';
+    if (!e.had_failure) return 'No';
+    const hrs = safeNum(e.grid_outage_hrs) + safeNum(e.plant_outage_hrs);
+    return [e.failure_side ? SIDE_LABEL[e.failure_side] : 'Failure', e.failure_reason, hrs ? `${fmtNumber(hrs, 2)} h down` : null].filter(Boolean).join(' · ');
+  } },
+  { header: 'Remarks', width: 260, value: (s) => (s.entry?.remarks ?? '').trim() },
+];
 
 function useFieldEntry(date: string) {
   return useQuery({
@@ -232,12 +252,51 @@ export function DailyEntryPage() {
 
   const firstName = access?.profile?.full_name?.split(' ')[0] ?? '';
 
+  /** Yesterday's readings for every site you see, as a picture to share. */
+  const [snapping, setSnapping] = useState(false);
+  async function onSnapshot() {
+    setSnapping(true);
+    try {
+      const day = yesterdayIST();
+      const { data: res, error } = await supabase.rpc('get_field_entry', { p_date: day });
+      if (error) throw error;
+      const sites = [...(((res ?? {}) as Partial<FieldEntryData>).sites ?? [])]
+        .sort((a, b) => Number(!a.entry) - Number(!b.entry) || a.name.localeCompare(b.name));
+      if (!sites.length) {
+        toast.info('No sites to show.');
+        return;
+      }
+      const filled = sites.filter((s) => s.entry);
+      const total = filled.reduce((n, s) => n + safeNum(s.entry!.generation_kwh), 0);
+      const blob = await tableImage({
+        title: 'SOLAR PLANT DAILY GENERATION REPORT',
+        subtitle: `${fmtDate(day)} · ${filled.length} of ${sites.length} sites filled · ${fmtNumber(total)} kWh in all`,
+        columns: SNAP_COLS,
+        rows: sites,
+      });
+      await recordExport('om.daily_entry', `Downloaded the ${day} daily generation snapshot (${filled.length} of ${sites.length} sites filled)`);
+      const copied = await shareImage(blob, `daily-generation-${day}.png`);
+      toast.success(`Snapshot for ${fmtDate(day)} downloaded${copied ? ' and copied' : ''}.`);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setSnapping(false);
+    }
+  }
+
   return (
     <>
       <PageHeader
         icon={ClipboardList}
         title="Daily Entry"
         description={`Fill in today's readings for your site${firstName ? `, ${firstName}` : ''}. The O&M head sees them straight away.`}
+        actions={can.export ? (
+          <Button variant="outline" size="sm" onClick={() => void onSnapshot()} disabled={snapping}
+            title={`Download ${fmtDate(yesterdayIST())} as a picture`}>
+            {snapping ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ImageDown className="mr-2 h-4 w-4" />}
+            Yesterday's Snapshot
+          </Button>
+        ) : undefined}
       />
 
       {(can.create || can.edit) && (
