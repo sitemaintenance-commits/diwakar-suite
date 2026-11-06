@@ -9,6 +9,9 @@ import { AuthProvider } from '@/auth/AuthProvider';
 import { AccessProvider } from '@/auth/AccessProvider';
 import { SetupRequiredPage } from '@/pages/StatusPages';
 import { router } from '@/app/router';
+import { startFestive } from '@/lib/fireworks';
+
+startFestive();
 
 const queryClient = new QueryClient({
   defaultOptions: {
