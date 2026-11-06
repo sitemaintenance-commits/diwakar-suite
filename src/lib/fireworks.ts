@@ -1,9 +1,10 @@
 // Diwali fireworks, 6 to 8 November 2026: a show when the site is first
-// opened in a session, and a burst from the main (orange) buttons when they
-// are clicked -- Save, Submit, Approve, Sign in and the like, never Delete,
-// Reject or Cancel. One canvas over the page that ignores the mouse; it
-// draws only while sparks are in the air. Off for anyone who has asked
-// their device for reduced motion.
+// opened in a session, and a rocket that rises from the button clicked and
+// bursts out on the screen -- every sidebar section and link, and the main
+// (orange) buttons: Save, Submit, Approve, Sign in and the like, never
+// Delete, Reject or Cancel. One canvas over the page that ignores the
+// mouse; it draws only while something is in the air. Off for anyone who
+// has asked their device for reduced motion.
 import { todayIST } from '@/lib/format';
 
 const FROM = '2026-11-06';
@@ -13,11 +14,13 @@ const SKIP = /\b(delete|reject|remove|cancel|discard|sign out|log out|deactivate
 
 interface Spark { x: number; y: number; px: number; py: number; vx: number; vy: number; life: number; max: number; color: string; size: number }
 interface Flash { x: number; y: number; r: number; life: number; max: number }
+interface Rocket { x0: number; y0: number; tx: number; ty: number; bend: number; t: number; steps: number; x: number; y: number }
 
 let canvas: HTMLCanvasElement | null = null;
 let ctx: CanvasRenderingContext2D | null = null;
 const sparks: Spark[] = [];
 const flashes: Flash[] = [];
+const rockets: Rocket[] = [];
 let running = false;
 
 function setup() {
@@ -55,6 +58,33 @@ function frame() {
     if (f.life >= f.max) flashes.splice(i, 1);
   }
 
+  for (let i = rockets.length - 1; i >= 0; i -= 1) {
+    const r = rockets[i];
+    r.t += 1 / r.steps;
+    // Fast off the button, slowing as it climbs, on a slight curve.
+    const e = 1 - (1 - Math.min(r.t, 1)) ** 2;
+    const nx = r.x0 + (r.tx - r.x0) * e + Math.sin(Math.PI * e) * r.bend;
+    const ny = r.y0 + (r.ty - r.y0) * e;
+    for (let k = 0; k < 3; k += 1) {
+      sparks.push({ x: nx, y: ny, px: nx, py: ny, vx: (Math.random() - 0.5) * 0.8, vy: Math.random() * 0.8,
+        life: 0, max: 14 + Math.random() * 12, color: Math.random() < 0.7 ? '#ffb347' : '#fff3b0', size: 0.9 + Math.random() * 0.9 });
+    }
+    r.x = nx;
+    r.y = ny;
+    const g = ctx.createRadialGradient(nx, ny, 0, nx, ny, 9);
+    g.addColorStop(0, 'rgba(255,250,210,1)');
+    g.addColorStop(0.5, 'rgba(255,160,40,0.7)');
+    g.addColorStop(1, 'rgba(255,120,30,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(nx, ny, 9, 0, Math.PI * 2);
+    ctx.fill();
+    if (r.t >= 1) {
+      rockets.splice(i, 1);
+      burst(r.tx, r.ty, 85, 1.35);
+    }
+  }
+
   for (let i = sparks.length - 1; i >= 0; i -= 1) {
     const s = sparks[i];
     s.px = s.x;
@@ -82,7 +112,7 @@ function frame() {
   }
   ctx.globalAlpha = 1;
 
-  if (sparks.length || flashes.length) requestAnimationFrame(frame);
+  if (sparks.length || flashes.length || rockets.length) requestAnimationFrame(frame);
   else {
     running = false;
     ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
@@ -108,10 +138,34 @@ export function burst(x: number, y: number, count = 70, power = 1) {
       size: 1.2 + Math.random() * 1.6,
     });
   }
+  run();
+}
+
+function run() {
   if (!running) {
     running = true;
     requestAnimationFrame(frame);
   }
+}
+
+/** A rocket from a point (a button) up to somewhere on the screen, where it bursts. */
+export function launch(x: number, y: number) {
+  setup();
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  // Somewhere around the middle of the screen, a little different each time.
+  const tx = w * (0.22 + Math.random() * 0.56);
+  const ty = h * (0.16 + Math.random() * 0.38);
+  const dist = Math.hypot(tx - x, ty - y);
+  rockets.push({ x0: x, y0: y, tx, ty, bend: (Math.random() - 0.5) * 80, t: 0, steps: Math.round(30 + Math.min(dist, 900) / 30), x, y });
+  // A puff where it leaves the button.
+  flashes.push({ x, y, r: 16, life: 0, max: 10 });
+  for (let i = 0; i < 12; i += 1) {
+    const a = Math.random() * Math.PI * 2;
+    sparks.push({ x, y, px: x, py: y, vx: Math.cos(a) * 1.6, vy: Math.sin(a) * 1.6, life: 0, max: 16 + Math.random() * 10,
+      color: COLORS[Math.floor(Math.random() * COLORS.length)], size: 1 + Math.random() });
+  }
+  run();
 }
 
 /** A short show across the screen. */
@@ -143,13 +197,14 @@ export function startFestive() {
   }
 
   document.addEventListener('click', (e) => {
-    const button = (e.target as Element | null)?.closest?.('button');
-    if (!button || button.disabled || !button.classList.contains('bg-primary')) return;
-    if (SKIP.test(button.textContent ?? '') || SKIP.test(button.getAttribute('aria-label') ?? '')) return;
-    const r = button.getBoundingClientRect();
+    const target = e.target as Element | null;
+    // Every section and link in the sidebar; elsewhere the main (orange) buttons.
+    const el = target?.closest?.('nav[aria-label="Main"] a, nav[aria-label="Main"] button')
+      ?? target?.closest?.('button.bg-primary');
+    if (!el || (el as HTMLButtonElement).disabled) return;
+    if (SKIP.test(el.textContent ?? '') || SKIP.test(el.getAttribute('aria-label') ?? '')) return;
+    const r = el.getBoundingClientRect();
     // From the pointer; from the button's middle when it was pressed with the keyboard.
-    const x = e.clientX || r.left + r.width / 2;
-    const y = e.clientY || r.top + r.height / 2;
-    burst(x, y, 55, 1);
+    launch(e.clientX || r.left + r.width / 2, e.clientY || r.top + r.height / 2);
   }, true);
 }
