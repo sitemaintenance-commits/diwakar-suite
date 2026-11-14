@@ -179,7 +179,6 @@ export function SiteUpdateForm({ projectId }: { projectId?: string }) {
 
   async function save() {
     if (!project) return toast.error('Choose the site.');
-    if (materialsReceived === '') return toast.error('Say whether materials were received today.');
     setBusy(true);
     try {
       const { data: id, error } = await supabase.rpc('save_project_update', {
@@ -243,7 +242,7 @@ export function SiteUpdateForm({ projectId }: { projectId?: string }) {
 
         <Section n="1" title="Materials received today">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-            <Field label="Received?" required>
+            <Field label="Received?">
               <FilterSelect value={materialsReceived} onChange={setMaterialsReceived} options={YES_NO} />
             </Field>
             {materialsReceived === 'yes' && (

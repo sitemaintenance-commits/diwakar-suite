@@ -59,11 +59,13 @@ export function ProjectsPage() {
   const d = dash.data;
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
+    // Projects still being built (design to testing) first, then commissioned and later.
+    const built = (p: { stage: Project['stage'] }) => STAGES.indexOf(p.stage) >= STAGES.indexOf('commissioning');
     return (d?.projects ?? []).filter(
       (p) =>
         (stage === 'all' || p.stage === stage) &&
         (!q || `${p.name} ${p.client ?? ''} ${p.code}`.toLowerCase().includes(q)),
-    );
+    ).sort((a, b) => Number(built(a)) - Number(built(b)));
   }, [d, search, stage]);
 
 
