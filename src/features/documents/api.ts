@@ -146,7 +146,7 @@ export async function uploadSectionDocument(opts: {
   const path = `${opts.moduleKey}/section/${crypto.randomUUID()}-${safeName}`;
   const up = await supabase.storage.from('documents').upload(path, opts.file, { contentType: opts.file.type || undefined });
   if (up.error) throw up.error;
-  const { error } = await supabase.from('documents').insert({
+  const { data, error } = await supabase.from('documents').insert({
     module_key: opts.moduleKey,
     entity_type: 'section',
     entity_id: null,
@@ -160,11 +160,30 @@ export async function uploadSectionDocument(opts: {
     storage_path: path,
     mime_type: opts.file.type || null,
     size_bytes: opts.file.size,
-  });
+  }).select('id').single();
   if (error) {
     await supabase.storage.from('documents').remove([path]); // keep storage and table in step
     throw error;
   }
+  return data.id as string;
+}
+
+/**
+ * An insurance policy renewed: the new document goes in beside the old one
+ * with the same folder, site, type and notes, and the old one is marked
+ * replaced (kept as history, no expiry, no more renewal alerts).
+ */
+export async function renewDocument(old: LibraryDoc, file: File, details: Record<string, string>) {
+  const id = await uploadSectionDocument({
+    moduleKey: old.module_key, file, category: old.category, notes: old.notes,
+    validUntil: details.end_date || null, siteId: old.site_id, folderId: old.folder_id, details,
+  });
+  const { error } = await supabase.from('documents').update({
+    valid_until: null,
+    details: { ...(old.details ?? {}), renewed_by: id, renewed_on: new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) },
+  }).eq('id', old.id);
+  if (error) throw new Error(`The renewal was uploaded, but the old policy could not be marked replaced: ${error.message}`);
+  return id;
 }
 
 export async function updateDocument(id: string, patch: { category: string | null; notes: string | null; valid_until: string | null; folder_id?: string | null; details?: Record<string, string> }) {

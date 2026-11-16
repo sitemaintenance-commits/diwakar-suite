@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  AlertTriangle, Download, Eye, FileArchive, FileImage, FileSpreadsheet, FileText, Folder, FolderOpen, Loader2, Mail, Paperclip, Pencil, Trash2, Upload, X,
+  AlertTriangle, Download, Eye, RefreshCw, FileArchive, FileImage, FileSpreadsheet, FileText, Folder, FolderOpen, Loader2, Mail, Paperclip, Pencil, Trash2, Upload, X,
 } from 'lucide-react';
 import { errorMessage } from '@/lib/errors';
 import { exportXlsx } from '@/lib/export';
@@ -22,12 +22,12 @@ import { ConfirmDialog, EmptyState, ErrorState, Field, SearchInput, TableSkeleto
 import { FilterSelect } from '@/features/admin/users/UsersPage';
 import { useSites } from '@/features/admin/api';
 import {
-  BLOCKED_FILE, DOC_CATEGORIES, MAX_FILE_BYTES, canPreview, createDocumentFolder, docKeys, fetchDocuments, isWorkbook, openDocument, removeDocument, renameDocumentFolder,
+  BLOCKED_FILE, DOC_CATEGORIES, MAX_FILE_BYTES, canPreview, createDocumentFolder, docKeys, fetchDocuments, isWorkbook, openDocument, removeDocument, renameDocumentFolder, renewDocument,
   updateDocument, uploadSectionDocument, useDocumentList, type DocFolder, type LibraryDoc,
 } from '@/features/documents/api';
 import { SendDocumentDialog } from '@/features/documents/SendDocumentDialog';
 import { SpreadsheetPreview } from '@/features/documents/SpreadsheetPreview';
-import { InsuranceFields, InsuranceTable, insuranceStatus, isInsurance, type InsuranceDetails } from '@/features/documents/insurance';
+import { InsuranceFields, InsuranceTable, insuranceStatus, isInsurance, isReplaced, type InsuranceDetails } from '@/features/documents/insurance';
 
 const ALL = '__all__';
 const NONE = '__none__';
@@ -232,6 +232,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
   const [sending, setSending] = useState<LibraryDoc | null>(null);
   const [removing, setRemoving] = useState<LibraryDoc | null>(null);
   const [viewingBook, setViewingBook] = useState<LibraryDoc | null>(null);
+  const [renewing, setRenewing] = useState<LibraryDoc | null>(null);
 
   function view(d: LibraryDoc) {
     if (isWorkbook(d)) setViewingBook(d);
@@ -415,7 +416,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
           <InsuranceTable rows={rows}
             onOpen={view}
             onDownload={(d) => void openDocument(d, true).catch((e) => toast.error(errorMessage(e)))}
-            onSend={setSending} onEdit={setEditing} onDelete={setRemoving} />
+            onSend={setSending} onEdit={setEditing} onDelete={setRemoving} onRenew={setRenewing} />
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>{fmtNumber(rows.length)} of {fmtNumber(list.data?.total)} policies</span>
             {rows.length < (list.data?.total ?? 0) && (
@@ -436,7 +437,8 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
                       <p className="truncate text-sm font-medium">{d.file_name}</p>
                       {d.folder && <Badge variant="default"><Folder className="h-3 w-3" />{d.folder}</Badge>}
                       {d.category && <Badge variant="secondary">{d.category}</Badge>}
-                      {d.details?.end_date && (() => { const st = insuranceStatus(d.details.end_date); return st.days != null && st.days >= 0 ? <Badge variant={st.tone}>{st.days === 0 ? 'Ends today' : `${st.days} day${st.days === 1 ? '' : 's'} left`}</Badge> : null; })()}
+                      {isReplaced(d) && <Badge variant="secondary">Replaced by renewal</Badge>}
+                      {d.details?.end_date && !isReplaced(d) && (() => { const st = insuranceStatus(d.details.end_date); return st.days != null && st.days >= 0 ? <Badge variant={st.tone}>{st.days === 0 ? 'Ends today' : `${st.days} day${st.days === 1 ? '' : 's'} left`}</Badge> : null; })()}
                       {d.expiry === 'expired' && <Badge variant="destructive"><AlertTriangle className="mr-1 h-3 w-3" />Expired {fmtDate(d.valid_until)}</Badge>}
                       {d.expiry === 'expiring' && <Badge variant="warning">Expires {fmtDate(d.valid_until)}</Badge>}
                       {d.entity_type !== 'section' && <Badge variant="outline">Attached to a {d.entity_type}</Badge>}
@@ -465,6 +467,11 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
                     <Button variant="ghost" size="icon-sm" aria-label="Send by email" title="Send by email" onClick={() => setSending(d)}>
                       <Mail />
                     </Button>
+                    {d.can_edit && d.details?.policy_no && !isReplaced(d) && (
+                      <Button variant="ghost" size="icon-sm" aria-label="Renew" title="Renew: upload the new policy with the same details" onClick={() => setRenewing(d)}>
+                        <RefreshCw />
+                      </Button>
+                    )}
                     {d.can_edit && (
                       <Button variant="ghost" size="icon-sm" aria-label="Edit details" title="Edit details" onClick={() => setEditing(d)}>
                         <Pencil />
@@ -492,6 +499,7 @@ export function DocumentLibrary({ moduleKey, compact = false }: { moduleKey?: st
       )}
 
       <EditDocumentDialog doc={editing} categories={categories} folders={list.data?.folders ?? []} onClose={() => setEditing(null)} />
+      <RenewPolicyDialog doc={renewing} onClose={() => setRenewing(null)} />
       <SendDocumentDialog doc={sending} onClose={() => setSending(null)} />
       <SpreadsheetPreview doc={viewingBook} onClose={() => setViewingBook(null)}
         onDownload={(d) => void openDocument(d, true).catch((e) => toast.error(errorMessage(e)))} />
@@ -588,6 +596,86 @@ function FolderTile({ code, label, count, active, onClick, onContextMenu }: {
   );
 }
 
+/** The day after an ISO date, and a year on from it less a day. */
+const dayAfter = (iso: string, years = 0) => {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setFullYear(d.getFullYear() + years);
+  d.setDate(d.getDate() + (years ? -1 : 1));
+  return d.toLocaleDateString('en-CA');
+};
+
+/** Renew an insurance policy: the new file, the same details, new dates. */
+function RenewPolicyDialog({ doc, onClose }: { doc: LibraryDoc | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const sites = useSites();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [ins, setIns] = useState<InsuranceDetails>({});
+  const [busy, setBusy] = useState(false);
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  if (doc && loadedFor !== doc.id) {
+    setLoadedFor(doc.id);
+    setFile(null);
+    const { renewed_by: _by, renewed_on: _on, ...rest } = (doc.details ?? {}) as InsuranceDetails;
+    const oldEnd = rest.end_date || doc.valid_until || '';
+    // The new cover usually starts the day after the old one ends and runs a year.
+    const start = oldEnd ? dayAfter(oldEnd) : todayIST();
+    setIns({ ...rest, start_date: start, end_date: dayAfter(start, 1) });
+  }
+  function close() {
+    if (busy) return;
+    setLoadedFor(null);
+    onClose();
+  }
+
+  async function save() {
+    if (!doc) return;
+    if (!file) return toast.error('Choose the new policy document.');
+    if (BLOCKED_FILE.test(file.name)) return toast.error('Programs and web pages cannot be uploaded.');
+    if (file.size > MAX_FILE_BYTES) return toast.error('The file is larger than 50 MB.');
+    if (!ins.end_date) return toast.error('Give the new ending date.');
+    setBusy(true);
+    try {
+      await renewDocument(doc, file, cleanDetails(ins));
+      toast.success('Policy renewed. The old one is kept as replaced.');
+      await qc.invalidateQueries({ queryKey: docKeys.all });
+      setBusy(false);
+      close();
+    } catch (e) {
+      toast.error(errorMessage(e));
+      await qc.invalidateQueries({ queryKey: docKeys.all });
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={Boolean(doc)} onOpenChange={(o) => { if (!o) close(); }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Renew policy</DialogTitle>
+          <DialogDescription>
+            Upload the new policy. The details below are copied from {doc?.file_name}; change what is new. The old policy stays in the library, marked replaced, and stops sending renewal alerts.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="New policy document" required className="sm:col-span-2">
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" onClick={() => fileRef.current?.click()}><Upload /> Choose file</Button>
+              <span className="min-w-0 truncate text-sm text-muted-foreground">{file ? `${file.name} · ${fmtSize(file.size)}` : 'No file chosen'}</span>
+              <input ref={fileRef} type="file" className="hidden" onChange={(e) => { setFile(e.target.files?.[0] ?? null); e.target.value = ''; }} />
+            </div>
+          </Field>
+          <InsuranceFields value={ins} onChange={setIns} sites={sites.data ?? []} />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" disabled={busy} onClick={close}>Cancel</Button>
+          <Button disabled={busy} onClick={() => void save()}>{busy ? <Loader2 className="animate-spin" /> : <RefreshCw />} Renew</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function EditDocumentDialog({ doc, categories, folders, onClose }: { doc: LibraryDoc | null; categories: string[]; folders: DocFolder[]; onClose: () => void }) {
   const qc = useQueryClient();
   const [folderId, setFolderId] = useState(NONE);
@@ -614,7 +702,7 @@ function EditDocumentDialog({ doc, categories, folders, onClose }: { doc: Librar
       const insurance = isInsurance(category) || insuranceFolder(folders, folderId);
       await updateDocument(doc.id, {
         category: category.trim() || (insurance ? 'Insurance' : null), notes: notes.trim() || null,
-        valid_until: (insurance && ins.end_date) || valid || null, folder_id: folderId === NONE ? null : folderId,
+        valid_until: ins.renewed_by ? null : (insurance && ins.end_date) || valid || null, folder_id: folderId === NONE ? null : folderId,
         details: insurance ? cleanDetails(ins) : {},
       });
       toast.success('Details saved');

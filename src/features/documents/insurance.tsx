@@ -2,7 +2,8 @@
 // "Insurance" carries the policy details the Operation - Ground Mounted
 // sheet tracks; the list shows them as that sheet's table, with the due
 // status worked out from today, before anyone opens the PDF.
-import { Download, Eye, Mail, Pencil, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { Download, Eye, Mail, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { fmtDate, todayIST } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -21,7 +22,13 @@ export interface InsuranceDetails {
   end_date?: string;
   insurer?: string;
   responsible?: string;
+  /** Set on a policy that a renewal replaced: the renewal's document id and the day. */
+  renewed_by?: string;
+  renewed_on?: string;
 }
+
+/** Replaced by a renewal: kept as history. */
+export const isReplaced = (d: Pick<LibraryDoc, 'details'>) => Boolean((d.details as InsuranceDetails | null)?.renewed_by);
 
 export const isInsurance = (category: string | null | undefined) => (category ?? '').trim().toLowerCase() === 'insurance';
 
@@ -92,20 +99,31 @@ export function InsuranceFields({ value, onChange, sites }: {
 }
 
 /** The library as the insurance sheet: one row per policy, soonest renewal first. */
-export function InsuranceTable({ rows, onOpen, onDownload, onSend, onEdit, onDelete }: {
+export function InsuranceTable({ rows, onOpen, onDownload, onSend, onEdit, onDelete, onRenew }: {
   rows: LibraryDoc[];
   onOpen: (d: LibraryDoc) => void;
   onDownload: (d: LibraryDoc) => void;
   onSend: (d: LibraryDoc) => void;
   onEdit: (d: LibraryDoc) => void;
   onDelete: (d: LibraryDoc) => void;
+  onRenew: (d: LibraryDoc) => void;
 }) {
-  const sorted = [...rows].sort((a, b) => {
+  // Policies replaced by a renewal stay out of the way unless asked for.
+  const [showReplaced, setShowReplaced] = useState(false);
+  const replaced = rows.filter(isReplaced).length;
+  const sorted = rows.filter((d) => showReplaced || !isReplaced(d)).sort((a, b) => {
+    if (isReplaced(a) !== isReplaced(b)) return isReplaced(a) ? 1 : -1;
     const ea = (a.details as InsuranceDetails)?.end_date ?? a.valid_until ?? '9999';
     const eb = (b.details as InsuranceDetails)?.end_date ?? b.valid_until ?? '9999';
     return ea.localeCompare(eb);
   });
   return (
+    <div className="grid gap-2">
+    {replaced > 0 && (
+      <button type="button" className="justify-self-start text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => setShowReplaced((v) => !v)}>
+        {showReplaced ? `Hide the ${replaced} replaced (renewed) polic${replaced === 1 ? 'y' : 'ies'}` : `Show ${replaced} replaced (renewed) polic${replaced === 1 ? 'y' : 'ies'}`}
+      </button>
+    )}
     <div className="overflow-hidden rounded-lg border">
       <Table className="text-[13px]">
         <TableHeader>
@@ -128,9 +146,10 @@ export function InsuranceTable({ rows, onOpen, onDownload, onSend, onEdit, onDel
           {sorted.map((d, i) => {
             const x = (d.details ?? {}) as InsuranceDetails;
             const end = x.end_date || d.valid_until;
-            const st = insuranceStatus(end);
+            const old = isReplaced(d);
+            const st = old ? { due: `Renewed ${x.renewed_on ? fmtDate(x.renewed_on) : ''}`, status: 'Replaced', tone: 'secondary' as const, days: null } : insuranceStatus(end);
             return (
-              <TableRow key={d.id} className={cn(st.status !== 'Active' && st.status !== '—' && 'bg-red-50/40')}>
+              <TableRow key={d.id} className={cn(old ? 'text-muted-foreground' : st.status !== 'Active' && st.status !== '—' && 'bg-red-50/40')}>
                 <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                 <TableCell className="min-w-[12rem]">
                   <div className="font-medium">{x.company_name || '—'}</div>
@@ -149,6 +168,9 @@ export function InsuranceTable({ rows, onOpen, onDownload, onSend, onEdit, onDel
                   <Button variant="ghost" size="icon-sm" aria-label="Open" title={`Open ${d.file_name}`} onClick={() => onOpen(d)}><Eye /></Button>
                   <Button variant="ghost" size="icon-sm" aria-label="Download" title="Download" onClick={() => onDownload(d)}><Download /></Button>
                   <Button variant="ghost" size="icon-sm" aria-label="Send by email" title="Send by email" onClick={() => onSend(d)}><Mail /></Button>
+                  {d.can_edit && !old && (
+                    <Button variant="ghost" size="icon-sm" aria-label="Renew" title="Renew: upload the new policy with the same details" onClick={() => onRenew(d)}><RefreshCw /></Button>
+                  )}
                   {d.can_edit && <Button variant="ghost" size="icon-sm" aria-label="Edit details" title="Edit details" onClick={() => onEdit(d)}><Pencil /></Button>}
                   {d.can_delete && <Button variant="ghost" size="icon-sm" className="text-destructive" aria-label="Delete" title="Delete" onClick={() => onDelete(d)}><Trash2 /></Button>}
                 </TableCell>
@@ -157,6 +179,7 @@ export function InsuranceTable({ rows, onOpen, onDownload, onSend, onEdit, onDel
           })}
         </TableBody>
       </Table>
+    </div>
     </div>
   );
 }

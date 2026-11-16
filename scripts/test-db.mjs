@@ -2859,6 +2859,10 @@ console.log('\nInsurance renewal alerts');
   const t = (await asSystem(`select title from public.notifications where kind = 'document.expiring' and entity_id = $1 and user_id = $2`, [d15, RAHUL])).rows[0]?.title;
   t === 'Insurance renewal due in 15 days' ? ok('the alert says how many days are left') : bad('alert title', t);
   await expectError('the app cannot run the alert job', RAHUL, 'select app.send_document_expiry_alerts()', 'permission denied');
+  const renewed = await mk(15, 'policy-renewed.pdf');
+  await asSystem(`update public.documents set details = details || jsonb_build_object('renewed_by', gen_random_uuid()::text) where id = $1`, [renewed]);
+  await asSystem('select app.send_document_expiry_alerts()');
+  (await count()) === 3 ? ok('a policy replaced by its renewal sends no alert') : bad('renewed alert', String(await count()));
 }
 
 console.log('\nDashboard insurance / procurement, daily reminders');
