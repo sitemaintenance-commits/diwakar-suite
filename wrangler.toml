@@ -5,6 +5,10 @@ name = "diwakar-suite"
 compatibility_date = "2026-09-30"
 # Serve the site on its free <name>.<account>.workers.dev address.
 workers_dev = true
+# And on the company's own address (diwakarsolar.com's DNS is on Cloudflare).
+routes = [
+  { pattern = "suite.diwakarsolar.com", custom_domain = true },
+]
 
 [assets]
 directory = "./dist"
